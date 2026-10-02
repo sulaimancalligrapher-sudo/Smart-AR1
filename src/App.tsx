@@ -51,6 +51,9 @@ export default function App() {
   // When a lesson target is recognized by MindAR or simulator
   const handleTargetDetected = (lesson: LessonData) => {
     setActiveLesson(lesson);
+    if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
+      setActiveModal('none');
+    }
     analytics.trackEvent({
       targetId: lesson.targetId,
       lessonTitle: lesson.title,
@@ -146,6 +149,7 @@ export default function App() {
       {activeModal === 'images' && activeLesson && (
         <GalleryModal
           images={activeLesson.images}
+          targetImage={activeLesson.targetImage}
           lessonTitle={activeLesson.title}
           targetId={activeLesson.targetId}
           onClose={() => setActiveModal('none')}

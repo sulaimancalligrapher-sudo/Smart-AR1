@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Database, Send, Trash2, CheckCircle2, AlertCircle, Copy, Check, 
   FileSpreadsheet, ExternalLink, BookOpen, Edit3, Image, Video, Music, 
-  HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle
+  HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
 import { AnalyticsLogItem, LessonData } from '../types/ar';
-import { targetCompiler, CompileProgress } from '../services/targetCompiler';
 import { saveStoredLessons } from '../data/lessons';
 
 interface TeacherConsoleModalProps {
@@ -31,11 +30,6 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [editableLessons, setEditableLessons] = useState<LessonData[]>(lessons);
   const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // Compiler State
-  const [isCompiling, setIsCompiling] = useState(false);
-  const [compileProgress, setCompileProgress] = useState<CompileProgress | null>(null);
-  const [compiledBlob, setCompiledBlob] = useState<Blob | null>(null);
 
   useEffect(() => {
     setEditableLessons(lessons);
@@ -106,8 +100,17 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
         cur.audio = { ...cur.audio, url: value };
       } else if (field === 'summary') {
         cur.description = { ...cur.description, summary: value };
+      } else if (field === 'images') {
+        cur.images = value;
       }
       updated[selectedLessonIndex] = cur;
+
+      // Auto-persist immediately so no lesson data or uploaded images are lost
+      if (onUpdateLessons) {
+        onUpdateLessons(updated);
+      }
+      saveStoredLessons(updated);
+
       return updated;
     });
   };
@@ -181,46 +184,6 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       onUpdateLessons([]);
     }
     saveStoredLessons([]);
-  };
-
-  const handleCompileTargets = async () => {
-    try {
-      if (editableLessons.length === 0) {
-        alert('يرجى إضافة درس واحد على الأقل ورفع صورته للبدء في تجميع البصمات.');
-        return;
-      }
-
-      const validImages = editableLessons.filter((l) => l.targetImage && l.targetImage.trim() !== '');
-      if (validImages.length === 0) {
-        alert('يرجى تحديد أو رفع صورة واحدة على الأقل في الدروس قبل بدء التجميع.');
-        return;
-      }
-
-      setIsCompiling(true);
-      setCompileProgress({ percent: 10, statusText: 'بدء تحليل صور الدروس...' });
-
-      const allImages = editableLessons.map((l) => l.targetImage);
-      const res = await targetCompiler.compileImages(allImages, (progress) => {
-        setCompileProgress(progress);
-      });
-
-      setCompiledBlob(res.blob);
-      setIsCompiling(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 4000);
-    } catch (err: any) {
-      alert('خطأ أثناء التجميع: ' + (err.message || String(err)));
-      setIsCompiling(false);
-      setCompileProgress(null);
-    }
-  };
-
-  const handleDownloadMind = () => {
-    if (!compiledBlob) return;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(compiledBlob);
-    a.download = 'targets.mind';
-    a.click();
   };
 
   const handleDownloadContentJson = () => {
@@ -464,36 +427,6 @@ function doPost(e) {
                     />
                   </div>
 
-                  {/* Target Image Upload / Path */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-300">صورة الهدف من الكتاب (Target Image):</label>
-                      <label className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer inline-flex items-center gap-1">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>📁 رفع صورة من جهازك</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              const file = e.target.files[0];
-                              const url = URL.createObjectURL(file);
-                              handleFieldChange('targetImage', url);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                    <input
-                      type="text"
-                      value={currentLesson.targetImage}
-                      onChange={(e) => handleFieldChange('targetImage', e.target.value)}
-                      placeholder="اضغط (رفع صورة) أو الصق رابط صورة صفحة الدرس"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500 font-mono text-[11px]"
-                    />
-                  </div>
-
                   {/* YouTube Video URL */}
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-300">رابط فيديو YouTube التعليمي:</label>
@@ -554,47 +487,158 @@ function doPost(e) {
                   </div>
                 </div>
 
-                {/* Target Image Preview Box */}
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                {/* 📷 Card 1: Book Page Scan Target Image */}
+                <div className="p-3.5 rounded-xl bg-sky-950/30 border border-sky-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1 rounded-lg bg-sky-500/20 text-sky-400">
+                        <Camera className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                          <span>١. صورة صفحة الكتاب المطبوعة (هدف المسح بالكاميرا)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
+                            Target #{currentLesson.targetIndex}
+                          </span>
+                        </h5>
+                        <p className="text-[11px] text-slate-300">
+                          هذه هي صفحة كتاب الطالب التي ستتعرف عليها الكاميرا عند توجيه الهاتف نحوها.
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-sky-600/20 transition-all flex-shrink-0">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>📁 رفع صورة صفحة الكتاب</span>
+                      <input
+                        key={`book_scan_${currentLesson.targetId}`}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            const file = e.target.files[0];
+                            const reader = new FileReader();
+                            reader.onload = (uploadEvent) => {
+                              const base64 = uploadEvent.target?.result as string;
+                              handleFieldChange('targetImage', base64);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
                       {currentLesson.targetImage ? (
                         <img
                           src={currentLesson.targetImage}
                           alt={currentLesson.title}
                           className="w-full h-full object-contain"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
                         />
                       ) : (
-                        <span className="text-[10px] text-slate-500 text-center px-1">لا توجد صورة بعد</span>
+                        <span className="text-[10px] text-slate-500 text-center px-1">لم يتم رفع صورة الكتاب بعد</span>
                       )}
                     </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-white">معاينة صورة الهدف الحالي</h5>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        هذه هي الصورة التي ستبحث عنها الكاميرا لفتح هذا الدرس تحديداً
-                      </p>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300">رابط أو مسار صورة الكتاب:</label>
+                      <input
+                        type="text"
+                        value={currentLesson.targetImage}
+                        onChange={(e) => handleFieldChange('targetImage', e.target.value)}
+                        placeholder="اضغط (رفع صورة صفحة الكتاب) أو الصق الرابط هنا"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
+                      />
                     </div>
                   </div>
+                </div>
 
-                  <label className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 transition-colors">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>تغيير الصورة</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          const file = e.target.files[0];
-                          const url = URL.createObjectURL(file);
-                          handleFieldChange('targetImage', url);
-                        }
-                      }}
-                    />
-                  </label>
+                {/* 🖼️ Card 2: Educational Explanation / Diagram Image */}
+                <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400">
+                        <BookOpen className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                          <span>٢. صورة الشرح والمعرض التوضيحي (التي يراها الطالب في التطبيق)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                            اختياري
+                          </span>
+                        </h5>
+                        <p className="text-[11px] text-slate-300">
+                          المخطط أو الرسم البياني الذي يظهر للطالب عند النقر على زر 🖼️ "الصور" (إذا تركتها فارغة سيُعرض كتاب الدرس تلقائياً).
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all flex-shrink-0">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>📁 رفع صورة الشرح التوضيحية</span>
+                      <input
+                        key={`explanation_img_${currentLesson.targetId}`}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            const file = e.target.files[0];
+                            const reader = new FileReader();
+                            reader.onload = (uploadEvent) => {
+                              const base64 = uploadEvent.target?.result as string;
+                              const newImages = [
+                                {
+                                  url: base64,
+                                  title: currentLesson.images[0]?.title || `مخطط شرح: ${currentLesson.title}`,
+                                  caption: currentLesson.images[0]?.caption || 'رسم توضيحي وعناصر شرح مفصلة لهذا الدرس.'
+                                }
+                              ];
+                              handleFieldChange('images', newImages);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                      {currentLesson.images && currentLesson.images[0]?.url ? (
+                        <img
+                          src={currentLesson.images[0].url}
+                          alt={currentLesson.images[0].title}
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-slate-500 text-center px-1">
+                          {currentLesson.targetImage ? 'سيتم استخدام صورة الكتاب تلقائياً' : 'فارغ (اختياري)'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300">عنوان صورة الشرح (الذي يظهر للطالب):</label>
+                      <input
+                        type="text"
+                        value={currentLesson.images[0]?.title || ''}
+                        onChange={(e) => {
+                          const newImages = [
+                            {
+                              url: currentLesson.images[0]?.url || currentLesson.targetImage || '',
+                              title: e.target.value,
+                              caption: currentLesson.images[0]?.caption || 'مخطط توضيحي لهذا الدرس'
+                            }
+                          ];
+                          handleFieldChange('images', newImages);
+                        }}
+                        placeholder="مثال: مخطط توضيحي مفصل / رسم بياني"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Action Buttons for Lessons */}
@@ -629,57 +673,93 @@ function doPost(e) {
               </div>
             )}
 
-            {/* In-Browser MindAR Targets Compiler Box */}
-            <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-500/40 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-bold text-indigo-200 flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-indigo-400" />
-                    <span>المترجم التلقائي لبصمات الصور (In-Browser MindAR Compiler)</span>
-                  </h4>
-                  <p className="text-xs text-indigo-300/80 mt-0.5">
-                    يقوم بتحليل جميع صور الدروس وتوليد ملف targets.mind جديد وتفعيله فوراً في كاميرا المتصفح
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCompileTargets}
-                    disabled={isCompiling || editableLessons.length === 0}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Sparkles className={`w-4 h-4 ${isCompiling ? 'animate-spin' : ''}`} />
-                    <span>{isCompiling ? 'جارٍ المعالجة البصرية...' : '⚡ تجميع بصمات الصور وتفعيلها فوراً'}</span>
-                  </button>
-
-                  {compiledBlob && (
-                    <button
-                      type="button"
-                      onClick={handleDownloadMind}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition-all cursor-pointer flex items-center gap-1.5 animate-fadeIn"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>تنزيل targets.mind الجديد</span>
-                    </button>
-                  )}
+            {/* Project Export & MindAR Publishing Hub */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
+                    <Download className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm sm:text-base font-bold text-white">
+                      دليل نشر وتحديث ملفات المشروع لـ Vercel
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      خطوتان سهلتان لتفعيل تحديثات الدروس وقراءة الكاميرا لجميع الطلاب في التطبيق
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {compileProgress && (
-                <div className="p-3 rounded-lg bg-indigo-900/60 border border-indigo-700/60 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-indigo-200">
-                    <span>{compileProgress.statusText}</span>
-                    <span className="font-mono font-bold">{Math.round(compileProgress.percent)}%</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Step 1: content.json */}
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/30 flex flex-col justify-between space-y-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-emerald-400">الخطوة الأولى</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                        content.json
+                      </span>
+                    </div>
+                    <h5 className="text-sm font-bold text-white">تصدير ملف بيانات ومحتوى الدروس</h5>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      يحفظ عناوين كل الدروس، وروابط فيديوهات اليوتيوب، والتسجيل الصوتي، وصور الشرح، وأسئلة الاختبار.
+                    </p>
+                    <div className="p-2 rounded-lg bg-black/40 border border-slate-800 text-[11px] font-mono text-emerald-300">
+                      المسار: public/data/content.json
+                    </div>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-indigo-950 overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-sky-400 to-indigo-400 transition-all duration-300"
-                      style={{ width: `${compileProgress.percent}%` }}
-                    />
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadContentJson}
+                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>💾 تنزيل ملف content.json الآن</span>
+                  </button>
                 </div>
-              )}
+
+                {/* Step 2: MindAR Official Tool */}
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-sky-500/30 flex flex-col justify-between space-y-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-sky-400">الخطوة الثانية</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
+                        targets.mind
+                      </span>
+                    </div>
+                    <h5 className="text-sm font-bold text-white">تجميع بصمات الكاميرا الرسمية</h5>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      افتح الأداة الرسمية، اسحب صور صفحات الكتاب دفعة واحدة (Ctrl+A)، ثم نزل ملف البصمات الثنائي المعتمد.
+                    </p>
+                    <div className="p-2 rounded-lg bg-black/40 border border-slate-800 text-[11px] font-mono text-sky-300">
+                      المسار: public/targets/targets.mind
+                    </div>
+                  </div>
+
+                  <a
+                    href="https://hiukim.github.io/mind-ar-js-doc/tools/compile"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-lg shadow-sky-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 text-center"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>🌐 فتح أداة MindAR الرسمية ↗</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Tips for Best Image Quality & 3D / GIF notice */}
+              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-2.5 text-xs text-slate-400">
+                <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-slate-200">إرشادات مفيدة لجودة الصور والمحتوى:</span>
+                  <p className="text-[11px] leading-relaxed">
+                    الدقة المثالية لصور صفحات الكتاب بين 600px و 1200px (JPG/PNG). وتدعم بطاقة الشرح الصور المتحركة (GIF) لشرح التجارب العلمية التفاعلية!
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         )}
