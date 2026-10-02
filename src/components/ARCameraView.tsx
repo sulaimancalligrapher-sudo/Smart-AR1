@@ -72,6 +72,12 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         return;
       }
 
+      if (lessons.length === 0) {
+        setCameraError('لم يتم إضافة أي دروس بعد! يرجى فتح محرر الدروس (أيقونة الجدول في الأعلى) وإضافة درسك الأول وصورته أولاً.');
+        setCameraLoading(false);
+        return;
+      }
+
       // 1. Wait for MindARThree to be ready from module imports (up to 6 seconds)
       let attempts = 0;
       while (!window.MINDAR?.IMAGE?.MindARThree && attempts < 60) {

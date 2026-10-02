@@ -15,7 +15,7 @@ import { TargetCardsModal } from './components/TargetCardsModal';
 import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { LessonData } from './types/ar';
-import { DEFAULT_LESSONS, fetchLessons } from './data/lessons';
+import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons } from './data/lessons';
 import { analytics } from './services/analytics';
 
 type ActiveModalType =
@@ -29,19 +29,24 @@ type ActiveModalType =
   | 'compiler';
 
 export default function App() {
-  const [lessons, setLessons] = useState<LessonData[]>(DEFAULT_LESSONS);
+  const [lessons, setLessons] = useState<LessonData[]>(() => getStoredLessons());
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [activeLesson, setActiveLesson] = useState<LessonData | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
 
-  // Load custom lessons from content.json on startup
+  // Load custom lessons from storage or content.json on startup
   useEffect(() => {
     fetchLessons().then((loadedLessons) => {
-      if (loadedLessons && loadedLessons.length > 0) {
+      if (loadedLessons) {
         setLessons(loadedLessons);
       }
     });
   }, []);
+
+  const handleUpdateLessons = (updated: LessonData[]) => {
+    setLessons(updated);
+    saveStoredLessons(updated);
+  };
 
   // When a lesson target is recognized by MindAR or simulator
   const handleTargetDetected = (lesson: LessonData) => {
@@ -183,7 +188,7 @@ export default function App() {
       {activeModal === 'teacher_console' && (
         <TeacherConsoleModal 
           lessons={lessons}
-          onUpdateLessons={(updated) => setLessons(updated)}
+          onUpdateLessons={handleUpdateLessons}
           onClose={() => setActiveModal('none')} 
         />
       )}

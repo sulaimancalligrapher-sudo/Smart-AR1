@@ -77,43 +77,53 @@ export const TargetCardsModal: React.FC<TargetCardsModalProps> = ({
 
         {/* Content Tabs & Target Card Display */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4">
-          {/* Important Highlight Note */}
-          <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-start gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-emerald-200 leading-relaxed">
-              <span className="font-bold text-emerald-300 block mb-0.5">
-                💡 بطاقتا الأهداف المعتمَدتان والجاهزتان للمسح بالكاميرا حالياً:
-              </span>
-              • <strong className="text-white">صورة الدب (Target #1)</strong> ⬅️ تفتح <strong>درس دورة الماء</strong>.<br />
-              • <strong className="text-white">صورة الراكون (Target #0)</strong> ⬅️ تفتح <strong>درس المجموعة الشمسية</strong>.<br />
-              افتح كلاً منهما ووجّه الكاميرا، وستشهد التعرف التلقائي المستقل على كل صورة ومحتواها!
+          {lessons.length === 0 ? (
+            <div className="p-8 text-center bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+              <Eye className="w-10 h-10 text-slate-500 mx-auto" />
+              <h4 className="text-sm font-bold text-white">لا توجد بطاقات أهداف مضافة بعد</h4>
+              <p className="text-xs text-slate-400">
+                تم إفراغ النماذج التجريبية السابقة بنجاح. يمكنك الآن إضافة دروس كتابك المدرسي وصورها من خلال محرر الدروس (أيقونة الجدول في الأعلى).
+              </p>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Important Highlight Note */}
+              <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-emerald-200 leading-relaxed">
+                  <span className="font-bold text-emerald-300 block mb-0.5">
+                    💡 بطاقات أهداف الدروس الحالية:
+                  </span>
+                  افتح أي بطاقة من القائمة أدناه على شاشة كمبيوترك أو اطبعها، ثم وجه كاميرا الهاتف نحوها للتعرف الفوري!
+                </div>
+              </div>
 
-          {/* Target Selector Tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {lessons.map((lesson) => {
-              const isActive = selectedTarget?.targetId === lesson.targetId;
-              return (
-                <button
-                  key={lesson.targetId}
-                  onClick={() => setSelectedTarget(lesson)}
-                  className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
-                    isActive
-                      ? 'bg-sky-600/20 border-sky-400 text-white shadow-md'
-                      : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <span className="text-[10px] text-sky-400 font-mono block">
-                    Target #{lesson.targetIndex} {lesson.targetIndex === 0 && '⭐ (مطابق 100%)'}
-                  </span>
-                  <span className="text-xs font-bold truncate block mt-0.5">
-                    {lesson.title}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+              {/* Target Selector Tabs */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {lessons.map((lesson) => {
+                  const isActive = selectedTarget?.targetId === lesson.targetId;
+                  return (
+                    <button
+                      key={lesson.targetId}
+                      onClick={() => setSelectedTarget(lesson)}
+                      className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer flex flex-col justify-between ${
+                        isActive
+                          ? 'bg-sky-600/20 border-sky-400 text-white shadow-md'
+                          : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="text-[10px] text-sky-400 font-mono block">
+                        Target #{lesson.targetIndex}
+                      </span>
+                      <span className="text-xs font-bold truncate block mt-0.5">
+                        {lesson.title}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           {/* Active Target Card Preview */}
           {selectedTarget && (
