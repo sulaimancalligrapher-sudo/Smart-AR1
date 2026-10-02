@@ -1,0 +1,9 @@
+{
+  "name": "كتابي الذكي للواقع المعزز - Smart AR Book",
+  "description": "منصة تعليمية مجانية للواقع المعزز (WebAR) لكتب المدارس والتعليم التفاعلي باستخدام MindAR وواجهة Overlay شفافة وتسجيل Google Sheets.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
