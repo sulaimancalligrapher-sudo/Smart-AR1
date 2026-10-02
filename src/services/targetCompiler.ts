@@ -26,6 +26,10 @@ class TargetCompilerService {
     return this.customMindBlobUrl || '/targets/targets.mind';
   }
 
+  public hasCustomTargets(): boolean {
+    return this.customMindBlobUrl !== null;
+  }
+
   public setCustomMindBlob(blob: Blob): string {
     if (this.customMindBlobUrl) {
       URL.revokeObjectURL(this.customMindBlobUrl);

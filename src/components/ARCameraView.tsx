@@ -72,7 +72,14 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         return;
       }
 
-      // 1. Try initializing MindAR if available
+      // 1. Wait for MindARThree to be ready from module imports (up to 6 seconds)
+      let attempts = 0;
+      while (!window.MINDAR?.IMAGE?.MindARThree && attempts < 60) {
+        if (isCancelled) return;
+        await new Promise((r) => setTimeout(r, 100));
+        attempts++;
+      }
+
       if (window.MINDAR?.IMAGE?.MindARThree && containerRef.current) {
         try {
           const mindarThree = new window.MINDAR.IMAGE.MindARThree({
@@ -86,8 +93,12 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           mindarThreeRef.current = mindarThree;
 
-          // Attach anchors for all lessons
+          // Attach anchors safely (default targets.mind contains targetIndex 0 and 1)
+          const isCustom = targetCompiler.hasCustomTargets();
           lessons.forEach((lesson) => {
+            if (!isCustom && lesson.targetIndex > 1) {
+              return;
+            }
             const anchor = mindarThree.addAnchor(lesson.targetIndex);
             anchor.onTargetFound = () => {
               if (isCancelled) return;
@@ -231,8 +242,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             </>
           ) : (
             <>
-              <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse"></span>
-              <span className="truncate">📖 وجّه الكاميرا إلى صورة الدرس</span>
+              <span className={`w-2.5 h-2.5 rounded-full ${isMindArActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+              <span className="truncate">
+                {isMindArActive ? '🟢 الماسح البصري الذكي يبحث عن صورة الدرس...' : '📖 وجّه الكاميرا إلى صورة الدرس'}
+              </span>
             </>
           )}
         </div>
