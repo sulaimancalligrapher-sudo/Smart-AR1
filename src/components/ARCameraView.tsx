@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap } from 'lucide-react';
+import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap, BookOpen } from 'lucide-react';
 import { LessonData } from '../types/ar';
 import { analytics } from '../services/analytics';
 import { targetCompiler } from '../services/targetCompiler';
@@ -46,13 +46,27 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
   const [cameraLoading, setCameraLoading] = useState(true);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isMindArActive, setIsMindArActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
-  const [showSimBar, setShowSimBar] = useState(false);
   const [isScanning, setIsScanning] = useState(true);
   const mindarThreeRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Loading timer counter to give user progressive feedback
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    if (cameraLoading) {
+      setLoadingSeconds(0);
+      timer = setInterval(() => {
+        setLoadingSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [cameraLoading]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -73,14 +87,17 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       }
 
       if (lessons.length === 0) {
-        setCameraError('لم يتم إضافة أي دروس بعد! يرجى فتح محرر الدروس (أيقونة الجدول في الأعلى) وإضافة درسك الأول وصورته أولاً.');
+        setCameraError('EMPTY_LESSONS');
         setCameraLoading(false);
         return;
       }
 
-      // 1. Wait for MindARThree to be ready from module imports (up to 6 seconds)
+      // Detect if running on mobile device or desktop
+      const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      // 1. Wait for MindARThree to be ready from module imports (up to 4 seconds)
       let attempts = 0;
-      while (!window.MINDAR?.IMAGE?.MindARThree && attempts < 60) {
+      while (!window.MINDAR?.IMAGE?.MindARThree && attempts < 40) {
         if (isCancelled) return;
         await new Promise((r) => setTimeout(r, 100));
         attempts++;
@@ -97,9 +114,14 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             uiLoading: 'no'
           });
 
+          // On desktop computers/laptops, rear camera does not exist, so default to front user camera
+          if (!isMobile) {
+            mindarThree.shouldFaceUser = true;
+          }
+
           mindarThreeRef.current = mindarThree;
 
-          // Attach anchors safely (default targets.mind contains targetIndex 0 and 1)
+          // Attach anchors safely
           const isCustom = targetCompiler.hasCustomTargets();
           lessons.forEach((lesson) => {
             if (!isCustom && lesson.targetIndex > 1) {
@@ -121,15 +143,24 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             };
           });
 
+          // Start with timeout guard (8 seconds max)
+          const startPromise = mindarThree.start();
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), 8000)
+          );
+
           try {
-            await mindarThree.start();
-          } catch (firstErr) {
-            console.warn('First mindarThree.start() failed (likely environment camera missing on desktop), trying user camera:', firstErr);
+            await Promise.race([startPromise, timeoutPromise]);
+          } catch (startErr: any) {
+            if (startErr.message === 'CAMERA_TIMEOUT') {
+              throw new Error('TIMEOUT');
+            }
+            console.warn('Initial start failed, retrying with user camera mode:', startErr);
             mindarThree.shouldFaceUser = true;
             await mindarThree.start();
           }
 
-          // CRITICAL: MindAR requires renderer.setAnimationLoop to process video frames continuously
+          // MindAR animation loop
           const { renderer, scene, camera } = mindarThree;
           renderer.setAnimationLoop(() => {
             renderer.render(scene, camera);
@@ -140,8 +171,13 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             setCameraLoading(false);
           }
           return;
-        } catch (mindarErr) {
-          console.warn('MindAR start failed or targets.mind not found, using direct camera stream:', mindarErr);
+        } catch (mindarErr: any) {
+          console.warn('MindAR start failed, attempting direct camera stream fallback:', mindarErr);
+          if (mindarErr.name === 'NotAllowedError' || mindarErr.name === 'PermissionDeniedError') {
+            setCameraError('PERMISSION_DENIED');
+            setCameraLoading(false);
+            return;
+          }
         }
       }
 
@@ -149,7 +185,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: facingMode,
+            facingMode: isMobile ? facingMode : 'user',
             width: { ideal: 1280 },
             height: { ideal: 720 }
           },
@@ -171,14 +207,14 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         setIsMindArActive(false);
         setCameraLoading(false);
       } catch (err: unknown) {
-        console.error('Camera access error:', err);
+        console.error('Camera fallback access error:', err);
         const error = err as Error;
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-          setCameraError('تم رفض إذن الكاميرا. يرجى السماح للمتصفح بالوصول للكاميرا من إعدادات الموقع.');
+          setCameraError('PERMISSION_DENIED');
         } else if (error.name === 'NotFoundError') {
-          setCameraError('لم يتم العثور على كاميرا في جهازك.');
+          setCameraError('NO_CAMERA');
         } else {
-          setCameraError('تعذر تشغيل الكاميرا: ' + (error.message || 'خطأ غير معروف'));
+          setCameraError(error.message || 'تعذر تشغيل الكاميرا.');
         }
         setCameraLoading(false);
       }
@@ -202,10 +238,13 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         streamRef.current = null;
       }
     };
-  }, [facingMode, lessons]);
+  }, [facingMode, lessons.length]);
 
-  const handleToggleFacingMode = () => {
-    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  const handleSimulateFirstLesson = () => {
+    if (lessons.length > 0) {
+      playMatchChime();
+      onTargetDetected(lessons[0]);
+    }
   };
 
   return (
@@ -272,8 +311,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <button
             onClick={onOpenTeacherConsole}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="سجل أحداث Google Sheets"
-            aria-label="سجل أحداث Google Sheets"
+            title="لوحة المعلم ومحرر الدروس"
+            aria-label="لوحة المعلم ومحرر الدروس"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
           </button>
@@ -309,103 +348,134 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           </div>
 
           {/* Quick Helper Simulator Trigger */}
-          <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
+          {lessons.length > 0 && (
+            <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
+              <button
+                onClick={handleSimulateFirstLesson}
+                className="py-1.5 px-4 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                title="تجربة تفاعلية مباشرة للدرس"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                <span>⚡ تجربة التعرف الفوري بنقرة واحدة (محاكاة الكاميرا)</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Camera Loading Overlay with Close Button & Timeouts */}
+      {cameraLoading && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white">
+          {/* Top Close Button so user is never trapped */}
+          <button
+            onClick={onCloseCamera}
+            className="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+            title="إلغاء والعودة"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="w-16 h-16 rounded-full border-4 border-sky-500 border-t-transparent animate-spin mb-4" />
+          
+          <h3 className="text-base font-bold mb-1">
+            {loadingSeconds < 3 
+              ? 'جارٍ تشغيل الكاميرا ومحرك الواقع المعزز...'
+              : 'في انتظار تأكيد إذن الكاميرا...'}
+          </h3>
+
+          <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-4">
+            {loadingSeconds < 3
+              ? 'يرجى الانتظار ثوانٍ معدودة لبدء المسح البصري.'
+              : 'إذا ظهر لك مربع في أعلى المتصفح يطلب إذن الكاميرا، اضغط على (سماح / Allow).'}
+          </p>
+
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            {lessons.length > 0 && loadingSeconds >= 3 && (
+              <button
+                onClick={handleSimulateFirstLesson}
+                className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all animate-fadeIn"
+              >
+                <Zap className="w-4 h-4 text-amber-300" />
+                <span>⚡ فتح الدرس فوراً (تخطي انتظار الكاميرا)</span>
+              </button>
+            )}
+
             <button
-              onClick={() => {
-                playMatchChime();
-                onTargetDetected(lessons[0]);
-              }}
-              className="py-1.5 px-4 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-              title="تجربة تفاعلية مباشرة لدرس دورة الماء"
+              onClick={onCloseCamera}
+              className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer border border-slate-700 transition-colors"
             >
-              <Zap className="w-3.5 h-3.5 text-amber-300" />
-              <span>⚡ تجربة التعرف الفوري بنقرة واحدة (محاكاة الكاميرا)</span>
+              ✕ إلغاء والعودة للشاشة الرئيسية
             </button>
-            <span className="text-[10px] text-slate-400 bg-black/60 px-2.5 py-0.5 rounded-full text-center">
-              💡 يتيح لك فك القفل فوراً إذا كانت شاشة الكمبيوتر تسبب انعكاساً لكاميرا الويب
-            </span>
           </div>
         </div>
       )}
 
-      {/* Camera Loading Overlay */}
-      {cameraLoading && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/90 p-6 text-center text-white">
-          <div className="w-16 h-16 rounded-full border-4 border-sky-500 border-t-transparent animate-spin mb-4" />
-          <h3 className="text-base font-bold mb-1">جارٍ تشغيل الكاميرا ومحرك الواقع المعزز...</h3>
-          <p className="text-xs text-slate-400 max-w-xs">يرجى الموافقة على طلب إذن الكاميرا إذا ظهر في أعلى المتصفح</p>
-        </div>
-      )}
-
-      {/* Camera Error Overlay */}
+      {/* Camera Error Overlay with Direct Action Buttons */}
       {cameraError && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white space-y-4">
           <div className="w-14 h-14 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40">
             <AlertTriangle className="w-7 h-7" />
           </div>
+
           <div>
-            <h3 className="text-base font-bold text-rose-300 mb-1">تنبيه في تشغيل الكاميرا</h3>
-            <p className="text-xs text-slate-300 max-w-sm leading-relaxed">{cameraError}</p>
+            <h3 className="text-base font-bold text-rose-300 mb-1">
+              {cameraError === 'EMPTY_LESSONS' ? 'لم يتم إضافة دروس بعد' : 'تنبيه في تشغيل الكاميرا'}
+            </h3>
+            
+            <p className="text-xs text-slate-300 max-w-sm leading-relaxed">
+              {cameraError === 'EMPTY_LESSONS' && (
+                'تم إفراغ النماذج التجريبية السابقة بنجاح. يرجى فتح محرر الدروس لإضافة أول درس وصورته من كتابك المدرسي لتتمكن الكاميرا من البحث عنها.'
+              )}
+              {cameraError === 'PERMISSION_DENIED' && (
+                'تم رفض إذن الوصول للكاميرا. يرجى الضغط على علامة القفل 🔒 أو الكاميرا بجانب رابط المتصفح واختيار (سماح / Allow) ثم إعادة التجربة.'
+              )}
+              {cameraError === 'NO_CAMERA' && (
+                'لم يتم العثور على كاميرا متصلة بجهازك الحالي. يمكنك تجربة المحاكاة المباشرة بالزر أدناه.'
+              )}
+              {cameraError !== 'EMPTY_LESSONS' && cameraError !== 'PERMISSION_DENIED' && cameraError !== 'NO_CAMERA' && (
+                cameraError
+              )}
+            </p>
           </div>
+
           <div className="flex flex-col gap-2 w-full max-w-xs pt-2">
-            <button
-              onClick={() => window.location.reload()}
-              className="py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors cursor-pointer"
-            >
-              إعادة تحميل الصفحة والمحاولة
-            </button>
+            {cameraError === 'EMPTY_LESSONS' ? (
+              <button
+                onClick={() => {
+                  onCloseCamera();
+                  onOpenTeacherConsole();
+                }}
+                className="py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-lg"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>فتح محرر الدروس وإضافة أول درس</span>
+              </button>
+            ) : (
+              <>
+                {lessons.length > 0 && (
+                  <button
+                    onClick={handleSimulateFirstLesson}
+                    className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-lg"
+                  >
+                    <Zap className="w-4 h-4 text-amber-300" />
+                    <span>⚡ تجربة محتوى الدرس فوراً (بدون كاميرا)</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => window.location.reload()}
+                  className="py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  إعادة تحميل الصفحة والمحاولة
+                </button>
+              </>
+            )}
+
             <button
               onClick={onCloseCamera}
               className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
             >
               العودة للشاشة الرئيسية
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Quick Lesson Simulator Toggle (Available when camera is running) */}
-      <div className="absolute bottom-3 left-3 z-40 pointer-events-auto">
-        <button
-          onClick={() => setShowSimBar(!showSimBar)}
-          className="px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 text-xs font-medium flex items-center gap-1.5 shadow-lg cursor-pointer"
-          title="اختبار الدروس يدوياً"
-        >
-          <Layers className="w-3.5 h-3.5 text-amber-400" />
-          <span>اختبار الدروس ({lessons.length})</span>
-        </button>
-      </div>
-
-      {/* Simulator Drawer */}
-      {showSimBar && (
-        <div className="absolute bottom-14 left-3 right-3 z-40 max-w-md mx-auto p-3 rounded-2xl ar-glass-panel border border-white/20 shadow-2xl pointer-events-auto space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-300">
-            <span className="font-bold text-white">اختر درساً لمحاكاة التعرف الفوري:</span>
-            <button
-              onClick={() => setShowSimBar(false)}
-              className="text-slate-400 hover:text-white"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {lessons.map((lesson) => (
-              <button
-                key={lesson.targetId}
-                onClick={() => {
-                  onTargetDetected(lesson);
-                  setShowSimBar(false);
-                }}
-                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-right text-xs text-slate-200 transition-colors cursor-pointer truncate"
-              >
-                <span className="text-[10px] text-sky-400 font-mono block">
-                  {lesson.targetId}
-                </span>
-                <span className="font-bold truncate block">
-                  {lesson.title}
-                </span>
-              </button>
-            ))}
           </div>
         </div>
       )}
