@@ -181,7 +181,11 @@ export default function App() {
       )}
 
       {activeModal === 'teacher_console' && (
-        <TeacherConsoleModal onClose={() => setActiveModal('none')} />
+        <TeacherConsoleModal 
+          lessons={lessons}
+          onUpdateLessons={(updated) => setLessons(updated)}
+          onClose={() => setActiveModal('none')} 
+        />
       )}
 
       {activeModal === 'compiler' && (
