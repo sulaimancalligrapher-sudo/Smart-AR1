@@ -104,7 +104,13 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             };
           });
 
-          await mindarThree.start();
+          try {
+            await mindarThree.start();
+          } catch (firstErr) {
+            console.warn('First mindarThree.start() failed (likely environment camera missing on desktop), trying user camera:', firstErr);
+            mindarThree.shouldFaceUser = true;
+            await mindarThree.start();
+          }
 
           // CRITICAL: MindAR requires renderer.setAnimationLoop to process video frames continuously
           const { renderer, scene, camera } = mindarThree;
@@ -280,6 +286,24 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <div className="mt-4 pointer-events-none">
             <span className="px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-[11px] text-sky-200 border border-sky-400/30 shadow-lg text-center block">
               📖 قرّب الكاميرا ببطء من صورة الدرس حتى تظهر كاملة في المربع
+            </span>
+          </div>
+
+          {/* Quick Helper Simulator Trigger */}
+          <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
+            <button
+              onClick={() => {
+                playMatchChime();
+                onTargetDetected(lessons[0]);
+              }}
+              className="py-1.5 px-4 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+              title="تجربة تفاعلية مباشرة لدرس دورة الماء"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>⚡ تجربة التعرف الفوري بنقرة واحدة (محاكاة الكاميرا)</span>
+            </button>
+            <span className="text-[10px] text-slate-400 bg-black/60 px-2.5 py-0.5 rounded-full text-center">
+              💡 يتيح لك فك القفل فوراً إذا كانت شاشة الكمبيوتر تسبب انعكاساً لكاميرا الويب
             </span>
           </div>
         </div>

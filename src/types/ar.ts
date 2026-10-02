@@ -94,6 +94,8 @@ declare global {
         }) => {
           start: () => Promise<void>;
           stop: () => void;
+          shouldFaceUser?: boolean;
+          switchCamera?: () => void;
           scene: any;
           camera: any;
           renderer: {
