@@ -47,10 +47,11 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
             {onCloseLesson && (
               <button
                 onClick={onCloseLesson}
-                className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-black/20 hover:bg-black/40 text-white/90 transition-colors cursor-pointer"
-                title="إلغاء قفل الدرس"
+                className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-black/30 hover:bg-rose-950/80 hover:text-rose-200 text-white transition-all cursor-pointer flex items-center gap-1 border border-white/20"
+                title="إلغاء قفل الدرس ومسح صفحة جديدة"
               >
-                ✕
+                <span>مسح صفحة أخرى</span>
+                <span>✕</span>
               </button>
             )}
           </div>

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
 import { AnalyticsLogItem, LessonData } from '../types/ar';
-import { saveStoredLessons } from '../data/lessons';
+import { saveStoredLessons, fetchLessons } from '../data/lessons';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -575,75 +575,115 @@ function doPost(e) {
                       </div>
                     </div>
 
-                    <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all flex-shrink-0">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>📁 رفع صورة الشرح التوضيحية</span>
-                      <input
-                        key={`explanation_img_${currentLesson.targetId}`}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            const file = e.target.files[0];
-                            const reader = new FileReader();
-                            reader.onload = (uploadEvent) => {
-                              const base64 = uploadEvent.target?.result as string;
-                              const newImages = [
-                                {
-                                  url: base64,
-                                  title: currentLesson.images[0]?.title || `مخطط شرح: ${currentLesson.title}`,
-                                  caption: currentLesson.images[0]?.caption || 'رسم توضيحي وعناصر شرح مفصلة لهذا الدرس.'
-                                }
-                              ];
-                              handleFieldChange('images', newImages);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
+                    <div className="flex items-center gap-2">
+                      {currentLesson.images && currentLesson.images[0]?.url && (
+                        <button
+                          type="button"
+                          onClick={() => handleFieldChange('images', [])}
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
+                          title="حذف صورة الشرح والاعتماد على صورة الكتاب تلقائياً"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>إلغاء واستخدام صورة الكتاب</span>
+                        </button>
+                      )}
+
+                      <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all flex-shrink-0">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>📁 رفع صورة الشرح (أو GIF)</span>
+                        <input
+                          key={`explanation_img_${currentLesson.targetId}`}
+                          type="file"
+                          accept="image/png, image/jpeg, image/gif, image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              const file = e.target.files[0];
+                              const reader = new FileReader();
+                              reader.onload = (uploadEvent) => {
+                                const base64 = uploadEvent.target?.result as string;
+                                const newImages = [
+                                  {
+                                    url: base64,
+                                    title: currentLesson.images?.[0]?.title || `مخطط شرح: ${currentLesson.title}`,
+                                    caption: currentLesson.images?.[0]?.caption || 'رسم توضيحي وعناصر شرح مفصلة لهذا الدرس.'
+                                  }
+                                ];
+                                handleFieldChange('images', newImages);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                    <div className="w-20 h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0 self-center sm:self-auto">
                       {currentLesson.images && currentLesson.images[0]?.url ? (
                         <img
                           src={currentLesson.images[0].url}
-                          alt={currentLesson.images[0].title}
+                          alt={currentLesson.images[0].title || 'صورة الشرح'}
                           className="w-full h-full object-contain"
                         />
                       ) : (
-                        <span className="text-[10px] text-slate-500 text-center px-1">
-                          {currentLesson.targetImage ? 'سيتم استخدام صورة الكتاب تلقائياً' : 'فارغ (اختياري)'}
-                        </span>
+                        <div className="text-center p-1">
+                          <span className="text-[10px] text-emerald-400 block font-bold">تلقائي</span>
+                          <span className="text-[9px] text-slate-500 block">صورة الكتاب</span>
+                        </div>
                       )}
                     </div>
-                    <div className="flex-1 space-y-1">
-                      <label className="text-[11px] font-bold text-slate-300">عنوان صورة الشرح (الذي يظهر للطالب):</label>
-                      <input
-                        type="text"
-                        value={currentLesson.images[0]?.title || ''}
-                        onChange={(e) => {
-                          const newImages = [
-                            {
-                              url: currentLesson.images[0]?.url || currentLesson.targetImage || '',
-                              title: e.target.value,
-                              caption: currentLesson.images[0]?.caption || 'مخطط توضيحي لهذا الدرس'
-                            }
-                          ];
-                          handleFieldChange('images', newImages);
-                        }}
-                        placeholder="مثال: مخطط توضيحي مفصل / رسم بياني"
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
-                      />
+
+                    <div className="flex-1 space-y-2">
+                      <div className="space-y-0.5">
+                        <label className="text-[11px] font-bold text-slate-300">رابط صورة الشرح (أو ارفع من جهازك أعلاه):</label>
+                        <input
+                          type="text"
+                          value={currentLesson.images?.[0]?.url || ''}
+                          onChange={(e) => {
+                            const newUrl = e.target.value;
+                            const newImages = newUrl.trim() === '' ? [] : [
+                              {
+                                url: newUrl,
+                                title: currentLesson.images?.[0]?.title || `مخطط شرح: ${currentLesson.title}`,
+                                caption: currentLesson.images?.[0]?.caption || 'رسم توضيحي وعناصر شرح لهذا الدرس.'
+                              }
+                            ];
+                            handleFieldChange('images', newImages);
+                          }}
+                          placeholder="الصق رابط صورة الشرح (JPG/PNG/GIF) أو اضغط رفع صورة أعلاه"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+
+                      <div className="space-y-0.5">
+                        <label className="text-[11px] font-bold text-slate-300">عنوان وتعليق صورة الشرح المعروض للطالب:</label>
+                        <input
+                          type="text"
+                          value={currentLesson.images?.[0]?.title || ''}
+                          onChange={(e) => {
+                            const newTitle = e.target.value;
+                            const newImages = [
+                              {
+                                url: currentLesson.images?.[0]?.url || '',
+                                title: newTitle,
+                                caption: currentLesson.images?.[0]?.caption || 'رسم توضيحي وعناصر شرح لهذا الدرس.'
+                              }
+                            ];
+                            handleFieldChange('images', newImages);
+                          }}
+                          placeholder="مثال: مخطط دورة الماء / تجربة تفاعلية متحركة"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Action Buttons for Lessons */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={handleSaveLessonChanges}
@@ -660,6 +700,30 @@ function doPost(e) {
                     >
                       <Download className="w-4 h-4" />
                       <span>تنزيل content.json</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const fresh = await fetchLessons();
+                          if (fresh && fresh.length > 0) {
+                            setEditableLessons(fresh);
+                            if (onUpdateLessons) onUpdateLessons(fresh);
+                            saveStoredLessons(fresh);
+                            alert(`تم بنجاح تحميل وتحديث ${fresh.length} دروس من ملف content.json المرفوع على السيرفر!`);
+                          } else {
+                            alert('لم يتم العثور على دروس في ملف السيرفر public/data/content.json بعد.');
+                          }
+                        } catch (err: any) {
+                          alert('خطأ أثناء جلب الملف: ' + err.message);
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-xs transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-500/30"
+                      title="جلب وتحديث الدروس من ملف content.json المرفوع على سيرفر Vercel"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      <span>🔄 مزامنة من content.json السيرفر</span>
                     </button>
                   </div>
 

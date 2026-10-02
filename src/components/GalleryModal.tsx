@@ -20,10 +20,16 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // If no custom gallery images, fall back to targetImage or default
-  const effectiveImages: LessonImage[] = (images && images.length > 0)
-    ? images
-    : targetImage
+  // If custom explanation images exist with valid URL, prioritize them; otherwise fallback to targetImage
+  const hasValidCustomImages = Boolean(
+    images && 
+    images.length > 0 && 
+    images.some((img) => img && typeof img.url === 'string' && img.url.trim() !== '')
+  );
+
+  const effectiveImages: LessonImage[] = hasValidCustomImages
+    ? images.filter((img) => img && typeof img.url === 'string' && img.url.trim() !== '')
+    : targetImage && targetImage.trim() !== ''
       ? [
           {
             url: targetImage,

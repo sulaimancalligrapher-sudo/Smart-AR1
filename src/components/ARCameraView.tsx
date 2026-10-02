@@ -121,12 +121,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           mindarThreeRef.current = mindarThree;
 
-          // Attach anchors safely
-          const isCustom = targetCompiler.hasCustomTargets();
+          // Attach anchors safely for all configured lessons
           lessons.forEach((lesson) => {
-            if (!isCustom && lesson.targetIndex > 1) {
-              return;
-            }
             const anchor = mindarThree.addAnchor(lesson.targetIndex);
             anchor.onTargetFound = () => {
               if (isCancelled) return;
