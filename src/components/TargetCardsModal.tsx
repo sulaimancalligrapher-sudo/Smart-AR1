@@ -82,9 +82,11 @@ export const TargetCardsModal: React.FC<TargetCardsModalProps> = ({
             <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
             <div className="text-xs text-emerald-200 leading-relaxed">
               <span className="font-bold text-emerald-300 block mb-0.5">
-                💡 لتجربة التعرف بالكاميرا بنجاح 100% الآن:
+                💡 بطاقتا الأهداف المعتمَدتان والجاهزتان للمسح بالكاميرا حالياً:
               </span>
-              اختر <strong className="text-white">Target #0 (دورة الماء)</strong> وافتح صورته أدناه على شاشة أخرى أو احفظها. عندما توجه كاميرا الهاتف نحوها، ستتعرف الكاميرا عليها في أجزاء من الثانية!
+              • <strong className="text-white">صورة الدب (Target #1)</strong> ⬅️ تفتح <strong>درس دورة الماء</strong>.<br />
+              • <strong className="text-white">صورة الراكون (Target #0)</strong> ⬅️ تفتح <strong>درس المجموعة الشمسية</strong>.<br />
+              افتح كلاً منهما ووجّه الكاميرا، وستشهد التعرف التلقائي المستقل على كل صورة ومحتواها!
             </div>
           </div>
 

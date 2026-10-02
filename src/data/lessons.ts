@@ -2,7 +2,7 @@ import { LessonData } from '../types/ar';
 
 export const DEFAULT_LESSONS: LessonData[] = [
   {
-    targetIndex: 0,
+    targetIndex: 1,
     targetId: 'lesson_001',
     title: 'دورة الماء في الطبيعة',
     subtitle: 'كيف يتحرك الماء بين الأرض والسماء في دورة مستمرة؟',
@@ -62,7 +62,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
     }
   },
   {
-    targetIndex: 1,
+    targetIndex: 0,
     targetId: 'lesson_002',
     title: 'المجموعة الشمسية وكواكبها',
     subtitle: 'استكشف الشمس و الكواكب الثمانية التي تدور حولها في الفضاء الفسيح',
