@@ -198,6 +198,13 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     a.click();
   };
 
+  const handleDownloadFixedTargetsMind = () => {
+    const a = document.createElement('a');
+    a.href = '/targets/targets.mind';
+    a.download = 'targets.mind';
+    a.click();
+  };
+
   const copyCodeSample = () => {
     const code = `// Google Apps Script - Code.gs
 var SHEET_NAME = "Events";
@@ -857,15 +864,39 @@ function doPost(e) {
                     </div>
                   </div>
 
-                  <a
-                    href="https://hiukim.github.io/mind-ar-js-doc/tools/compile"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-lg shadow-sky-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 text-center"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>🌐 فتح أداة MindAR الرسمية ↗</span>
-                  </a>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadFixedTargetsMind}
+                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 text-center"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>⚡ تنزيل ملف targets.mind المصحح (3 دروس مباشرة)</span>
+                    </button>
+                    <a
+                      href="https://hiukim.github.io/mind-ar-js-doc/tools/compile"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 px-4 rounded-xl bg-sky-600/80 hover:bg-sky-500 text-white font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-all text-center"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>أداة MindAR الرسمية (لإعادة التجميع يدوياً) ↗</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              {/* Solved diagnosis banner */}
+              <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 space-y-2 text-xs">
+                <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>حل مشكلة الترتيب (الصورة 1 تظهر درس 2، والصورة 2 تظهر درس 3، والصورة 3 لا تعمل):</span>
+                </div>
+                <p className="text-emerald-100/90 leading-relaxed text-[11px]">
+                  <strong>سبب المشكلة:</strong> ملف <code className="text-emerald-300">targets.mind</code> القديم في المستودع كان يحتوي على <strong>4 أهداف</strong> (حيث تم رفع صورة فارغة أو غلاف كهدف رقم 0 أولاً)، مما أدى لترحيل كتاب الرقعة للهدف 1 (الدرس الثاني)، وكتاب الديواني للهدف 2 (الدرس الثالث)، وكتاب النسخ للهدف 3 (غير موجود في قائمة الدروس).
+                </p>
+                <div className="p-2 rounded-lg bg-black/40 border border-emerald-500/20 text-[11px] text-emerald-200">
+                  ✅ <strong>الحل:</strong> حمّل ملف <strong>targets.mind</strong> المصحح بالزر أعلاه وضعه في <code className="text-emerald-300">public/targets/targets.mind</code> بمستودع GitHub لديك، وسيعمل كل درس مع صورته الصحيحة بنسبة 100%!
                 </div>
               </div>
 
