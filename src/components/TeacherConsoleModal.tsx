@@ -70,10 +70,12 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   };
 
   const handleSaveLessonChanges = () => {
+    const normalized = editableLessons.map((l, idx) => ({ ...l, targetIndex: idx }));
+    setEditableLessons(normalized);
     if (onUpdateLessons) {
-      onUpdateLessons(editableLessons);
+      onUpdateLessons(normalized);
     }
-    saveStoredLessons(editableLessons);
+    saveStoredLessons(normalized);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
@@ -187,7 +189,8 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   };
 
   const handleDownloadContentJson = () => {
-    const jsonStr = JSON.stringify({ lessons: editableLessons }, null, 2);
+    const normalized = editableLessons.map((l, idx) => ({ ...l, targetIndex: idx }));
+    const jsonStr = JSON.stringify({ lessons: normalized }, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -752,6 +755,58 @@ function doPost(e) {
                       خطوتان سهلتان لتفعيل تحديثات الدروس وقراءة الكاميرا لجميع الطلاب في التطبيق
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* 🎯 Visual Sequence Mapping Table for MindAR */}
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-sky-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded-lg bg-sky-500/20 text-sky-400">
+                      <Layers className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h5 className="text-xs sm:text-sm font-bold text-white">
+                        🎯 جدول الترتيب الإلزامي لصور صفحات الكتاب في موقع MindAR
+                      </h5>
+                      <p className="text-[11px] text-slate-300">
+                        يجب سحب الصور في موقع MindAR بنفس هذا الترتيب تماماً لضمان قراءة الدرس الصحيح:
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-slate-800 text-sky-300 border border-slate-700">
+                    إجمالي الدروس: {editableLessons.length}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {editableLessons.map((lesson, idx) => (
+                    <div 
+                      key={lesson.targetId || idx} 
+                      className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center gap-2.5"
+                    >
+                      <div className="w-12 h-12 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                        {lesson.targetImage ? (
+                          <img src={lesson.targetImage} alt={lesson.title} className="w-full h-full object-contain" />
+                        ) : (
+                          <span className="text-[9px] text-slate-500 text-center">لا توجد صورة</span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-[10px] font-bold">
+                            الصورة #{idx + 1} في MindAR
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            (Target {idx})
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-white truncate mt-1">
+                          {lesson.title}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
