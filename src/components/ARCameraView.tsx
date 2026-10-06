@@ -120,6 +120,37 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           }
 
           mindarThreeRef.current = mindarThree;
+          const { renderer, scene, camera } = mindarThree;
+
+          // Dynamic Three.js and GLTFLoader loading for direct AR holographic rendering
+          const dynamicImport = (url: string): Promise<any> => {
+            return (Function('u', 'return import(u)')(url));
+          };
+
+          let THREE: any = null;
+          let GLTFLoaderClass: any = null;
+          try {
+            THREE = await dynamicImport('https://unpkg.com/three@0.160.0/build/three.module.js');
+            const gltfModule = await dynamicImport('https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js');
+            GLTFLoaderClass = gltfModule.GLTFLoader;
+
+            // Add lighting to scene so 3D models appear brightly illuminated over the book
+            const ambientLight = new THREE.AmbientLight(0xffffff, 2.2);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
+            dirLight.position.set(0, 10, 10);
+            scene.add(dirLight);
+
+            const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            fillLight.position.set(0, -10, -5);
+            scene.add(fillLight);
+          } catch (lightErr) {
+            console.warn('Could not load Three.js lighting / GLTFLoader:', lightErr);
+          }
+
+          const animatedModels: any[] = [];
+          const gltfLoader = GLTFLoaderClass ? new GLTFLoaderClass() : null;
 
           // Attach anchors safely for all configured lessons
           lessons.forEach((lesson, index) => {
@@ -127,6 +158,45 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               ? lesson.targetIndex
               : index;
             const anchor = mindarThree.addAnchor(targetIdx);
+
+            // Mount 3D Model directly onto the physical page anchor (Holographic WebAR)
+            if (lesson.model3d?.url && gltfLoader && THREE) {
+              gltfLoader.load(
+                lesson.model3d.url,
+                (gltf: any) => {
+                  const root = gltf.scene;
+
+                  // Normalize size and center so model fits beautifully on the book page
+                  const box = new THREE.Box3().setFromObject(root);
+                  const center = box.getCenter(new THREE.Vector3());
+                  const size = box.getSize(new THREE.Vector3());
+
+                  root.position.x -= center.x;
+                  root.position.y -= center.y;
+                  root.position.z -= center.z;
+
+                  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                  const scale = 0.85 / maxDim;
+                  root.scale.set(scale, scale, scale);
+
+                  // Stand upright perpendicular to book page (facing camera)
+                  root.rotation.x = Math.PI / 2;
+
+                  if ((anchor as any).group) {
+                    (anchor as any).group.add(root);
+                  }
+
+                  if (lesson.model3d?.autoRotate !== false) {
+                    animatedModels.push(root);
+                  }
+                },
+                undefined,
+                (err: any) => {
+                  console.warn('Could not attach 3D model to AR anchor:', err);
+                }
+              );
+            }
+
             anchor.onTargetFound = () => {
               if (isCancelled) return;
               setIsScanning(false);
@@ -159,9 +229,11 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             await mindarThree.start();
           }
 
-          // MindAR animation loop
-          const { renderer, scene, camera } = mindarThree;
+          // MindAR animation loop with smooth 3D model rotation
           renderer.setAnimationLoop(() => {
+            for (let i = 0; i < animatedModels.length; i++) {
+              animatedModels[i].rotation.y += 0.012;
+            }
             renderer.render(scene, camera);
           });
 
