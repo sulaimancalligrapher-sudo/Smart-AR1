@@ -14,6 +14,7 @@ import { ExplanationModal } from './components/ExplanationModal';
 import { TargetCardsModal } from './components/TargetCardsModal';
 import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
+import { Model3DModal } from './components/Model3DModal';
 import { LessonData } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons } from './data/lessons';
 import { analytics } from './services/analytics';
@@ -24,6 +25,7 @@ type ActiveModalType =
   | 'images'
   | 'audio'
   | 'explanation'
+  | 'model3d'
   | 'target_cards'
   | 'teacher_console'
   | 'compiler';
@@ -132,11 +134,21 @@ export default function App() {
           onOpenImages={() => setActiveModal('images')}
           onOpenAudio={() => setActiveModal('audio')}
           onOpenExplanation={() => setActiveModal('explanation')}
+          onOpenModel3D={() => setActiveModal('model3d')}
           onCloseLesson={handleCloseOverlayLesson}
         />
       )}
 
-      {/* 3. Interactive Content Modals (Video, Gallery, Audio, Explanation) */}
+      {/* 3. Interactive Content Modals (Video, Gallery, Audio, Explanation, 3D Model) */}
+      {activeModal === 'model3d' && activeLesson && activeLesson.model3d && (
+        <Model3DModal
+          model={activeLesson.model3d}
+          lessonTitle={activeLesson.title}
+          audioUrl={activeLesson.audio?.url}
+          onClose={() => setActiveModal('none')}
+        />
+      )}
+
       {activeModal === 'video' && activeLesson && (
         <VideoModal
           video={activeLesson.video}

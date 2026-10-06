@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Film, Image as ImageIcon, Volume2, BookOpen, ChevronDown, ChevronUp, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Film, Image as ImageIcon, Volume2, BookOpen, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Box } from 'lucide-react';
 import { LessonData } from '../types/ar';
 
 interface TransparentOverlayProps {
@@ -8,6 +8,7 @@ interface TransparentOverlayProps {
   onOpenImages: () => void;
   onOpenAudio: () => void;
   onOpenExplanation: () => void;
+  onOpenModel3D?: () => void;
   onCloseLesson?: () => void;
 }
 
@@ -17,6 +18,7 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
   onOpenImages,
   onOpenAudio,
   onOpenExplanation,
+  onOpenModel3D,
   onCloseLesson
 }) => {
   const [isMinimized, setIsMinimized] = useState(false);
@@ -76,66 +78,80 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
 
           {/* 4 Large Child-Friendly Interactive Action Buttons */}
           {!isMinimized && (
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 pt-1">
-              {/* Button 1: Video */}
-              <button
-                onClick={onOpenVideo}
-                className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-sky-400/30 text-sky-100 hover:text-white hover:border-sky-300 hover:bg-sky-900/60 shadow-lg cursor-pointer group"
-                aria-label="مشاهدة فيديو الدرس"
-              >
-                <div className="w-8 h-8 rounded-full bg-sky-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Film className="w-4 h-4 sm:w-5 sm:h-5 text-sky-300" />
-                </div>
-                <div className="text-center">
-                  <span className="text-xs sm:text-sm font-black block">🎬 فيديو</span>
-                  <span className="text-[10px] text-sky-200/70 font-medium block">مشاهدة مرئية</span>
-                </div>
-              </button>
+            <div className="space-y-2.5 pt-1">
+              {/* Optional Featured 3D Model Button if present */}
+              {lesson.model3d?.url && onOpenModel3D && (
+                <button
+                  onClick={onOpenModel3D}
+                  className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-cyan-600 via-sky-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-600/30 active:scale-95 transition-all cursor-pointer border border-cyan-400/40"
+                  aria-label="عرض المجسم ثلاثي الأبعاد"
+                >
+                  <Box className="w-4 h-4 text-cyan-200 animate-bounce" />
+                  <span>✨ استعراض المجسم ثلاثي الأبعاد 360° (3D)</span>
+                </button>
+              )}
 
-              {/* Button 2: Gallery */}
-              <button
-                onClick={onOpenImages}
-                className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-emerald-400/30 text-emerald-100 hover:text-white hover:border-emerald-300 hover:bg-emerald-900/60 shadow-lg cursor-pointer group"
-                aria-label="معرض صور الدرس"
-              >
-                <div className="w-8 h-8 rounded-full bg-emerald-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-300" />
-                </div>
-                <div className="text-center">
-                  <span className="text-xs sm:text-sm font-black block">🖼️ صور</span>
-                  <span className="text-[10px] text-emerald-200/70 font-medium block">معرض المخططات</span>
-                </div>
-              </button>
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                {/* Button 1: Video */}
+                <button
+                  onClick={onOpenVideo}
+                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-sky-400/30 text-sky-100 hover:text-white hover:border-sky-300 hover:bg-sky-900/60 shadow-lg cursor-pointer group"
+                  aria-label="مشاهدة فيديو الدرس"
+                >
+                  <div className="w-8 h-8 rounded-full bg-sky-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Film className="w-4 h-4 sm:w-5 sm:h-5 text-sky-300" />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-xs sm:text-sm font-black block">🎬 فيديو</span>
+                    <span className="text-[10px] text-sky-200/70 font-medium block">مشاهدة مرئية</span>
+                  </div>
+                </button>
 
-              {/* Button 3: Audio */}
-              <button
-                onClick={onOpenAudio}
-                className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-amber-400/30 text-amber-100 hover:text-white hover:border-amber-300 hover:bg-amber-900/60 shadow-lg cursor-pointer group"
-                aria-label="الاستماع للشرح الصوتي"
-              >
-                <div className="w-8 h-8 rounded-full bg-amber-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
-                </div>
-                <div className="text-center">
-                  <span className="text-xs sm:text-sm font-black block">🔊 استماع</span>
-                  <span className="text-[10px] text-amber-200/70 font-medium block">شرح صوتي</span>
-                </div>
-              </button>
+                {/* Button 2: Gallery */}
+                <button
+                  onClick={onOpenImages}
+                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-emerald-400/30 text-emerald-100 hover:text-white hover:border-emerald-300 hover:bg-emerald-900/60 shadow-lg cursor-pointer group"
+                  aria-label="معرض صور الدرس"
+                >
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-300" />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-xs sm:text-sm font-black block">🖼️ صور</span>
+                    <span className="text-[10px] text-emerald-200/70 font-medium block">معرض المخططات</span>
+                  </div>
+                </button>
 
-              {/* Button 4: Explanation */}
-              <button
-                onClick={onOpenExplanation}
-                className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-indigo-400/30 text-indigo-100 hover:text-white hover:border-indigo-300 hover:bg-indigo-900/60 shadow-lg cursor-pointer group"
-                aria-label="قراءة شرح الدرس"
-              >
-                <div className="w-8 h-8 rounded-full bg-indigo-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-300" />
-                </div>
-                <div className="text-center">
-                  <span className="text-xs sm:text-sm font-black block">📝 شرح</span>
-                  <span className="text-[10px] text-indigo-200/70 font-medium block">نص وتدريبات</span>
-                </div>
-              </button>
+                {/* Button 3: Audio */}
+                <button
+                  onClick={onOpenAudio}
+                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-amber-400/30 text-amber-100 hover:text-white hover:border-amber-300 hover:bg-amber-900/60 shadow-lg cursor-pointer group"
+                  aria-label="الاستماع للشرح الصوتي"
+                >
+                  <div className="w-8 h-8 rounded-full bg-amber-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-xs sm:text-sm font-black block">🔊 استماع</span>
+                    <span className="text-[10px] text-amber-200/70 font-medium block">شرح صوتي</span>
+                  </div>
+                </button>
+
+                {/* Button 4: Explanation */}
+                <button
+                  onClick={onOpenExplanation}
+                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-indigo-400/30 text-indigo-100 hover:text-white hover:border-indigo-300 hover:bg-indigo-900/60 shadow-lg cursor-pointer group"
+                  aria-label="قراءة شرح الدرس"
+                >
+                  <div className="w-8 h-8 rounded-full bg-indigo-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-300" />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-xs sm:text-sm font-black block">📝 شرح</span>
+                    <span className="text-[10px] text-indigo-200/70 font-medium block">نص وتدريبات</span>
+                  </div>
+                </button>
+              </div>
             </div>
           )}
 

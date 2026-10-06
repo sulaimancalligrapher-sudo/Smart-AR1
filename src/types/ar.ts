@@ -34,6 +34,12 @@ export interface LessonDescription {
   quiz?: LessonQuiz;
 }
 
+export interface LessonModel3D {
+  url: string;
+  title?: string;
+  autoRotate?: boolean;
+}
+
 export interface LessonData {
   targetIndex: number;
   targetId: string;
@@ -46,6 +52,7 @@ export interface LessonData {
   images: LessonImage[];
   audio: LessonAudio;
   description: LessonDescription;
+  model3d?: LessonModel3D;
 }
 
 export type ARActionType =
@@ -55,6 +62,7 @@ export type ARActionType =
   | 'images_open'
   | 'audio_play'
   | 'explanation_open'
+  | 'model3d_open'
   | 'content_close'
   | 'target_lost';
 
