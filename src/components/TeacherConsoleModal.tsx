@@ -31,6 +31,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [editableLessons, setEditableLessons] = useState<LessonData[]>(lessons);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [uploadedModelFileName, setUploadedModelFileName] = useState<string | null>(null);
 
   useEffect(() => {
     setEditableLessons(lessons);
@@ -91,6 +92,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       else if (field === 'subject') cur.subject = value;
       else if (field === 'grade') cur.grade = value;
       else if (field === 'targetImage') cur.targetImage = value;
+      else if (field === 'model3d') cur.model3d = value;
       else if (field === 'videoUrl') {
         cur.video = {
           ...cur.video,
@@ -737,18 +739,65 @@ function doPost(e) {
                             if (e.target.files && e.target.files[0]) {
                               const file = e.target.files[0];
                               const objectUrl = URL.createObjectURL(file);
+                              const cleanName = file.name.replace(/\.[^/.]+$/, '');
+                              setUploadedModelFileName(`${file.name} (${Math.round(file.size / 1024)} KB)`);
+                              
                               const newModel: LessonModel3D = {
                                 url: objectUrl,
-                                title: currentLesson.model3d?.title || `مجسم: ${currentLesson.title}`,
+                                title: currentLesson.model3d?.title || `مجسم: ${cleanName}`,
                                 autoRotate: true
                               };
                               handleFieldChange('model3d', newModel);
+
+                              // Also convert to data URL for persistent storage in localStorage
+                              if (file.size < 6 * 1024 * 1024) {
+                                const reader = new FileReader();
+                                reader.onload = (uploadEv) => {
+                                  const dataUrl = uploadEv.target?.result as string;
+                                  if (dataUrl) {
+                                    handleFieldChange('model3d', {
+                                      ...newModel,
+                                      url: dataUrl
+                                    });
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
                             }
+                            e.target.value = '';
                           }}
                         />
                       </label>
                     </div>
                   </div>
+
+                  {/* Uploaded File Feedback Pill */}
+                  {uploadedModelFileName && (
+                    <div className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-cyan-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                        <span className="font-bold">تم اختيار وتحميل الملف بنجاح:</span>
+                        <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300 font-mono text-[11px]">
+                          {uploadedModelFileName}
+                        </code>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const baseName = uploadedModelFileName.split(' ')[0] || 'model.glb';
+                          handleFieldChange('model3d', {
+                            url: `/models/${baseName}`,
+                            title: currentLesson.model3d?.title || `مجسم: ${currentLesson.title}`,
+                            autoRotate: currentLesson.model3d?.autoRotate !== false
+                          });
+                        }}
+                        className="px-2 py-1 rounded-md bg-cyan-800/80 hover:bg-cyan-700 text-cyan-100 text-[11px] font-semibold transition-colors cursor-pointer"
+                        title="ضبط المسار لمطابقة رفع الملف إلى مجلد public/models في GitHub"
+                      >
+                        استخدام المسار القياسي للنشر: /models/{uploadedModelFileName.split(' ')[0] || 'model.glb'}
+                      </button>
+                    </div>
+                  )}
 
                   {/* Input Fields */}
                   <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">

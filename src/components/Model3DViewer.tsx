@@ -38,6 +38,34 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
   useEffect(() => {
     setIsLoading(true);
     setLoadError(null);
+
+    const el = viewerRef.current;
+    if (!el) return;
+
+    const handleLoad = () => {
+      setIsLoading(false);
+      setLoadError(null);
+    };
+
+    const handleError = (e: any) => {
+      console.warn('Model viewer error:', e);
+      setIsLoading(false);
+      setLoadError('تعذر تحميل ملف المجسم. تأكد من أن الملف بصيغة .glb صالحة.');
+    };
+
+    el.addEventListener('load', handleLoad);
+    el.addEventListener('error', handleError);
+
+    // Safety timeout to avoid getting stuck in loading state
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 6000);
+
+    return () => {
+      el.removeEventListener('load', handleLoad);
+      el.removeEventListener('error', handleError);
+      clearTimeout(timer);
+    };
   }, [src]);
 
   return (
@@ -52,13 +80,6 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
       <model-viewer
         ref={(el: any) => {
           viewerRef.current = el;
-          if (el) {
-            el.addEventListener('load', () => setIsLoading(false));
-            el.addEventListener('error', () => {
-              setIsLoading(false);
-              setLoadError('تعذر تحميل ملف المجسم. تأكد من أن الرابط مباشر وينتهي بـ .glb');
-            });
-          }
         }}
         src={src}
         alt={title}
