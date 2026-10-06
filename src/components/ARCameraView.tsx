@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap, BookOpen } from 'lucide-react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData } from '../types/ar';
 import { analytics } from '../services/analytics';
 import { targetCompiler } from '../services/targetCompiler';
@@ -122,35 +124,20 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           mindarThreeRef.current = mindarThree;
           const { renderer, scene, camera } = mindarThree;
 
-          // Dynamic Three.js and GLTFLoader loading for direct AR holographic rendering
-          const dynamicImport = (url: string): Promise<any> => {
-            return (Function('u', 'return import(u)')(url));
-          };
+          // Add lighting to scene so 3D models appear brightly illuminated over the book
+          const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
+          scene.add(ambientLight);
 
-          let THREE: any = null;
-          let GLTFLoaderClass: any = null;
-          try {
-            THREE = await dynamicImport('https://unpkg.com/three@0.160.0/build/three.module.js');
-            const gltfModule = await dynamicImport('https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js');
-            GLTFLoaderClass = gltfModule.GLTFLoader;
+          const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
+          dirLight.position.set(0, 10, 10);
+          scene.add(dirLight);
 
-            // Add lighting to scene so 3D models appear brightly illuminated over the book
-            const ambientLight = new THREE.AmbientLight(0xffffff, 2.2);
-            scene.add(ambientLight);
+          const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
+          fillLight.position.set(0, -10, -5);
+          scene.add(fillLight);
 
-            const dirLight = new THREE.DirectionalLight(0xffffff, 2.5);
-            dirLight.position.set(0, 10, 10);
-            scene.add(dirLight);
-
-            const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            fillLight.position.set(0, -10, -5);
-            scene.add(fillLight);
-          } catch (lightErr) {
-            console.warn('Could not load Three.js lighting / GLTFLoader:', lightErr);
-          }
-
-          const animatedModels: any[] = [];
-          const gltfLoader = GLTFLoaderClass ? new GLTFLoaderClass() : null;
+          const animatedModels: THREE.Object3D[] = [];
+          const gltfLoader = new GLTFLoader();
 
           // Attach anchors safely for all configured lessons
           lessons.forEach((lesson, index) => {
@@ -160,10 +147,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             const anchor = mindarThree.addAnchor(targetIdx);
 
             // Mount 3D Model directly onto the physical page anchor (Holographic WebAR)
-            if (lesson.model3d?.url && gltfLoader && THREE) {
+            if (lesson.model3d?.url) {
               gltfLoader.load(
                 lesson.model3d.url,
-                (gltf: any) => {
+                (gltf) => {
                   const root = gltf.scene;
 
                   // Normalize size and center so model fits beautifully on the book page
@@ -205,7 +192,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                   }
                 },
                 undefined,
-                (err: any) => {
+                (err) => {
                   console.warn('Could not attach 3D model to AR anchor:', err);
                 }
               );
