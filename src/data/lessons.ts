@@ -44,9 +44,19 @@ export async function fetchLessons(): Promise<LessonData[]> {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.lessons) && data.lessons.length > 0) {
-        // Sync fetched lessons into localStorage
-        saveStoredLessons(data.lessons);
-        return data.lessons;
+        // Merge with local storage so locally configured model3d is not wiped out on reload
+        const local = getStoredLessons();
+        const merged = data.lessons.map((serverLesson: LessonData, idx: number) => {
+          const localLesson = local[idx] || local.find(l => l.targetId === serverLesson.targetId);
+          if (localLesson && localLesson.model3d && !serverLesson.model3d) {
+            return { ...serverLesson, model3d: localLesson.model3d };
+          }
+          return serverLesson;
+        });
+
+        // Sync merged lessons into localStorage
+        saveStoredLessons(merged);
+        return merged;
       }
     }
   } catch (err) {

@@ -179,10 +179,24 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                   const scale = 0.85 / maxDim;
                   root.scale.set(scale, scale, scale);
 
-                  // Stand upright perpendicular to book page (facing camera)
-                  root.rotation.x = Math.PI / 2;
+                  // Ensure all meshes render with double sides so no polygons are culled
+                  root.traverse((child: any) => {
+                    if (child.isMesh && child.material) {
+                      child.material.side = THREE.DoubleSide;
+                    }
+                  });
+
+                  // Position model floating slightly above the paper (Z axis = 0.1)
+                  root.position.z = 0.1;
+
+                  // Tilt slightly so 3D thickness and depth are clearly visible facing the camera
+                  root.rotation.x = Math.PI / 8;
 
                   if ((anchor as any).group) {
+                    const anchorLight = new THREE.DirectionalLight(0xffffff, 1.8);
+                    anchorLight.position.set(0, 0, 5);
+                    (anchor as any).group.add(anchorLight);
+
                     (anchor as any).group.add(root);
                   }
 
