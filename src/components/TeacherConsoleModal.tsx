@@ -5,7 +5,7 @@ import {
   HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
-import { AnalyticsLogItem, LessonData, LessonModel3D } from '../types/ar';
+import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage } from '../types/ar';
 import { saveStoredLessons, fetchLessons } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
 
@@ -603,34 +603,68 @@ function doPost(e) {
 
                       <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all flex-shrink-0">
                         <Upload className="w-3.5 h-3.5" />
-                        <span>📁 رفع صورة الشرح (أو GIF)</span>
+                        <span>📁 رفع صور المعرض (يمكن اختيار عدة صور)</span>
                         <input
                           key={`explanation_img_${currentLesson.targetId}`}
                           type="file"
+                          multiple
                           accept="image/png, image/jpeg, image/gif, image/webp"
                           className="hidden"
                           onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              const file = e.target.files[0];
-                              const reader = new FileReader();
-                              reader.onload = (uploadEvent) => {
-                                const base64 = uploadEvent.target?.result as string;
-                                const newImages = [
-                                  {
+                            if (e.target.files && e.target.files.length > 0) {
+                              const files = Array.from(e.target.files);
+                              Promise.all(files.map((file, idx) => new Promise<LessonImage>((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = (uploadEv) => {
+                                  const base64 = uploadEv.target?.result as string;
+                                  resolve({
                                     url: base64,
-                                    title: currentLesson.images?.[0]?.title || `مخطط شرح: ${currentLesson.title}`,
-                                    caption: currentLesson.images?.[0]?.caption || 'رسم توضيحي وعناصر شرح مفصلة لهذا الدرس.'
-                                  }
-                                ];
-                                handleFieldChange('images', newImages);
-                              };
-                              reader.readAsDataURL(file);
+                                    title: file.name.replace(/\.[^/.]+$/, ''),
+                                    caption: `لوحة تعليمية: ${currentLesson.title} (${idx + 1})`
+                                  });
+                                };
+                                reader.readAsDataURL(file);
+                              }))).then((newUploadedImages) => {
+                                const existing = currentLesson.images || [];
+                                handleFieldChange('images', [...existing, ...newUploadedImages]);
+                              });
                             }
+                            e.target.value = '';
                           }}
                         />
                       </label>
                     </div>
                   </div>
+
+                  {/* Multi-Image Thumbnails Gallery in Console */}
+                  {currentLesson.images && currentLesson.images.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[11px] font-bold text-emerald-300">
+                        الصور المرفوعة لهذا الدرس ({currentLesson.images.length} صور):
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {currentLesson.images.map((img, imgIdx) => (
+                          <div key={imgIdx} className="relative rounded-lg bg-black border border-slate-700 overflow-hidden group p-1">
+                            <img src={img.url} alt={img.title} className="w-full h-16 object-contain rounded" />
+                            <span className="text-[9px] text-slate-300 block truncate mt-0.5 text-center font-medium">
+                              {img.title || `صورة ${imgIdx + 1}`}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const filtered = currentLesson.images.filter((_, idx) => idx !== imgIdx);
+                                handleFieldChange('images', filtered);
+                              }}
+                              className="absolute top-1 left-1 w-5 h-5 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white flex items-center justify-center text-[10px] cursor-pointer shadow"
+                              title="حذف هذه الصورة"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div className="w-20 h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0 self-center sm:self-auto">

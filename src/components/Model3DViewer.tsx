@@ -93,12 +93,13 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
         alt={title}
         auto-rotate={autoRotate ? 'true' : undefined}
         camera-controls={interactive ? 'true' : undefined}
-        touch-action="pan-y"
+        touch-action="none"
         shadow-intensity={transparent ? '0' : '0.8'}
         shadow-softness={transparent ? '0' : '0.5'}
         exposure="1"
         interaction-prompt="none"
-        style={{ width: '100%', height: '100%', backgroundColor: 'transparent' }}
+        interpolation-decay="100"
+        style={{ width: '100%', height: '100%', backgroundColor: 'transparent', touchAction: 'none' }}
       >
         {/* Loading Spinner Slot */}
         {isLoading && (

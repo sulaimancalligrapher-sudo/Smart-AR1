@@ -20,7 +20,7 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // If custom explanation images exist with valid URL, prioritize them; otherwise fallback to targetImage
+  // Collect all available images for this lesson
   const hasValidCustomImages = Boolean(
     images && 
     images.length > 0 && 
@@ -33,8 +33,8 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       ? [
           {
             url: targetImage,
-            title: `صورة درس: ${lessonTitle}`,
-            caption: 'صورة المرجع والشرح لصفحة هذا الدرس في الكتاب المدرسي.'
+            title: `صورة المرجع: ${lessonTitle}`,
+            caption: 'صفحة الدرس في الكتاب المدرسي.'
           }
         ]
       : [];
@@ -58,70 +58,70 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   const currentImage = effectiveImages[currentIndex] || null;
 
   const handleNext = () => {
-    if (effectiveImages.length > 1) {
+    if (effectiveImages.length > 0) {
       setCurrentIndex((prev) => (prev + 1) % effectiveImages.length);
     }
   };
 
   const handlePrev = () => {
-    if (effectiveImages.length > 1) {
+    if (effectiveImages.length > 0) {
       setCurrentIndex((prev) => (prev - 1 + effectiveImages.length) % effectiveImages.length);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
-      <div 
-        className="w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 bg-slate-800/80 border-b border-slate-700/60">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
-              <ImageIcon className="w-5 h-5" />
+    <div className="fixed inset-0 z-40 pointer-events-none flex flex-col justify-between p-4 sm:p-6 select-none animate-fadeIn">
+      {/* 1. Top Floating Transparent Pill (Header + Close Button) */}
+      <div className="pointer-events-auto flex items-center justify-between gap-2 max-w-md mx-auto w-full pt-1">
+        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/50 backdrop-blur-md border border-emerald-400/30 text-white shadow-xl">
+          <ImageIcon className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-bold truncate">
+            معرض صور: {lessonTitle}
+          </span>
+          {effectiveImages.length > 1 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 font-mono">
+              {currentIndex + 1} / {effectiveImages.length}
             </span>
-            <div className="truncate">
-              <h3 className="text-sm sm:text-base font-bold text-white truncate">معرض الصور التعليمية</h3>
-              <p className="text-xs text-slate-400 truncate">
-                {lessonTitle} {effectiveImages.length > 0 && `(${currentIndex + 1} من ${effectiveImages.length})`}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors cursor-pointer"
-            aria-label="إغلاق المعرض"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          )}
         </div>
 
-        {/* Main Image Display or Empty State */}
+        <button
+          onClick={onClose}
+          className="w-10 h-10 rounded-full bg-black/50 hover:bg-rose-950/80 text-white hover:text-rose-200 border border-white/20 flex items-center justify-center backdrop-blur-md transition-all active:scale-90 cursor-pointer shadow-xl"
+          title="إغلاق المعرض والعودة للكاميرا"
+          aria-label="إغلاق المعرض"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* 2. Center: Pure Floating Photos directly over live camera (No Window Box, No Dark Backdrop!) */}
+      <div className="pointer-events-auto w-full max-w-sm sm:max-w-md mx-auto my-auto flex flex-col items-center justify-center">
         {currentImage ? (
-          <>
-            <div className="relative w-full bg-slate-950 min-h-[260px] sm:min-h-[340px] flex items-center justify-center overflow-hidden p-2">
+          <div className="relative w-full flex flex-col items-center justify-center">
+            {/* The Floating Photo Card with subtle shadow */}
+            <div className="relative rounded-3xl overflow-hidden border-2 border-white/25 shadow-2xl bg-black/20 backdrop-blur-xs max-h-[56vh] flex items-center justify-center">
               <img
                 key={currentImage.url}
                 src={currentImage.url}
                 alt={currentImage.title}
                 referrerPolicy="no-referrer"
-                className="max-h-[50vh] w-auto max-w-full object-contain rounded-lg shadow-md select-none transition-all duration-300"
+                className="max-h-[54vh] w-auto max-w-full object-contain rounded-2xl select-none transition-all duration-300"
               />
 
-              {/* Navigation Arrows */}
+              {/* Prev / Next Floating Arrows for Multi-image navigation */}
               {effectiveImages.length > 1 && (
                 <>
                   <button
                     onClick={handlePrev}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg transition-transform active:scale-90 cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer"
                     aria-label="الصورة السابقة"
                   >
                     <ChevronRight className="w-6 h-6" />
                   </button>
                   <button
                     onClick={handleNext}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg transition-transform active:scale-90 cursor-pointer"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer"
                     aria-label="الصورة التالية"
                   >
                     <ChevronLeft className="w-6 h-6" />
@@ -130,52 +130,45 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               )}
             </div>
 
-            {/* Caption & Metadata */}
-            <div className="p-4 bg-slate-900/90 border-t border-slate-800 flex-1 overflow-y-auto">
-              <h4 className="font-bold text-sm sm:text-base text-white mb-1.5">{currentImage.title}</h4>
-              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{currentImage.caption}</p>
+            {/* Bottom Floating Dots Indicator for Group of Images */}
+            {effectiveImages.length > 1 && (
+              <div className="flex items-center gap-1.5 mt-2.5 px-3 py-1 rounded-full bg-black/45 backdrop-blur-md border border-white/10 shadow-md">
+                {effectiveImages.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentIndex(idx)}
+                    className={`h-2 rounded-full transition-all cursor-pointer ${
+                      idx === currentIndex ? 'w-5 bg-emerald-400' : 'w-2 bg-white/40'
+                    }`}
+                    aria-label={`الانتقال إلى صورة ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            )}
 
-              {/* Thumbnails Row */}
-              {effectiveImages.length > 1 && (
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-800/80 overflow-x-auto pb-1">
-                  {effectiveImages.map((img, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setCurrentIndex(idx)}
-                      className={`relative flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                        currentIndex === idx
-                          ? 'border-emerald-400 scale-105 shadow-md shadow-emerald-500/20'
-                          : 'border-slate-700 opacity-60 hover:opacity-100'
-                      }`}
-                    >
-                      <img
-                        src={img.url}
-                        alt={img.title}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
+            {/* Floating Image Title/Caption */}
+            {currentImage.title && (
+              <div className="mt-1.5 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-center max-w-xs shadow-md">
+                <span className="text-[11px] font-bold text-white block truncate">
+                  {currentImage.title}
+                </span>
+                {currentImage.caption && (
+                  <span className="text-[10px] text-slate-300 block truncate">
+                    {currentImage.caption}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
-          <div className="p-8 text-center bg-slate-950 text-slate-400 space-y-3">
-            <ImageIcon className="w-12 h-12 text-slate-600 mx-auto" />
-            <h4 className="text-sm font-bold text-white">لا توجد صور مضافة لهذا الدرس بعد</h4>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              يمكنك رفع صورة للدرس أو إضافة صور توضيحية من محرر الدروس في لوحة المعلم.
-            </p>
-            <button
-              onClick={onClose}
-              className="mt-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold cursor-pointer"
-            >
-              العودة للدرس
-            </button>
+          <div className="p-4 rounded-2xl bg-black/50 backdrop-blur-md border border-white/15 text-center text-xs text-slate-300">
+            لا توجد صور مضافة لهذا الدرس بعد.
           </div>
         )}
       </div>
+
+      {/* Spacer to keep bottom icons visible */}
+      <div className="h-4" />
     </div>
   );
 };
