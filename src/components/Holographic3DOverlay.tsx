@@ -21,18 +21,12 @@ export const Holographic3DOverlay: React.FC<Holographic3DOverlayProps> = ({
         <Model3DViewer
           src={model.url}
           title={model.title || lessonTitle}
-          height="52vh"
+          height="54vh"
           autoRotate={model.autoRotate !== false}
           interactive={true}
           transparent={true}
-          className="w-full max-h-[460px]"
+          className="w-full max-h-[480px]"
         />
-
-        {/* Minimalist Floating Touch Tip */}
-        <div className="pointer-events-none -mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] text-cyan-200 shadow-md">
-          <RotateCcw className="w-3 h-3 text-cyan-400 animate-spin" />
-          <span>اسحب بإصبعك لتدوير المجسم 360° بحرية</span>
-        </div>
       </div>
     </div>
   );

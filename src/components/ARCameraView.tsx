@@ -94,8 +94,9 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         return;
       }
 
-      // Detect if running on mobile device or desktop
-      const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      // Default facing mode: ALWAYS environment (rear camera) on mobile, tablet & desktop
+      // only switch to user camera if the user explicitly requests it or device strictly lacks rear camera
+      const targetFacingUser = facingMode === 'user';
 
       // 1. Wait for MindARThree to be ready from module imports (up to 4 seconds)
       let attempts = 0;
@@ -116,10 +117,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             uiLoading: 'no'
           });
 
-          // On desktop computers/laptops, rear camera does not exist, so default to front user camera
-          if (!isMobile) {
-            mindarThree.shouldFaceUser = true;
-          }
+          // Always enforce rear camera (environment) unless user explicitly toggled to front
+          mindarThree.shouldFaceUser = targetFacingUser;
 
           mindarThreeRef.current = mindarThree;
           const { renderer, scene, camera } = mindarThree;
@@ -153,18 +152,18 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 (gltf) => {
                   const root = gltf.scene;
 
-                  // Normalize size and center so model fits beautifully on the book page
+                  // Create pivot group to lock rotation to the exact geometric center
+                  const pivot = new THREE.Group();
                   const box = new THREE.Box3().setFromObject(root);
                   const center = box.getCenter(new THREE.Vector3());
                   const size = box.getSize(new THREE.Vector3());
 
-                  root.position.x -= center.x;
-                  root.position.y -= center.y;
-                  root.position.z -= center.z;
+                  // Center the root object inside the pivot
+                  root.position.sub(center);
 
                   const maxDim = Math.max(size.x, size.y, size.z) || 1;
                   const scale = 0.85 / maxDim;
-                  root.scale.set(scale, scale, scale);
+                  pivot.scale.set(scale, scale, scale);
 
                   // Ensure all meshes render with double sides so no polygons are culled
                   root.traverse((child: any) => {
@@ -174,21 +173,22 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                   });
 
                   // Position model floating slightly above the paper (Z axis = 0.1)
-                  root.position.z = 0.1;
+                  pivot.position.z = 0.1;
 
                   // Tilt slightly so 3D thickness and depth are clearly visible facing the camera
-                  root.rotation.x = Math.PI / 8;
+                  pivot.rotation.x = Math.PI / 8;
+
+                  pivot.add(root);
 
                   if ((anchor as any).group) {
                     const anchorLight = new THREE.DirectionalLight(0xffffff, 1.8);
                     anchorLight.position.set(0, 0, 5);
                     (anchor as any).group.add(anchorLight);
-
-                    (anchor as any).group.add(root);
+                    (anchor as any).group.add(pivot);
                   }
 
                   if (lesson.model3d?.autoRotate !== false) {
-                    animatedModels.push(root);
+                    animatedModels.push(pivot);
                   }
                 },
                 undefined,
@@ -268,14 +268,24 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
       // 2. Direct Camera Stream Fallback (getUserMedia)
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: isMobile ? facingMode : 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: facingMode,
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+        } catch (initialErr) {
+          // If specific facingMode failed, fallback to any available camera
+          console.warn('Initial facingMode stream failed, trying any camera:', initialErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+          });
+        }
 
         if (isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
@@ -382,6 +392,16 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
         {/* Secondary Tool Buttons */}
         <div className="flex items-center gap-2">
+          {/* Flip Camera Button (Rear / Front) */}
+          <button
+            onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
+            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            title={facingMode === 'environment' ? 'التبديل إلى الكاميرا الأمامية' : 'التبديل إلى الكاميرا الخلفية (الافتراضية)'}
+            aria-label="تبديل الكاميرا"
+          >
+            <RefreshCw className="w-4 h-4 text-cyan-400" />
+          </button>
+
           {/* Target Cards View */}
           <button
             onClick={onOpenTargetCards}

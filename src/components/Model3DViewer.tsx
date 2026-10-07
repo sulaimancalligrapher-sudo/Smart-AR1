@@ -35,7 +35,32 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
 }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRotating, setIsRotating] = useState(autoRotate);
   const viewerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setIsRotating(autoRotate);
+  }, [autoRotate]);
+
+  const handleResetCenter = () => {
+    const el = viewerRef.current as any;
+    if (el) {
+      try {
+        el.cameraOrbit = '0deg 75deg 105%';
+        el.cameraTarget = 'auto auto auto';
+        el.fieldOfView = 'auto';
+        if (typeof el.jumpCameraToGoal === 'function') {
+          el.jumpCameraToGoal();
+        }
+      } catch (err) {
+        console.warn('Could not reset model camera:', err);
+      }
+    }
+  };
+
+  const toggleAutoRotate = () => {
+    setIsRotating((prev) => !prev);
+  };
 
   useEffect(() => {
     setIsLoading(true);
@@ -84,19 +109,25 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.08)_0%,transparent_70%)] pointer-events-none" />
       )}
 
-      {/* Model-Viewer Component (Standard Web Component) */}
+      {/* Model-Viewer Component (Standard Web Component with strict centering & disable-pan) */}
       <model-viewer
         ref={(el: any) => {
           viewerRef.current = el;
         }}
         src={src}
         alt={title}
-        auto-rotate={autoRotate ? 'true' : undefined}
+        auto-rotate={isRotating ? 'true' : undefined}
         camera-controls={interactive ? 'true' : undefined}
+        disable-pan="true"
+        disable-tap="true"
+        bounds="tight"
+        camera-target="auto auto auto"
+        auto-rotate-delay="2000"
+        rotation-per-second="18deg"
         touch-action="none"
         shadow-intensity={transparent ? '0' : '0.8'}
         shadow-softness={transparent ? '0' : '0.5'}
-        exposure="1"
+        exposure="1.1"
         interaction-prompt="none"
         interpolation-decay="100"
         style={{ width: '100%', height: '100%', backgroundColor: 'transparent', touchAction: 'none' }}
@@ -119,11 +150,35 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
         </div>
       )}
 
-      {/* Floating Interactive Badge */}
+      {/* Floating Interactive Controls (Reset Center & Toggle Rotation) */}
       {!isLoading && !loadError && interactive && (
-        <div className="absolute bottom-2.5 left-2.5 z-10 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/10 text-[10px] text-sky-300">
-          <RotateCcw className="w-3 h-3 text-sky-400 animate-pulse" />
-          <span>اسحب للتدوير 360° · قرّب للتكبير</span>
+        <div className="absolute bottom-2 inset-x-2 z-10 pointer-events-none flex items-center justify-between gap-1.5 px-2">
+          {/* Quick Guidance Tag */}
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/10 text-[10px] text-sky-300 shadow-md">
+            <RotateCcw className="w-3 h-3 text-sky-400" />
+            <span>اسحب للتدوير 360°</span>
+          </div>
+
+          {/* Action Buttons: Pause/Play Auto-Rotation & Reset to Center */}
+          <div className="pointer-events-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={toggleAutoRotate}
+              className="px-2.5 py-1 rounded-full bg-slate-900/85 hover:bg-slate-800 text-white border border-white/20 text-[10px] font-bold shadow-md active:scale-95 transition-transform flex items-center gap-1 cursor-pointer"
+              title={isRotating ? 'إيقاف الدوران التلقائي وتثبيت الموضع' : 'تشغيل الدوران التلقائي'}
+            >
+              <span>{isRotating ? '⏸️ تثبيت' : '▶️ تدوير'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetCenter}
+              className="px-2.5 py-1 rounded-full bg-slate-900/85 hover:bg-slate-800 text-white border border-white/20 text-[10px] font-bold shadow-md active:scale-95 transition-transform flex items-center gap-1 cursor-pointer"
+              title="إعادة ضبط المجسم لمركز الشاشة"
+            >
+              <span>🎯 ضبط المركز</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

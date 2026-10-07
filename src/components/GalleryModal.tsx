@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronRight, ChevronLeft, Image as ImageIcon } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react';
 import { LessonImage } from '../types/ar';
 import { analytics } from '../services/analytics';
 
@@ -33,8 +33,8 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
       ? [
           {
             url: targetImage,
-            title: `صورة المرجع: ${lessonTitle}`,
-            caption: 'صفحة الدرس في الكتاب المدرسي.'
+            title: lessonTitle,
+            caption: 'لوحة الشرح التوضيحية.'
           }
         ]
       : [];
@@ -70,43 +70,29 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-40 pointer-events-none flex flex-col justify-between p-4 sm:p-6 select-none animate-fadeIn">
-      {/* 1. Top Floating Transparent Pill (Header + Close Button) */}
-      <div className="pointer-events-auto flex items-center justify-between gap-2 max-w-md mx-auto w-full pt-1">
-        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/50 backdrop-blur-md border border-emerald-400/30 text-white shadow-xl">
-          <ImageIcon className="w-4 h-4 text-emerald-400" />
-          <span className="text-xs font-bold truncate">
-            معرض صور: {lessonTitle}
-          </span>
-          {effectiveImages.length > 1 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 font-mono">
-              {currentIndex + 1} / {effectiveImages.length}
-            </span>
-          )}
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-10 h-10 rounded-full bg-black/50 hover:bg-rose-950/80 text-white hover:text-rose-200 border border-white/20 flex items-center justify-center backdrop-blur-md transition-all active:scale-90 cursor-pointer shadow-xl"
-          title="إغلاق المعرض والعودة للكاميرا"
-          aria-label="إغلاق المعرض"
-        >
-          <X className="w-5 h-5" />
-        </button>
+    <div className="fixed inset-0 z-40 pointer-events-none flex flex-col justify-between p-3 sm:p-5 select-none animate-fadeIn">
+      {/* 1. Top Minimal Title Pill (If multiple images, shows indicator) */}
+      <div className="pointer-events-auto flex items-center justify-center max-w-md mx-auto w-full pt-2">
+        {effectiveImages.length > 1 && (
+          <div className="px-3.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/15 text-white text-xs font-semibold shadow-lg">
+            <span>لوحة {currentIndex + 1} من {effectiveImages.length}</span>
+          </div>
+        )}
       </div>
 
-      {/* 2. Center: Pure Floating Photos directly over live camera (No Window Box, No Dark Backdrop!) */}
+      {/* 2. Center: 100% Borderless, Frame-Free Floating Image / PNG / GIF directly over live camera */}
       <div className="pointer-events-auto w-full max-w-sm sm:max-w-md mx-auto my-auto flex flex-col items-center justify-center">
         {currentImage ? (
           <div className="relative w-full flex flex-col items-center justify-center">
-            {/* The Floating Photo Card with subtle shadow */}
-            <div className="relative rounded-3xl overflow-hidden border-2 border-white/25 shadow-2xl bg-black/20 backdrop-blur-xs max-h-[56vh] flex items-center justify-center">
+            {/* The Floating Image without ANY border, background, shadow or outline (Pure transparent PNG/GIF/WebP) */}
+            <div className="relative flex items-center justify-center w-full max-h-[60vh]">
               <img
                 key={currentImage.url}
                 src={currentImage.url}
                 alt={currentImage.title}
                 referrerPolicy="no-referrer"
-                className="max-h-[54vh] w-auto max-w-full object-contain rounded-2xl select-none transition-all duration-300"
+                className="max-h-[58vh] w-auto max-w-full object-contain select-none transition-transform duration-300 pointer-events-auto"
+                style={{ filter: 'none', background: 'transparent' }}
               />
 
               {/* Prev / Next Floating Arrows for Multi-image navigation */}
@@ -114,17 +100,17 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                 <>
                   <button
                     onClick={handlePrev}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer"
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/85 text-white border border-white/20 flex items-center justify-center shadow-xl active:scale-90 transition-transform cursor-pointer"
                     aria-label="الصورة السابقة"
                   >
-                    <ChevronRight className="w-6 h-6" />
+                    <ChevronRight className="w-7 h-7" />
                   </button>
                   <button
                     onClick={handleNext}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 flex items-center justify-center shadow-lg active:scale-90 transition-transform cursor-pointer"
+                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/85 text-white border border-white/20 flex items-center justify-center shadow-xl active:scale-90 transition-transform cursor-pointer"
                     aria-label="الصورة التالية"
                   >
-                    <ChevronLeft className="w-6 h-6" />
+                    <ChevronLeft className="w-7 h-7" />
                   </button>
                 </>
               )}
@@ -146,10 +132,10 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
               </div>
             )}
 
-            {/* Floating Image Title/Caption */}
+            {/* Floating Image Title / Caption */}
             {currentImage.title && (
-              <div className="mt-1.5 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-center max-w-xs shadow-md">
-                <span className="text-[11px] font-bold text-white block truncate">
+              <div className="mt-2.5 px-4 py-1.5 rounded-full bg-black/55 backdrop-blur-md border border-white/15 text-center max-w-xs shadow-lg">
+                <span className="text-xs font-bold text-white block truncate">
                   {currentImage.title}
                 </span>
                 {currentImage.caption && (
@@ -159,15 +145,32 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                 )}
               </div>
             )}
+
+            {/* Prominent High-Visibility Close Button directly UNDER the text for clear exiting */}
+            <button
+              onClick={onClose}
+              className="mt-3 px-6 py-2.5 rounded-full bg-slate-900/90 hover:bg-rose-950 text-white hover:text-rose-200 border-2 border-white/30 shadow-2xl flex items-center gap-2 text-xs sm:text-sm font-bold transition-all active:scale-95 cursor-pointer backdrop-blur-md"
+              title="إغلاق الصورة والعودة للكاميرا"
+              aria-label="إغلاق الصورة"
+            >
+              <X className="w-4 h-4 text-rose-400" />
+              <span>إغلاق الصورة والعودة للكاميرا</span>
+            </button>
           </div>
         ) : (
-          <div className="p-4 rounded-2xl bg-black/50 backdrop-blur-md border border-white/15 text-center text-xs text-slate-300">
-            لا توجد صور مضافة لهذا الدرس بعد.
+          <div className="p-4 rounded-2xl bg-black/55 backdrop-blur-md border border-white/20 text-center text-xs text-slate-200">
+            <p>لا توجد صور مضافة لهذا الدرس بعد.</p>
+            <button
+              onClick={onClose}
+              className="mt-3 px-4 py-1.5 rounded-full bg-slate-800 text-white text-xs font-bold"
+            >
+              رجوع
+            </button>
           </div>
         )}
       </div>
 
-      {/* Spacer to keep bottom icons visible */}
+      {/* Bottom spacer */}
       <div className="h-4" />
     </div>
   );
