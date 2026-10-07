@@ -110,8 +110,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           const mindarThree = new window.MINDAR.IMAGE.MindARThree({
             container: containerRef.current,
             imageTargetSrc: targetCompiler.getActiveMindUrl(),
-            filterMinCF: 0.0005,
-            filterBeta: 1000,
+            filterMinCF: 0.001,
+            filterBeta: 10,
             uiScanning: 'no',
             uiLoading: 'no'
           });
@@ -198,8 +198,14 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               );
             }
 
+            let targetLostTimer: any = null;
+
             anchor.onTargetFound = () => {
               if (isCancelled) return;
+              if (targetLostTimer) {
+                clearTimeout(targetLostTimer);
+                targetLostTimer = null;
+              }
               setIsScanning(false);
               playMatchChime();
               if ('vibrate' in navigator) {
@@ -207,9 +213,16 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               }
               onTargetDetected(lesson);
             };
+
             anchor.onTargetLost = () => {
               if (isCancelled) return;
-              onTargetLost(lesson);
+              // 1.5s tolerance to prevent flickering when student hands tremble
+              if (targetLostTimer) clearTimeout(targetLostTimer);
+              targetLostTimer = setTimeout(() => {
+                if (!isCancelled) {
+                  onTargetLost(lesson);
+                }
+              }, 1500);
             };
           });
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Film, Image as ImageIcon, Volume2, BookOpen, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Box } from 'lucide-react';
+import React from 'react';
+import { Film, Image as ImageIcon, Volume2, BookOpen, Box, X } from 'lucide-react';
 import { LessonData } from '../types/ar';
 
 interface TransparentOverlayProps {
@@ -21,151 +21,82 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
   onOpenModel3D,
   onCloseLesson
 }) => {
-  const [isMinimized, setIsMinimized] = useState(false);
-
   return (
-    <div className="absolute inset-x-0 bottom-0 z-30 p-3 sm:p-5 pointer-events-none select-none transition-all duration-300">
-      <div 
-        className="max-w-md mx-auto pointer-events-auto rounded-3xl ar-glass-panel shadow-2xl overflow-hidden border border-white/20 transition-all duration-300"
-      >
-        {/* Lesson Identification Banner */}
-        <div className="px-4 py-2.5 bg-gradient-to-r from-emerald-600/90 via-teal-600/85 to-sky-600/90 flex items-center justify-between text-white">
-          <div className="flex items-center gap-2 min-w-0">
-            <CheckCircle2 className="w-4 h-4 text-emerald-200 flex-shrink-0 animate-pulse" />
-            <span className="text-xs font-bold tracking-wide truncate">
-              تم التعرف على الدرس بنجاح
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setIsMinimized(!isMinimized)}
-              className="p-1 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
-              title={isMinimized ? 'توسيع القائمة' : 'تصغير القائمة'}
-              aria-label={isMinimized ? 'توسيع القائمة' : 'تصغير القائمة'}
-            >
-              {isMinimized ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-            {onCloseLesson && (
-              <button
-                onClick={onCloseLesson}
-                className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-black/30 hover:bg-rose-950/80 hover:text-rose-200 text-white transition-all cursor-pointer flex items-center gap-1 border border-white/20"
-                title="إلغاء قفل الدرس ومسح صفحة جديدة"
-              >
-                <span>مسح صفحة أخرى</span>
-                <span>✕</span>
-              </button>
-            )}
-          </div>
+    <div className="absolute inset-0 z-30 pointer-events-none select-none flex flex-col justify-between p-4 sm:p-6 transition-all duration-300">
+      {/* 1. Top: Minimalist Lesson Title Badge (Floating Glass Pill without clutter) */}
+      <div className="pointer-events-auto flex items-center justify-between gap-2 max-w-md mx-auto w-full pt-1 animate-fadeIn">
+        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-black/45 backdrop-blur-md border border-white/20 text-white shadow-xl">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+          <h2 className="text-sm sm:text-base font-black tracking-tight drop-shadow truncate max-w-[200px] sm:max-w-xs">
+            {lesson.title}
+          </h2>
         </div>
 
-        {/* Card Body */}
-        <div className="p-4 sm:p-5 space-y-3.5">
-          {/* Header Title & Subtitle */}
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <h2 className="text-lg sm:text-xl font-black text-white tracking-tight drop-shadow-sm truncate">
-                {lesson.title}
-              </h2>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/30 text-sky-200 border border-sky-400/30 flex-shrink-0">
-                {lesson.subject}
-              </span>
-            </div>
-            <p className="text-xs text-slate-300 line-clamp-1 leading-relaxed">
-              {lesson.subtitle}
-            </p>
-          </div>
+        {onCloseLesson && (
+          <button
+            onClick={onCloseLesson}
+            className="w-10 h-10 rounded-full bg-black/45 hover:bg-rose-950/70 text-white hover:text-rose-200 border border-white/20 flex items-center justify-center backdrop-blur-md transition-all active:scale-90 cursor-pointer shadow-xl"
+            title="مسح صفحة كتاب أخرى"
+            aria-label="مسح صفحة أخرى"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
 
-          {/* 4 Large Child-Friendly Interactive Action Buttons */}
-          {!isMinimized && (
-            <div className="space-y-2.5 pt-1">
-              {/* Optional Featured 3D Model Button if present */}
-              {lesson.model3d?.url && onOpenModel3D && (
-                <button
-                  onClick={onOpenModel3D}
-                  className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-cyan-600 via-sky-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-600/30 active:scale-95 transition-all cursor-pointer border border-cyan-400/40"
-                  aria-label="عرض المجسم ثلاثي الأبعاد فوق الكاميرا"
-                >
-                  <Box className="w-4 h-4 text-cyan-200 animate-bounce" />
-                  <span>✨ إظهار / إخفاء المجسم 360° فوق الكاميرا مباشرة</span>
-                </button>
-              )}
+      {/* 2. Bottom: Floating Bar of Large Circular Icon Buttons (No Background Box, No Text) */}
+      <div className="pointer-events-auto flex items-center justify-center gap-3 sm:gap-4 max-w-lg mx-auto w-full pb-4 sm:pb-6 animate-slideUp">
+        {/* Button 1: 3D Model (Icon Only, Large, Glowing) */}
+        {lesson.model3d?.url && onOpenModel3D && (
+          <button
+            onClick={onOpenModel3D}
+            className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 text-white flex items-center justify-center shadow-xl shadow-cyan-500/30 active:scale-90 transition-all cursor-pointer border-2 border-white/30"
+            title="إظهار / إخفاء المجسم ثلاثي الأبعاد"
+            aria-label="المجسم 3D"
+          >
+            <Box className="w-7 h-7 sm:w-8 sm:h-8" />
+          </button>
+        )}
 
-              <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                {/* Button 1: Video */}
-                <button
-                  onClick={onOpenVideo}
-                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-sky-400/30 text-sky-100 hover:text-white hover:border-sky-300 hover:bg-sky-900/60 shadow-lg cursor-pointer group"
-                  aria-label="مشاهدة فيديو الدرس"
-                >
-                  <div className="w-8 h-8 rounded-full bg-sky-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Film className="w-4 h-4 sm:w-5 sm:h-5 text-sky-300" />
-                  </div>
-                  <div className="text-center">
-                    <span className="text-xs sm:text-sm font-black block">🎬 فيديو</span>
-                    <span className="text-[10px] text-sky-200/70 font-medium block">مشاهدة مرئية</span>
-                  </div>
-                </button>
+        {/* Button 2: Video (Icon Only, Large) */}
+        <button
+          onClick={onOpenVideo}
+          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-sky-600/90 text-sky-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
+          title="مشاهدة فيديو الدرس"
+          aria-label="فيديو الدرس"
+        >
+          <Film className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
+        </button>
 
-                {/* Button 2: Gallery */}
-                <button
-                  onClick={onOpenImages}
-                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-emerald-400/30 text-emerald-100 hover:text-white hover:border-emerald-300 hover:bg-emerald-900/60 shadow-lg cursor-pointer group"
-                  aria-label="معرض صور الدرس"
-                >
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-300" />
-                  </div>
-                  <div className="text-center">
-                    <span className="text-xs sm:text-sm font-black block">🖼️ صور</span>
-                    <span className="text-[10px] text-emerald-200/70 font-medium block">معرض المخططات</span>
-                  </div>
-                </button>
+        {/* Button 3: Gallery / Images (Icon Only, Large) */}
+        <button
+          onClick={onOpenImages}
+          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-emerald-600/90 text-emerald-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
+          title="معرض المخططات والصور"
+          aria-label="معرض الصور"
+        >
+          <ImageIcon className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
+        </button>
 
-                {/* Button 3: Audio */}
-                <button
-                  onClick={onOpenAudio}
-                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-amber-400/30 text-amber-100 hover:text-white hover:border-amber-300 hover:bg-amber-900/60 shadow-lg cursor-pointer group"
-                  aria-label="الاستماع للشرح الصوتي"
-                >
-                  <div className="w-8 h-8 rounded-full bg-amber-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
-                  </div>
-                  <div className="text-center">
-                    <span className="text-xs sm:text-sm font-black block">🔊 استماع</span>
-                    <span className="text-[10px] text-amber-200/70 font-medium block">شرح صوتي</span>
-                  </div>
-                </button>
+        {/* Button 4: Audio (Icon Only, Large) */}
+        <button
+          onClick={onOpenAudio}
+          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-amber-600/90 text-amber-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
+          title="الاستماع للشرح الصوتي"
+          aria-label="الشرح الصوتي"
+        >
+          <Volume2 className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
+        </button>
 
-                {/* Button 4: Explanation */}
-                <button
-                  onClick={onOpenExplanation}
-                  className="ar-glass-button h-16 sm:h-20 rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border-indigo-400/30 text-indigo-100 hover:text-white hover:border-indigo-300 hover:bg-indigo-900/60 shadow-lg cursor-pointer group"
-                  aria-label="قراءة شرح الدرس"
-                >
-                  <div className="w-8 h-8 rounded-full bg-indigo-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-300" />
-                  </div>
-                  <div className="text-center">
-                    <span className="text-xs sm:text-sm font-black block">📝 شرح</span>
-                    <span className="text-[10px] text-indigo-200/70 font-medium block">نص وتدريبات</span>
-                  </div>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Peek Hint */}
-          <div className="flex items-center justify-between text-[11px] text-slate-300/80 pt-1 border-t border-white/10">
-            <span className="flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>المحتوى معروض فوق الكاميرا الحية</span>
-            </span>
-            <span className="font-mono text-[10px] text-slate-400">
-              {lesson.targetId}
-            </span>
-          </div>
-        </div>
+        {/* Button 5: Explanation / Book (Icon Only, Large) */}
+        <button
+          onClick={onOpenExplanation}
+          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-indigo-600/90 text-indigo-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
+          title="شرح الدرس والتدريبات"
+          aria-label="شرح الدرس"
+        >
+          <BookOpen className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
+        </button>
       </div>
     </div>
   );
