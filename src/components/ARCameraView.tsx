@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap, BookOpen } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap, BookOpen, Focus } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData } from '../types/ar';
+import { getStoredLessons, DEFAULT_LESSONS, fetchLessons } from '../data/lessons';
 import { analytics } from '../services/analytics';
 import { targetCompiler } from '../services/targetCompiler';
 
@@ -56,6 +57,58 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const mindarThreeRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const [showFocusRing, setShowFocusRing] = useState(false);
+
+  const applyAutoFocus = useCallback(() => {
+    setShowFocusRing(true);
+    setTimeout(() => setShowFocusRing(false), 1200);
+
+    // 1. MindAR video element autofocus
+    if (containerRef.current) {
+      const vid = containerRef.current.querySelector('video') as HTMLVideoElement;
+      if (vid && vid.srcObject) {
+        const stream = vid.srcObject as MediaStream;
+        stream.getVideoTracks().forEach((track) => {
+          try {
+            const caps = (track.getCapabilities ? track.getCapabilities() : {}) as any;
+            const advanced: any[] = [];
+            if (caps.focusMode && (caps.focusMode.includes('continuous') || caps.focusMode.includes('auto'))) {
+              advanced.push({ focusMode: 'continuous' });
+            }
+            if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+              advanced.push({ exposureMode: 'continuous' });
+            }
+            if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) {
+              advanced.push({ whiteBalanceMode: 'continuous' });
+            }
+            if (advanced.length > 0) {
+              track.applyConstraints({ advanced } as any).catch(() => {});
+            }
+          } catch (_) {}
+        });
+      }
+    }
+
+    // 2. Fallback stream autofocus
+    if (streamRef.current) {
+      streamRef.current.getVideoTracks().forEach((track) => {
+        try {
+          const caps = (track.getCapabilities ? track.getCapabilities() : {}) as any;
+          const advanced: any[] = [];
+          if (caps.focusMode && (caps.focusMode.includes('continuous') || caps.focusMode.includes('auto'))) {
+            advanced.push({ focusMode: 'continuous' });
+          }
+          if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+            advanced.push({ exposureMode: 'continuous' });
+          }
+          if (advanced.length > 0) {
+            track.applyConstraints({ advanced } as any).catch(() => {});
+          }
+        } catch (_) {}
+      });
+    }
+  }, []);
+
   // Loading timer counter to give user progressive feedback
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
@@ -88,7 +141,16 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         return;
       }
 
-      if (lessons.length === 0) {
+      // Ensure active lessons are available immediately
+      let activeLessons = lessons;
+      if (!activeLessons || activeLessons.length === 0) {
+        activeLessons = getStoredLessons();
+      }
+      if (!activeLessons || activeLessons.length === 0) {
+        activeLessons = DEFAULT_LESSONS;
+      }
+
+      if (activeLessons.length === 0) {
         setCameraError('EMPTY_LESSONS');
         setCameraLoading(false);
         return;
@@ -139,7 +201,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           const gltfLoader = new GLTFLoader();
 
           // Attach anchors safely for all configured lessons
-          lessons.forEach((lesson, index) => {
+          activeLessons.forEach((lesson, index) => {
             const targetIdx = typeof lesson.targetIndex === 'number' && !isNaN(lesson.targetIndex)
               ? lesson.targetIndex
               : index;
@@ -190,6 +252,41 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             await mindarThree.start();
           }
 
+          // Apply hardware autofocus and crisp video styling to MindAR video element
+          if (containerRef.current) {
+            const vid = containerRef.current.querySelector('video') as HTMLVideoElement;
+            if (vid) {
+              vid.style.objectFit = 'cover';
+              vid.style.width = '100%';
+              vid.style.height = '100%';
+              (vid.style as any).imageRendering = '-webkit-optimize-contrast';
+
+              const mediaStream = vid.srcObject as MediaStream;
+              if (mediaStream) {
+                mediaStream.getVideoTracks().forEach((track) => {
+                  try {
+                    const caps = (track.getCapabilities ? track.getCapabilities() : {}) as any;
+                    const advanced: any[] = [];
+                    if (caps.focusMode && (caps.focusMode.includes('continuous') || caps.focusMode.includes('auto'))) {
+                      advanced.push({ focusMode: 'continuous' });
+                    }
+                    if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+                      advanced.push({ exposureMode: 'continuous' });
+                    }
+                    if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) {
+                      advanced.push({ whiteBalanceMode: 'continuous' });
+                    }
+                    if (advanced.length > 0) {
+                      track.applyConstraints({ advanced } as any).catch(() => {});
+                    }
+                  } catch (e) {
+                    console.warn('Autofocus constraint application failed:', e);
+                  }
+                });
+              }
+            }
+          }
+
           // MindAR animation loop: pure camera tracking rendering (ultra lightweight, 60fps)
           renderer.setAnimationLoop(() => {
             renderer.render(scene, camera);
@@ -210,15 +307,16 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         }
       }
 
-      // 2. Direct Camera Stream Fallback (getUserMedia)
+      // 2. Direct Camera Stream Fallback (getUserMedia) with HD resolution & Autofocus
       try {
         let stream: MediaStream;
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              facingMode: facingMode,
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
+              facingMode: { ideal: facingMode },
+              width: { ideal: 1920, min: 1280 },
+              height: { ideal: 1080, min: 720 },
+              advanced: [{ focusMode: 'continuous' }] as any
             },
             audio: false
           });
@@ -230,6 +328,20 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             audio: false
           });
         }
+
+        // Apply hardware autofocus to fallback stream tracks
+        stream.getVideoTracks().forEach((track) => {
+          try {
+            const caps = (track.getCapabilities ? track.getCapabilities() : {}) as any;
+            const advanced: any[] = [];
+            if (caps.focusMode && (caps.focusMode.includes('continuous') || caps.focusMode.includes('auto'))) {
+              advanced.push({ focusMode: 'continuous' });
+            }
+            if (advanced.length > 0) {
+              track.applyConstraints({ advanced } as any).catch(() => {});
+            }
+          } catch (_) {}
+        });
 
         if (isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
@@ -291,7 +403,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       {/* 1. MindAR Container (renders video & three.js canvas) */}
       <div 
         ref={containerRef}
-        className="mindar-container absolute inset-0 w-full h-full z-0 overflow-hidden"
+        onClick={applyAutoFocus}
+        className="mindar-container absolute inset-0 w-full h-full z-0 overflow-hidden cursor-crosshair"
       />
 
       {/* 2. Direct Camera Stream Fallback Video */}
@@ -301,8 +414,22 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           playsInline
           muted
           autoPlay
-          className="absolute inset-0 w-full h-full object-cover z-0"
+          onClick={applyAutoFocus}
+          className="absolute inset-0 w-full h-full object-cover z-0 cursor-crosshair"
         />
+      )}
+
+      {/* Focus Ring Indicator (when user taps to focus) */}
+      {showFocusRing && (
+        <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-fadeIn">
+          <div className="w-24 h-24 rounded-full border-2 border-amber-400 animate-ping opacity-60" />
+          <div className="absolute w-14 h-14 rounded-2xl border-2 border-amber-300 flex items-center justify-center bg-amber-400/10">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          </div>
+          <span className="absolute mt-20 text-[10px] font-bold text-amber-300 bg-black/70 px-2 py-0.5 rounded-full">
+            تم ضبط التركيز التلقائي ✓
+          </span>
+        </div>
       )}
 
       {/* Top Floating Action Bar */}
@@ -336,6 +463,16 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
         {/* Secondary Tool Buttons */}
         <div className="flex items-center gap-2">
+          {/* Hardware Auto-Focus Trigger */}
+          <button
+            onClick={applyAutoFocus}
+            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            title="إعادة ضبط الفوكس والوضوح التلقائي (انقر في أي مكان على الشاشة أيضاً)"
+            aria-label="ضبط الفوكس"
+          >
+            <Focus className="w-4 h-4 text-amber-400" />
+          </button>
+
           {/* Flip Camera Button (Rear / Front) */}
           <button
             onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}

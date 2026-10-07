@@ -32,7 +32,10 @@ type ActiveModalType =
   | 'compiler';
 
 export default function App() {
-  const [lessons, setLessons] = useState<LessonData[]>(() => getStoredLessons());
+  const [lessons, setLessons] = useState<LessonData[]>(() => {
+    const stored = getStoredLessons();
+    return stored && stored.length > 0 ? stored : DEFAULT_LESSONS;
+  });
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [activeLesson, setActiveLesson] = useState<LessonData | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');

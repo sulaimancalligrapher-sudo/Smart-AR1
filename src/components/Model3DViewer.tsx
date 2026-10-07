@@ -1,18 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Box, RotateCcw, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
-
-declare global {
-  namespace React.JSX {
-    interface IntrinsicElements {
-      'model-viewer': any;
-    }
-  }
-  namespace JSX {
-    interface IntrinsicElements {
-      'model-viewer': any;
-    }
-  }
-}
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { RefreshCw, RotateCcw, AlertCircle, Play, Pause, Compass } from 'lucide-react';
 
 interface Model3DViewerProps {
   src: string;
@@ -24,137 +13,305 @@ interface Model3DViewerProps {
   transparent?: boolean;
 }
 
+/**
+ * Solid Turntable 3D Viewer built with pure Three.js:
+ * 1. ZERO Orbit Drift: Camera is fixed on Z-axis, rotation is applied directly to the model's central Y-axis.
+ * 2. Guaranteed Centering: Geometry bounding box is computed and centered at (0,0,0) with normalized scale.
+ * 3. Mobile & Tablet Hardened: Pointer events provide butter-smooth touch spinning without moving the model away.
+ * 4. Default Still State: Auto-rotate is OFF by default so the model stands rock-solid.
+ */
 export const Model3DViewer: React.FC<Model3DViewerProps> = ({
   src,
   title = 'مجسم ثلاثي الأبعاد',
   className = '',
-  height = '300px',
-  autoRotate = true,
+  height = '320px',
+  autoRotate = false,
   interactive = true,
-  transparent = false,
+  transparent = false
 }) => {
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(autoRotate);
-  const viewerRef = useRef<HTMLElement | null>(null);
+
+  // References to keep animation loop & controls independent of React render cycles
+  const isRotatingRef = useRef(autoRotate);
+  const modelGroupRef = useRef<THREE.Group | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const reqIdRef = useRef<number | null>(null);
+
+  // Touch & pointer tracking
+  const isDraggingRef = useRef(false);
+  const prevPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const initialPinchDistRef = useRef<number | null>(null);
+  const defaultCameraZRef = useRef<number>(3.5);
+
+  // Toggle auto rotation without reloading the 3D scene or re-fetching GLTF
+  const toggleAutoRotate = useCallback(() => {
+    setIsRotating((prev) => {
+      const next = !prev;
+      isRotatingRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // Reset rotation and zoom to perfect default center
+  const handleResetCenter = useCallback(() => {
+    if (modelGroupRef.current) {
+      modelGroupRef.current.rotation.set(0, 0, 0);
+    }
+    if (cameraRef.current) {
+      cameraRef.current.position.set(0, 0, defaultCameraZRef.current);
+      cameraRef.current.lookAt(0, 0, 0);
+    }
+  }, []);
 
   useEffect(() => {
-    setIsRotating(autoRotate);
-  }, [autoRotate]);
+    const container = containerRef.current;
+    if (!container || !src) return;
 
-  const handleResetCenter = () => {
-    const el = viewerRef.current as any;
-    if (el) {
-      try {
-        el.cameraOrbit = '0deg 75deg 105%';
-        el.cameraTarget = 'auto auto auto';
-        el.fieldOfView = 'auto';
-        if (typeof el.jumpCameraToGoal === 'function') {
-          el.jumpCameraToGoal();
-        }
-      } catch (err) {
-        console.warn('Could not reset model camera:', err);
+    setIsLoading(true);
+    setLoadError(null);
+    isRotatingRef.current = autoRotate;
+    setIsRotating(autoRotate);
+
+    let isCancelled = false;
+
+    // Dimensions
+    const width = container.clientWidth || 320;
+    const heightPx = container.clientHeight || 320;
+
+    // 1. Scene
+    const scene = new THREE.Scene();
+
+    // 2. Camera (Fixed orientation looking straight at origin 0,0,0)
+    const camera = new THREE.PerspectiveCamera(45, width / heightPx, 0.1, 100);
+    camera.position.set(0, 0, 3.5);
+    camera.lookAt(0, 0, 0);
+    cameraRef.current = camera;
+
+    // 3. WebGL Renderer with full alpha transparency
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance'
+    });
+    renderer.setSize(width, heightPx);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.25;
+    rendererRef.current = renderer;
+
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    container.appendChild(renderer.domElement);
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.touchAction = 'none';
+
+    // 4. Lighting: Ambient + Key Directionals for vibrant illumination
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2.4);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.2);
+    dirLight1.position.set(5, 7, 5);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.4);
+    dirLight2.position.set(-5, -3, -3);
+    scene.add(dirLight2);
+
+    // 5. Centered Pivot Group
+    const rootGroup = new THREE.Group();
+    rootGroup.position.set(0, 0, 0);
+    rootGroup.rotation.set(0, 0, 0);
+    scene.add(rootGroup);
+    modelGroupRef.current = rootGroup;
+
+    // 6. GLTF Loader with strict bounding box normalization
+    const loader = new GLTFLoader();
+    loader.load(
+      src,
+      (gltf) => {
+        if (isCancelled) return;
+        const model = gltf.scene;
+
+        // Force world matrices update to compute exact bounding dimensions
+        model.updateMatrixWorld(true);
+
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+
+        // Offset model geometry so its true volumetric center is exactly (0, 0, 0)
+        model.position.x = -center.x;
+        model.position.y = -center.y;
+        model.position.z = -center.z;
+
+        // Normalize scale to fit nicely in the viewport on any mobile/tablet/desktop screen
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const normalizedScale = 2.0 / maxDim;
+        rootGroup.scale.setScalar(normalizedScale);
+
+        rootGroup.add(model);
+
+        // Adjust camera distance to ensure comfortable fit
+        const fovRad = (camera.fov * Math.PI) / 180;
+        const aspect = camera.aspect;
+        // In portrait mode, aspect < 1, so fit horizontally
+        const effectiveFOV = aspect < 1 ? 2 * Math.atan(Math.tan(fovRad / 2) / aspect) : fovRad;
+        const idealDistance = Math.max((2.0 / 2) / Math.tan(effectiveFOV / 2) * 1.35, 2.8);
+
+        camera.position.set(0, 0, idealDistance);
+        camera.lookAt(0, 0, 0);
+        defaultCameraZRef.current = idealDistance;
+
+        setIsLoading(false);
+      },
+      undefined,
+      (err) => {
+        if (isCancelled) return;
+        console.warn('Three.js GLTF load error:', err);
+        setIsLoading(false);
+        setLoadError('تعذر تحميل ملف المجسم. يرجى التأكد من صلاحية الرابط (.glb).');
       }
+    );
+
+    // 7. Render Loop (Fixed camera, in-place Y-axis turntable rotation)
+    const animate = () => {
+      reqIdRef.current = requestAnimationFrame(animate);
+
+      if (isRotatingRef.current && modelGroupRef.current && !isDraggingRef.current) {
+        // Spin in place around vertical center axis (never drifts)
+        modelGroupRef.current.rotation.y += 0.012;
+      }
+
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    // 8. Responsive Resize Observer
+    const resizeObserver = new ResizeObserver(() => {
+      if (!container || !rendererRef.current || !cameraRef.current) return;
+      const newWidth = container.clientWidth;
+      const newHeight = container.clientHeight;
+      if (newWidth > 0 && newHeight > 0) {
+        cameraRef.current.aspect = newWidth / newHeight;
+        cameraRef.current.updateProjectionMatrix();
+        rendererRef.current.setSize(newWidth, newHeight);
+      }
+    });
+    resizeObserver.observe(container);
+
+    // 9. Cleanup
+    return () => {
+      isCancelled = true;
+      resizeObserver.disconnect();
+      if (reqIdRef.current) {
+        cancelAnimationFrame(reqIdRef.current);
+      }
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+      }
+    };
+  }, [src, autoRotate]);
+
+  // Pointer event handlers for touch & mouse
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!interactive) return;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    isDraggingRef.current = true;
+    prevPointerRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!interactive || !isDraggingRef.current || !prevPointerRef.current) return;
+    const deltaX = e.clientX - prevPointerRef.current.x;
+    const deltaY = e.clientY - prevPointerRef.current.y;
+    prevPointerRef.current = { x: e.clientX, y: e.clientY };
+
+    if (modelGroupRef.current) {
+      // Rotate around Y axis (360 horizontal turntable)
+      modelGroupRef.current.rotation.y += deltaX * 0.009;
+
+      // Tilt around X axis (clamped to prevent flipping upside down)
+      const currentX = modelGroupRef.current.rotation.x;
+      const nextX = currentX + deltaY * 0.007;
+      modelGroupRef.current.rotation.x = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, nextX));
     }
   };
 
-  const toggleAutoRotate = () => {
-    setIsRotating((prev) => !prev);
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!interactive) return;
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    isDraggingRef.current = false;
+    prevPointerRef.current = null;
   };
 
-  useEffect(() => {
-    setIsLoading(true);
-    setLoadError(null);
+  // Touch pinch to zoom support
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!interactive || e.touches.length !== 2 || !cameraRef.current) return;
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
 
-    const el = viewerRef.current;
-    if (!el) return;
+    if (initialPinchDistRef.current !== null) {
+      const scale = initialPinchDistRef.current / dist;
+      const newZ = cameraRef.current.position.z * scale;
+      cameraRef.current.position.z = Math.max(1.8, Math.min(7.0, newZ));
+    }
+    initialPinchDistRef.current = dist;
+  };
 
-    const handleLoad = () => {
-      setIsLoading(false);
-      setLoadError(null);
-    };
+  const handleTouchEnd = () => {
+    initialPinchDistRef.current = null;
+  };
 
-    const handleError = (e: any) => {
-      console.warn('Model viewer error:', e);
-      setIsLoading(false);
-      setLoadError('تعذر تحميل ملف المجسم. تأكد من أن الملف بصيغة .glb صالحة.');
-    };
-
-    el.addEventListener('load', handleLoad);
-    el.addEventListener('error', handleError);
-
-    // Safety timeout to avoid getting stuck in loading state
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 6000);
-
-    return () => {
-      el.removeEventListener('load', handleLoad);
-      el.removeEventListener('error', handleError);
-      clearTimeout(timer);
-    };
-  }, [src]);
+  // Wheel zoom
+  const handleWheel = (e: React.WheelEvent) => {
+    if (!interactive || !cameraRef.current) return;
+    e.preventDefault();
+    const zoomDelta = e.deltaY * 0.003;
+    const newZ = cameraRef.current.position.z + zoomDelta;
+    cameraRef.current.position.z = Math.max(1.8, Math.min(7.0, newZ));
+  };
 
   return (
-    <div 
-      className={`relative w-full rounded-2xl overflow-hidden flex items-center justify-center ${
-        transparent 
-          ? 'bg-transparent border-0' 
+    <div
+      className={`relative w-full rounded-2xl overflow-hidden flex items-center justify-center select-none ${
+        transparent
+          ? 'bg-transparent border-0'
           : 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border border-slate-800'
       } ${className}`}
       style={{ height }}
+      onWheel={handleWheel}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
-      {/* Background radial glow (only in non-transparent mode) */}
-      {!transparent && (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.08)_0%,transparent_70%)] pointer-events-none" />
+      {/* 3D Canvas Mount Point */}
+      <div
+        ref={containerRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="w-full h-full cursor-grab active:cursor-grabbing touch-none"
+      />
+
+      {/* Loading Spinner */}
+      {isLoading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/70 backdrop-blur-sm text-slate-300 gap-2 z-10 pointer-events-none">
+          <RefreshCw className="w-6 h-6 text-sky-400 animate-spin" />
+          <span className="text-xs font-semibold">جارٍ تثبيت ومعالجة المجسم 3D...</span>
+        </div>
       )}
 
-      {/* Model-Viewer Component (Standard Web Component with strict centering & disable-pan) */}
-      <model-viewer
-        ref={(el: any) => {
-          viewerRef.current = el;
-        }}
-        src={src}
-        alt={title}
-        auto-rotate={isRotating ? 'true' : undefined}
-        camera-controls={interactive ? 'true' : undefined}
-        disable-pan="true"
-        disable-tap="true"
-        bounds="tight"
-        camera-target="auto auto auto"
-        auto-rotate-delay="2000"
-        rotation-per-second="18deg"
-        touch-action="none"
-        shadow-intensity={transparent ? '0' : '0.8'}
-        shadow-softness={transparent ? '0' : '0.5'}
-        exposure="1.1"
-        interaction-prompt="none"
-        interpolation-decay="100"
-        ar="true"
-        ar-modes="webxr scene-viewer quick-look"
-        ar-scale="auto"
-        style={{ width: '100%', height: '100%', backgroundColor: 'transparent', touchAction: 'none' }}
-      >
-        {/* Native AR Button Slot: Triggers Scene Viewer on Android and Quick Look on iOS/iPadOS */}
-        <button
-          slot="ar-button"
-          type="button"
-          className="absolute top-2.5 right-2.5 z-20 px-3 py-1.5 rounded-full bg-cyan-600/90 hover:bg-cyan-500 text-white text-[11px] font-bold shadow-xl backdrop-blur-md border border-white/30 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-          title="عرض المجسم في غرفتك أو فوق الكتاب بالواقع المعزز الحقيقي"
-        >
-          <span>📱 واقع معزز حقيقي (AR)</span>
-        </button>
-
-        {/* Loading Spinner Slot */}
-        {isLoading && (
-          <div slot="poster" className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm text-slate-300 gap-2 z-10">
-            <RefreshCw className="w-6 h-6 text-sky-400 animate-spin" />
-            <span className="text-xs font-semibold">جارٍ تحميل المجسم 3D...</span>
-          </div>
-        )}
-      </model-viewer>
-
-      {/* Error state fallback */}
+      {/* Error state */}
       {loadError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 p-4 text-center z-20 space-y-2">
           <AlertCircle className="w-8 h-8 text-rose-400" />
@@ -163,33 +320,50 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
         </div>
       )}
 
-      {/* Floating Interactive Controls (Reset Center & Toggle Rotation) */}
+      {/* Interactive Controls Pill Bar */}
       {!isLoading && !loadError && interactive && (
-        <div className="absolute bottom-2 inset-x-2 z-10 pointer-events-none flex items-center justify-between gap-1.5 px-2">
-          {/* Quick Guidance Tag */}
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/10 text-[10px] text-sky-300 shadow-md">
-            <RotateCcw className="w-3 h-3 text-sky-400" />
+        <div className="absolute bottom-2.5 inset-x-2 z-10 pointer-events-none flex items-center justify-between gap-1.5 px-2">
+          {/* Help badge */}
+          <div className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-white/15 text-[10px] font-bold text-sky-300 shadow-xl">
+            <Compass className="w-3.5 h-3.5 text-sky-400" />
             <span>اسحب للتدوير 360°</span>
           </div>
 
-          {/* Action Buttons: Pause/Play Auto-Rotation & Reset to Center */}
+          {/* Action buttons */}
           <div className="pointer-events-auto flex items-center gap-1.5">
+            {/* Toggle Rotation Button */}
             <button
               type="button"
               onClick={toggleAutoRotate}
-              className="px-2.5 py-1 rounded-full bg-slate-900/85 hover:bg-slate-800 text-white border border-white/20 text-[10px] font-bold shadow-md active:scale-95 transition-transform flex items-center gap-1 cursor-pointer"
-              title={isRotating ? 'إيقاف الدوران التلقائي وتثبيت الموضع' : 'تشغيل الدوران التلقائي'}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold shadow-xl active:scale-95 transition-all flex items-center gap-1 cursor-pointer border ${
+                isRotating
+                  ? 'bg-cyan-500/90 text-slate-950 border-cyan-300 font-black'
+                  : 'bg-slate-900/85 hover:bg-slate-800 text-white border-white/20'
+              }`}
+              title={isRotating ? 'إيقاف الدوران' : 'تشغيل الدوران'}
             >
-              <span>{isRotating ? '⏸️ تثبيت' : '▶️ تدوير'}</span>
+              {isRotating ? (
+                <>
+                  <Pause className="w-3.5 h-3.5 text-slate-950" />
+                  <span>تثبيت</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>تدوير</span>
+                </>
+              )}
             </button>
 
+            {/* Reset Center Button */}
             <button
               type="button"
               onClick={handleResetCenter}
-              className="px-2.5 py-1 rounded-full bg-slate-900/85 hover:bg-slate-800 text-white border border-white/20 text-[10px] font-bold shadow-md active:scale-95 transition-transform flex items-center gap-1 cursor-pointer"
-              title="إعادة ضبط المجسم لمركز الشاشة"
+              className="px-3 py-1.5 rounded-full bg-slate-900/85 hover:bg-slate-800 text-white border border-white/20 text-[11px] font-bold shadow-xl active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
+              title="إعادة ضبط المجسم للمركز الأصلي"
             >
-              <span>🎯 ضبط المركز</span>
+              <RotateCcw className="w-3.5 h-3.5 text-sky-400" />
+              <span>المركز</span>
             </button>
           </div>
         </div>

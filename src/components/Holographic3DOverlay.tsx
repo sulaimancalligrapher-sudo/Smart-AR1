@@ -46,7 +46,7 @@ export const Holographic3DOverlay: React.FC<Holographic3DOverlayProps> = ({
           src={model.url}
           title={model.title || lessonTitle}
           height="50vh"
-          autoRotate={model.autoRotate !== false}
+          autoRotate={Boolean(model.autoRotate)}
           interactive={true}
           transparent={true}
           className="w-full max-h-[440px]"

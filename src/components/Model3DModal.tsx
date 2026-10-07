@@ -51,7 +51,7 @@ export const Model3DModal: React.FC<Model3DModalProps> = ({
             src={model.url}
             title={model.title || lessonTitle}
             height="380px"
-            autoRotate={model.autoRotate !== false}
+            autoRotate={Boolean(model.autoRotate)}
             interactive={true}
           />
 

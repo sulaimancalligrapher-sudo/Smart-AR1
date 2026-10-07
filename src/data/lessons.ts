@@ -5,7 +5,86 @@ const STORAGE_KEY = 'ar_school_lessons_v3';
 const STORAGE_VERSION_KEY = 'ar_data_build_version';
 const CURRENT_BUILD_VERSION = '3.1.0';
 
-export const DEFAULT_LESSONS: LessonData[] = [];
+export const DEFAULT_LESSONS: LessonData[] = [
+  {
+    targetIndex: 0,
+    targetId: 'lesson_001',
+    title: 'كتاب الرقعة',
+    subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
+    subject: 'الخط واللغة العربية',
+    grade: 'الصف الابتدائي',
+    targetImage: '',
+    video: {
+      type: 'mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      title: 'فيديو تعليمي تفاعلي'
+    },
+    images: [],
+    audio: {
+      url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
+      title: 'تسجيل صوتي تعليمي'
+    },
+    model3d: {
+      url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+      title: 'مجسم ثلاثي الأبعاد تفاعلي',
+      autoRotate: false
+    },
+    description: {
+      summary: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
+      keyPoints: [
+        'التعرف على خصائص ومكونات الدرس',
+        'فحص المجسم التفاعلي بزوايا 360 درجة'
+      ],
+      fullText: 'شرح مفصل للدرس يظهر للطالب عند فتح أيقونة الشرح والاستكشاف...',
+      quiz: {
+        question: 'ما هي أهم ميزة في هذا المجسم التفاعلي؟',
+        options: ['ثابت ويمكن تدويره 360°', 'يتحرك تلقائياً', 'لا يمكن لمسه', 'صغير جداً'],
+        correctIndex: 0,
+        explanation: 'المجسم يتميز بالثبات الكامل التفاعلي تحت تحكم الطالب.'
+      }
+    }
+  },
+  {
+    targetIndex: 1,
+    targetId: 'lesson_002',
+    title: 'كتاب الديواني',
+    subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
+    subject: 'الخط واللغة العربية',
+    grade: 'الصف الابتدائي',
+    targetImage: '',
+    video: {
+      type: 'mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+      embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+      title: 'فيديو تعليمي تفاعلي'
+    },
+    images: [],
+    audio: {
+      url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
+      title: 'تسجيل صوتي تعليمي'
+    },
+    model3d: {
+      url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+      title: 'مجسم ثلاثي الأبعاد تفاعلي',
+      autoRotate: false
+    },
+    description: {
+      summary: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
+      keyPoints: [
+        'فهم الخطوات التطبيقية',
+        'المعاينة ثلاثية الأبعاد'
+      ],
+      fullText: 'شرح مفصل للدرس الثاني يظهر للطالب في المنصة...',
+      quiz: {
+        question: 'كيف يمكن تدوير المجسم؟',
+        options: ['بالسحب بالإصبع في أي اتجاه', 'بالهز', 'بالصوت', 'تلقائياً فقط'],
+        correctIndex: 0,
+        explanation: 'يمكنك تحريك إصبعك في أي اتجاه لمعاينة المجسم بدقة.'
+      }
+    }
+  }
+];
 
 // Automatic migration check: if legacy version exists, purge to prevent stale state
 try {
@@ -82,7 +161,8 @@ export async function purgeAllLocalDataAndCache(): Promise<void> {
   }
 
   try {
-    // 4. Set current build version
+    // 4. Immediately seed clean default lessons so there is ZERO delay or EMPTY_LESSONS error
+    saveStoredLessons(DEFAULT_LESSONS);
     localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_BUILD_VERSION);
   } catch (e) {
     console.warn('Could not set build version:', e);
@@ -91,10 +171,16 @@ export async function purgeAllLocalDataAndCache(): Promise<void> {
 
 export async function fetchLessons(forceRefreshServer = false): Promise<LessonData[]> {
   try {
-    // Always prioritize fetching the deployed /data/content.json with cache buster
+    // Fetch deployed /data/content.json with timeout guard (3.5s max to prevent mobile hang)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
     const res = await fetch(`/data/content.json?t=${Date.now()}`, {
-      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.lessons) && data.lessons.length > 0) {
