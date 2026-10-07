@@ -145,59 +145,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               : index;
             const anchor = mindarThree.addAnchor(targetIdx);
 
-            // Mount 3D Model directly onto the physical page anchor (Holographic WebAR)
-            if (lesson.model3d?.url) {
-              gltfLoader.load(
-                lesson.model3d.url,
-                (gltf) => {
-                  const root = gltf.scene;
-
-                  // Create pivot group to lock rotation to the exact geometric center
-                  const pivot = new THREE.Group();
-                  const box = new THREE.Box3().setFromObject(root);
-                  const center = box.getCenter(new THREE.Vector3());
-                  const size = box.getSize(new THREE.Vector3());
-
-                  // Center the root object inside the pivot
-                  root.position.sub(center);
-
-                  const maxDim = Math.max(size.x, size.y, size.z) || 1;
-                  const scale = 0.85 / maxDim;
-                  pivot.scale.set(scale, scale, scale);
-
-                  // Ensure all meshes render with double sides so no polygons are culled
-                  root.traverse((child: any) => {
-                    if (child.isMesh && child.material) {
-                      child.material.side = THREE.DoubleSide;
-                    }
-                  });
-
-                  // Position model floating slightly above the paper (Z axis = 0.1)
-                  pivot.position.z = 0.1;
-
-                  // Tilt slightly so 3D thickness and depth are clearly visible facing the camera
-                  pivot.rotation.x = Math.PI / 8;
-
-                  pivot.add(root);
-
-                  if ((anchor as any).group) {
-                    const anchorLight = new THREE.DirectionalLight(0xffffff, 1.8);
-                    anchorLight.position.set(0, 0, 5);
-                    (anchor as any).group.add(anchorLight);
-                    (anchor as any).group.add(pivot);
-                  }
-
-                  if (lesson.model3d?.autoRotate !== false) {
-                    animatedModels.push(pivot);
-                  }
-                },
-                undefined,
-                (err) => {
-                  console.warn('Could not attach 3D model to AR anchor:', err);
-                }
-              );
-            }
-
             let targetLostTimer: any = null;
 
             anchor.onTargetFound = () => {
@@ -243,11 +190,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             await mindarThree.start();
           }
 
-          // MindAR animation loop with smooth 3D model rotation
+          // MindAR animation loop: pure camera tracking rendering (ultra lightweight, 60fps)
           renderer.setAnimationLoop(() => {
-            for (let i = 0; i < animatedModels.length; i++) {
-              animatedModels[i].rotation.y += 0.012;
-            }
             renderer.render(scene, camera);
           });
 

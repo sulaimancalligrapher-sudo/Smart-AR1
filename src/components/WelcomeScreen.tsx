@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, Sparkles, BookOpen, Layers, FileSpreadsheet, Eye, Play, QrCode, Copy, Check, Smartphone, Monitor } from 'lucide-react';
+import { Camera, Sparkles, BookOpen, Layers, FileSpreadsheet, Eye, Play, QrCode, Copy, Check, Smartphone, Monitor, RotateCcw } from 'lucide-react';
 import { LessonData } from '../types/ar';
 
 interface WelcomeScreenProps {
@@ -8,6 +8,7 @@ interface WelcomeScreenProps {
   onOpenTeacherConsole: () => void;
   onOpenCompiler: () => void;
   onSimulateLesson: (lesson: LessonData) => void;
+  onPurgeAllData?: () => void;
   lessons: LessonData[];
 }
 
@@ -17,6 +18,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenTeacherConsole,
   onOpenCompiler,
   onSimulateLesson,
+  onPurgeAllData,
   lessons
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
@@ -48,6 +50,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onPurgeAllData && (
+            <button
+              onClick={onPurgeAllData}
+              className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 hover:text-white border border-rose-800/60 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+              title="مسح وتصفير كافة البيانات المخزنة والكاش وإعادة تشغيل النظام نظيفاً"
+              aria-label="مسح وتصفير البيانات والكاش"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden sm:inline">مسح الكاش والبيانات</span>
+            </button>
+          )}
           <button
             onClick={onOpenTeacherConsole}
             className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer"

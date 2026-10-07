@@ -17,7 +17,7 @@ import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
 import { LessonData } from './types/ar';
-import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons } from './data/lessons';
+import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
 
 type ActiveModalType =
@@ -109,6 +109,13 @@ export default function App() {
     setActiveModal('none');
   };
 
+  const handlePurgeAllData = async () => {
+    if (window.confirm('⚠️ تأكيد: هل تريد مسح كافة البيانات المخزنة وتصفير الكاش في المتصفح تماماً وتحديث النظام بالكامل لأحدث نسخة نظيفة؟')) {
+      await purgeAllLocalDataAndCache();
+      window.location.reload();
+    }
+  };
+
   return (
     <div className="relative w-full h-full min-h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* 1. Main View: Welcome Screen OR Live AR Camera View */}
@@ -120,6 +127,7 @@ export default function App() {
           onOpenTeacherConsole={() => setActiveModal('teacher_console')}
           onOpenCompiler={() => setActiveModal('compiler')}
           onSimulateLesson={handleSimulateLesson}
+          onPurgeAllData={handlePurgeAllData}
         />
       ) : (
         <ARCameraView
@@ -235,6 +243,7 @@ export default function App() {
         <TeacherConsoleModal 
           lessons={lessons}
           onUpdateLessons={handleUpdateLessons}
+          onPurgeAllData={handlePurgeAllData}
           onClose={() => setActiveModal('none')} 
         />
       )}

@@ -12,12 +12,14 @@ import { Model3DViewer } from './Model3DViewer';
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
   onUpdateLessons?: (lessons: LessonData[]) => void;
+  onPurgeAllData?: () => void;
   onClose: () => void;
 }
 
 export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   lessons = [],
   onUpdateLessons,
+  onPurgeAllData,
   onClose
 }) => {
   const [activeTab, setActiveTab] = useState<'lessons' | 'sheets'>('lessons');
@@ -291,17 +293,31 @@ function doPost(e) {
             </button>
           </div>
 
-          {activeTab === 'lessons' && editableLessons.length > 0 && (
-            <button
-              type="button"
-              onClick={handleClearAllLessons}
-              className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold inline-flex items-center gap-1 p-1 cursor-pointer"
-              title="مسح كافة النماذج الحالية"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>مسح جميع الدروس</span>
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {onPurgeAllData && (
+              <button
+                type="button"
+                onClick={onPurgeAllData}
+                className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold inline-flex items-center gap-1 p-1 cursor-pointer"
+                title="تصفير الكاش ومسح كل الذاكرة المؤقتة من المتصفح"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>تصفير الكاش والذاكرة</span>
+              </button>
+            )}
+
+            {activeTab === 'lessons' && editableLessons.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllLessons}
+                className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold inline-flex items-center gap-1 p-1 cursor-pointer"
+                title="مسح كافة الدروس الحالية"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>مسح جميع الدروس</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tab 1: Lessons Manager & Targets Linker */}
