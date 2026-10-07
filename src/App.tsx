@@ -36,7 +36,7 @@ export default function App() {
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [activeLesson, setActiveLesson] = useState<LessonData | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
-  const [showHologram3D, setShowHologram3D] = useState<boolean>(true);
+  const [showHologram3D, setShowHologram3D] = useState<boolean>(false);
 
   // Load custom lessons from storage or content.json on startup
   useEffect(() => {
@@ -55,9 +55,8 @@ export default function App() {
   // When a lesson target is recognized by MindAR or simulator
   const handleTargetDetected = (lesson: LessonData) => {
     setActiveLesson(lesson);
-    if (lesson.model3d?.url) {
-      setShowHologram3D(true);
-    }
+    // Initial recognition displays clean floating toolbar; 3D activates on-demand to prevent GPU fighting
+    setShowHologram3D(false);
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
     }
@@ -81,12 +80,14 @@ export default function App() {
 
   const handleStartCamera = () => {
     setIsCameraActive(true);
+    setShowHologram3D(false);
     setActiveModal('none');
   };
 
   const handleCloseCamera = () => {
     setIsCameraActive(false);
     setActiveLesson(null);
+    setShowHologram3D(false);
     setActiveModal('none');
   };
 
@@ -104,6 +105,7 @@ export default function App() {
       });
     }
     setActiveLesson(null);
+    setShowHologram3D(false);
     setActiveModal('none');
   };
 
@@ -145,10 +147,23 @@ export default function App() {
       {isCameraActive && activeLesson && activeModal === 'none' && (
         <TransparentOverlay
           lesson={activeLesson}
-          onOpenVideo={() => setActiveModal('video')}
-          onOpenImages={() => setActiveModal('images')}
-          onOpenAudio={() => setActiveModal('audio')}
-          onOpenExplanation={() => setActiveModal('explanation')}
+          isModel3DActive={showHologram3D}
+          onOpenVideo={() => {
+            setShowHologram3D(false);
+            setActiveModal('video');
+          }}
+          onOpenImages={() => {
+            setShowHologram3D(false);
+            setActiveModal('images');
+          }}
+          onOpenAudio={() => {
+            setShowHologram3D(false);
+            setActiveModal('audio');
+          }}
+          onOpenExplanation={() => {
+            setShowHologram3D(false);
+            setActiveModal('explanation');
+          }}
           onOpenModel3D={() => setShowHologram3D((prev) => !prev)}
           onCloseLesson={handleCloseOverlayLesson}
         />

@@ -4,6 +4,7 @@ import { LessonData } from '../types/ar';
 
 interface TransparentOverlayProps {
   lesson: LessonData;
+  isModel3DActive?: boolean;
   onOpenVideo: () => void;
   onOpenImages: () => void;
   onOpenAudio: () => void;
@@ -14,6 +15,7 @@ interface TransparentOverlayProps {
 
 export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
   lesson,
+  isModel3DActive = false,
   onOpenVideo,
   onOpenImages,
   onOpenAudio,
@@ -50,8 +52,12 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
         {lesson.model3d?.url && onOpenModel3D && (
           <button
             onClick={onOpenModel3D}
-            className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 text-white flex items-center justify-center shadow-xl shadow-cyan-500/30 active:scale-90 transition-all cursor-pointer border-2 border-white/30"
-            title="إظهار / إخفاء المجسم ثلاثي الأبعاد"
+            className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-xl active:scale-90 transition-all cursor-pointer border-2 ${
+              isModel3DActive
+                ? 'bg-cyan-400 text-slate-950 border-white ring-4 ring-cyan-400/50 shadow-cyan-400/50 scale-105'
+                : 'bg-gradient-to-tr from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 text-white border-white/30 shadow-cyan-500/30'
+            }`}
+            title={isModel3DActive ? 'إغلاق عرض المجسم 3D' : 'تشغيل المجسم ثلاثي الأبعاد 3D'}
             aria-label="المجسم 3D"
           >
             <Box className="w-7 h-7 sm:w-8 sm:h-8" />

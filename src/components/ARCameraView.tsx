@@ -112,7 +112,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             container: containerRef.current,
             imageTargetSrc: targetCompiler.getActiveMindUrl(),
             filterMinCF: 0.001,
-            filterBeta: 10,
+            filterBeta: 100,
             uiScanning: 'no',
             uiLoading: 'no'
           });

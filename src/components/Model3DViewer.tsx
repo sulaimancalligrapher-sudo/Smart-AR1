@@ -130,8 +130,21 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
         exposure="1.1"
         interaction-prompt="none"
         interpolation-decay="100"
+        ar="true"
+        ar-modes="webxr scene-viewer quick-look"
+        ar-scale="auto"
         style={{ width: '100%', height: '100%', backgroundColor: 'transparent', touchAction: 'none' }}
       >
+        {/* Native AR Button Slot: Triggers Scene Viewer on Android and Quick Look on iOS/iPadOS */}
+        <button
+          slot="ar-button"
+          type="button"
+          className="absolute top-2.5 right-2.5 z-20 px-3 py-1.5 rounded-full bg-cyan-600/90 hover:bg-cyan-500 text-white text-[11px] font-bold shadow-xl backdrop-blur-md border border-white/30 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+          title="عرض المجسم في غرفتك أو فوق الكتاب بالواقع المعزز الحقيقي"
+        >
+          <span>📱 واقع معزز حقيقي (AR)</span>
+        </button>
+
         {/* Loading Spinner Slot */}
         {isLoading && (
           <div slot="poster" className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm text-slate-300 gap-2 z-10">
