@@ -21,6 +21,7 @@ interface Model3DViewerProps {
   height?: string;
   autoRotate?: boolean;
   interactive?: boolean;
+  transparent?: boolean;
 }
 
 export const Model3DViewer: React.FC<Model3DViewerProps> = ({
@@ -30,6 +31,7 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
   height = '300px',
   autoRotate = true,
   interactive = true,
+  transparent = false,
 }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,11 +72,17 @@ export const Model3DViewer: React.FC<Model3DViewerProps> = ({
 
   return (
     <div 
-      className={`relative w-full rounded-2xl overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border border-slate-800 flex items-center justify-center ${className}`}
+      className={`relative w-full rounded-2xl overflow-hidden flex items-center justify-center ${
+        transparent 
+          ? 'bg-transparent border-0' 
+          : 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border border-slate-800'
+      } ${className}`}
       style={{ height }}
     >
-      {/* Background radial glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.08)_0%,transparent_70%)] pointer-events-none" />
+      {/* Background radial glow (only in non-transparent mode) */}
+      {!transparent && (
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.08)_0%,transparent_70%)] pointer-events-none" />
+      )}
 
       {/* Model-Viewer Component (Standard Web Component) */}
       <model-viewer

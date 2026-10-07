@@ -15,6 +15,7 @@ import { TargetCardsModal } from './components/TargetCardsModal';
 import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { Model3DModal } from './components/Model3DModal';
+import { Holographic3DOverlay } from './components/Holographic3DOverlay';
 import { LessonData } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons } from './data/lessons';
 import { analytics } from './services/analytics';
@@ -35,6 +36,7 @@ export default function App() {
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [activeLesson, setActiveLesson] = useState<LessonData | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
+  const [showHologram3D, setShowHologram3D] = useState<boolean>(true);
 
   // Load custom lessons from storage or content.json on startup
   useEffect(() => {
@@ -53,6 +55,9 @@ export default function App() {
   // When a lesson target is recognized by MindAR or simulator
   const handleTargetDetected = (lesson: LessonData) => {
     setActiveLesson(lesson);
+    if (lesson.model3d?.url) {
+      setShowHologram3D(true);
+    }
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
     }
@@ -126,7 +131,17 @@ export default function App() {
         />
       )}
 
-      {/* 2. Transparent HTML/CSS Overlay (Visible over camera when target is detected) */}
+      {/* 2. Real Holographic 3D AR Layer over Live Camera (100% Transparent, No Dark Window) */}
+      {isCameraActive && activeLesson && activeLesson.model3d && showHologram3D && activeModal === 'none' && (
+        <Holographic3DOverlay
+          model={activeLesson.model3d}
+          lessonTitle={activeLesson.title}
+          audioUrl={activeLesson.audio?.url}
+          onClose={() => setShowHologram3D(false)}
+        />
+      )}
+
+      {/* 3. Transparent HTML/CSS Overlay (Action buttons at bottom of camera screen) */}
       {isCameraActive && activeLesson && activeModal === 'none' && (
         <TransparentOverlay
           lesson={activeLesson}
@@ -134,7 +149,7 @@ export default function App() {
           onOpenImages={() => setActiveModal('images')}
           onOpenAudio={() => setActiveModal('audio')}
           onOpenExplanation={() => setActiveModal('explanation')}
-          onOpenModel3D={() => setActiveModal('model3d')}
+          onOpenModel3D={() => setShowHologram3D((prev) => !prev)}
           onCloseLesson={handleCloseOverlayLesson}
         />
       )}

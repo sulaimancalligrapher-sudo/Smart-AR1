@@ -84,10 +84,10 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                 <button
                   onClick={onOpenModel3D}
                   className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-cyan-600 via-sky-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-600/30 active:scale-95 transition-all cursor-pointer border border-cyan-400/40"
-                  aria-label="عرض المجسم ثلاثي الأبعاد"
+                  aria-label="عرض المجسم ثلاثي الأبعاد فوق الكاميرا"
                 >
                   <Box className="w-4 h-4 text-cyan-200 animate-bounce" />
-                  <span>✨ استعراض المجسم ثلاثي الأبعاد 360° (3D)</span>
+                  <span>✨ إظهار / إخفاء المجسم 360° فوق الكاميرا مباشرة</span>
                 </button>
               )}
 
