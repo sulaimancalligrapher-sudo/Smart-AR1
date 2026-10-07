@@ -17,8 +17,8 @@ export const Holographic3DOverlay: React.FC<Holographic3DOverlayProps> = ({
 }) => {
   return (
     <div className="absolute inset-0 z-40 pointer-events-none flex flex-col items-center justify-between p-3 sm:p-5 select-none animate-fadeIn">
-      {/* 1. Top: Minimal floating title pill */}
-      <div className="pointer-events-auto flex items-center justify-between gap-2 max-w-sm w-full pt-1">
+      {/* 1. Top: Minimal floating title pill positioned BELOW the camera navbar */}
+      <div className="pointer-events-auto flex items-center justify-between gap-2 max-w-sm w-full pt-16 sm:pt-20">
         <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-cyan-500/30 text-white shadow-xl">
           <span className="p-1 rounded-full bg-cyan-500/20 text-cyan-400">
             <Box className="w-4 h-4" />
