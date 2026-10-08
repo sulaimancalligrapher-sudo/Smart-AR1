@@ -58,9 +58,8 @@ export default function App() {
   // When a lesson target is recognized by MindAR or simulator
   const handleTargetDetected = (lesson: LessonData) => {
     setActiveLesson(lesson);
-    // ✅ FIX: Show 3D model automatically when target is detected
-    // The model is loaded onto the MindAR anchor in ARCameraView
-    setShowHologram3D(true);
+    // Initial recognition displays clean floating toolbar; 3D activates on-demand to prevent GPU fighting
+    setShowHologram3D(false);
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
     }
@@ -78,6 +77,8 @@ export default function App() {
       lessonTitle: lesson.title,
       action: 'target_lost'
     });
+    // Note: We retain the activeLesson in state for a smooth student experience
+    // so the overlay doesn't flicker away if the child moves the book slightly.
   };
 
   const handleStartCamera = () => {
@@ -143,7 +144,7 @@ export default function App() {
         />
       )}
 
-      {/* 2. Real Holographic 3D AR Layer over Live Camera */}
+      {/* 2. Real Holographic 3D AR Layer over Live Camera (100% Transparent, No Dark Window) */}
       {isCameraActive && activeLesson && activeLesson.model3d && showHologram3D && activeModal === 'none' && (
         <Holographic3DOverlay
           model={activeLesson.model3d}
@@ -153,7 +154,7 @@ export default function App() {
         />
       )}
 
-      {/* 3. Transparent HTML/CSS Overlay */}
+      {/* 3. Transparent HTML/CSS Overlay (Action buttons at bottom of camera screen) */}
       {isCameraActive && activeLesson && activeModal === 'none' && (
         <TransparentOverlay
           lesson={activeLesson}
@@ -179,7 +180,7 @@ export default function App() {
         />
       )}
 
-      {/* 4. Interactive Content Modals */}
+      {/* 3. Interactive Content Modals (Video, Gallery, Audio, Explanation, 3D Model) */}
       {activeModal === 'model3d' && activeLesson && activeLesson.model3d && (
         <Model3DModal
           model={activeLesson.model3d}
@@ -229,7 +230,7 @@ export default function App() {
         />
       )}
 
-      {/* 5. Utility Modals */}
+      {/* 4. Utility Modals (Printable Targets, Teacher Console, Target Compiler) */}
       {activeModal === 'target_cards' && (
         <TargetCardsModal
           lessons={lessons}
