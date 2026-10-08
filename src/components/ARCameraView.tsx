@@ -60,21 +60,117 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const [showFocusRing, setShowFocusRing] = useState(false);
 
   // ⭐ مراجع جديدة للمجسمات المعلقة ⭐
-  const floatingModelsRef = useRef<Map<number, THREE.Object3D>>(new Map());
+  const floatingModelsRef = useRef<Map<number, any>>(new Map());
   const anchorsRef = useRef<Map<number, any>>(new Map());
-  const currentLessonRef = useRef<LessonData | null>(null);
 
-  // تحديث المرجع عند تغير activeLesson
-  useEffect(() => {
-    currentLessonRef.current = activeLesson;
+  // ⭐ دالة لإنشاء مجسم اختبار بسيط (مكعب ملون) ⭐
+  const createTestModel = useCallback((THREE_NS: any) => {
+    // إنشاء مجموعة
+    const group = new THREE_NS.Group();
     
-    // ⭐ إذا تم تفعيل المجسم المعلق && هناك درس نشط && هناك anchor ⭐
-    if (showFloatingModel && activeLesson && anchorsRef.current.has(activeLesson.targetIndex)) {
-      console.log('🎯 تفعيل المجسم المعلق للدرس:', activeLesson.title);
-      const anchor = anchorsRef.current.get(activeLesson.targetIndex);
-      loadFloatingModel(activeLesson, anchor);
+    // مكعب أساسي
+    const geometry = new THREE_NS.BoxGeometry(0.3, 0.3, 0.3);
+    const material = new THREE_NS.MeshBasicMaterial({ 
+      color: 0x00ffff,
+      wireframe: false
+    });
+    const cube = new THREE_NS.Mesh(geometry, material);
+    cube.position.y = 0.15;
+    group.add(cube);
+    
+    // إطار سلكي
+    const wireGeometry = new THREE_NS.BoxGeometry(0.32, 0.32, 0.32);
+    const wireMaterial = new THREE_NS.MeshBasicMaterial({ 
+      color: 0x00ff88,
+      wireframe: true
+    });
+    const wireframe = new THREE_NS.Mesh(wireGeometry, wireMaterial);
+    wireframe.position.y = 0.15;
+    group.add(wireframe);
+    
+    // كرة صغيرة فوق المكعب
+    const sphereGeometry = new THREE_NS.SphereGeometry(0.08, 16, 16);
+    const sphereMaterial = new THREE_NS.MeshBasicMaterial({ color: 0xff00ff });
+    const sphere = new THREE_NS.Mesh(sphereGeometry, sphereMaterial);
+    sphere.position.y = 0.4;
+    group.add(sphere);
+    
+    return group;
+  }, []);
+
+  // ⭐ دالة لإضافة مجسم بسيط للـ anchor ⭐
+  const addSimpleModelToAnchor = useCallback((lesson: LessonData, anchor: any) => {
+    if (!showFloatingModel) return;
+    
+    if (floatingModelsRef.current.has(lesson.targetIndex)) {
+      console.log('✓ المجسم موجود مسبقاً');
+      return;
     }
-  }, [showFloatingModel, activeLesson]);
+
+    console.log('🎨 إنشاء مجسم اختبار للدرس:', lesson.title);
+
+    try {
+      // استخدام THREE من نفس النسخة التي يستخدمها MindAR
+      const THREE_NS = (window as any).THREE || THREE;
+      
+      const model = createTestModel(THREE_NS);
+      
+      // وضع المجسم فوق الصورة
+      model.position.set(0, 0, 0);
+      
+      // إضافة المجسم للـ anchor
+      anchor.group.add(model);
+      
+      // حفظ المرجع
+      floatingModelsRef.current.set(lesson.targetIndex, model);
+      
+      console.log('✅ تم إضافة المجسم للـ anchor بنجاح!');
+      
+      // دوران تلقائي
+      const animate = () => {
+        if (floatingModelsRef.current.has(lesson.targetIndex)) {
+          model.rotation.y += 0.02;
+          requestAnimationFrame(animate);
+        }
+      };
+      animate();
+      
+    } catch (error) {
+      console.error('❌ خطأ في إنشاء المجسم:', error);
+    }
+  }, [showFloatingModel, createTestModel]);
+
+  // ⭐ دالة لإزالة المجسم ⭐
+  const removeFloatingModel = useCallback((targetIndex: number) => {
+    if (floatingModelsRef.current.has(targetIndex)) {
+      const model = floatingModelsRef.current.get(targetIndex);
+      if (model && model.parent) {
+        model.parent.remove(model);
+      }
+      floatingModelsRef.current.delete(targetIndex);
+      console.log('🗑️ تم إزالة المجسم المعلق');
+    }
+  }, []);
+
+  // تحديث المجسم عند تغير showFloatingModel
+  useEffect(() => {
+    console.log('🔄 showFloatingModel تغير إلى:', showFloatingModel);
+    
+    if (showFloatingModel && activeLesson) {
+      const anchor = anchorsRef.current.get(activeLesson.targetIndex);
+      if (anchor) {
+        console.log('🎯 تفعيل المجسم المعلق للدرس:', activeLesson.title);
+        addSimpleModelToAnchor(activeLesson, anchor);
+      } else {
+        console.warn('⚠️ لا يوجد anchor نشط للدرس');
+      }
+    } else if (!showFloatingModel) {
+      // إزالة جميع المجسمات
+      floatingModelsRef.current.forEach((_, key) => {
+        removeFloatingModel(key);
+      });
+    }
+  }, [showFloatingModel, activeLesson, addSimpleModelToAnchor, removeFloatingModel]);
 
   const applyAutoFocus = useCallback(() => {
     setShowFocusRing(true);
@@ -121,100 +217,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           }
         } catch (_) {}
       });
-    }
-  }, []);
-
-  // ⭐ دالة جديدة: تحميل المجسم 3D وربطه بالـ anchor ⭐
-  const loadFloatingModel = useCallback((lesson: LessonData, anchor: any) => {
-    if (!lesson.model3d) {
-      console.warn('⚠️ الدرس لا يحتوي على مجسم 3D');
-      return;
-    }
-    
-    if (!showFloatingModel) {
-      console.warn('⚠️ المجسم المعلق غير مفعل');
-      return;
-    }
-    
-    // إذا كان المجسم موجوداً مسبقاً → لا نحمله مرة أخرى
-    if (floatingModelsRef.current.has(lesson.targetIndex)) {
-      console.log('✓ المجسم موجود مسبقاً');
-      return;
-    }
-
-    console.log('🔄 بدء تحميل المجسم من:', lesson.model3d.url);
-
-    try {
-      const loader = new GLTFLoader();
-      
-      loader.load(
-        lesson.model3d.url,
-        (gltf) => {
-          console.log('✅ تم تحميل المجسم بنجاح');
-          const model = gltf.scene.clone();
-          
-          // حساب حجم النموذج وضبطه
-          const box = new THREE.Box3().setFromObject(model);
-          const size = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z);
-          
-          // ضبط الحجم ليكون مناسباً (0.5 وحدة)
-          const scale = 0.5 / maxDim;
-          model.scale.set(scale, scale, scale);
-          
-          // وضع المجسم فوق الصورة مباشرة
-          model.position.set(0, 0.3, 0);
-          
-          // إضافة إضاءة للمجسم
-          const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
-          anchor.group.add(ambientLight);
-          
-          const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
-          directionalLight.position.set(1, 2, 1);
-          anchor.group.add(directionalLight);
-          
-          const pointLight = new THREE.PointLight(0x4488ff, 1, 3);
-          pointLight.position.set(0, 1, 0);
-          anchor.group.add(pointLight);
-          
-          // إضافة المجسم للـ anchor (سيتبع الصورة)
-          anchor.group.add(model);
-          
-          // حفظ المرجع
-          floatingModelsRef.current.set(lesson.targetIndex, model);
-          
-          console.log('✅ تم إضافة المجسم للـ anchor');
-          
-          // تفعيل الدوران التلقائي إذا كان مفعلاً
-          if (lesson.model3d.autoRotate) {
-            const animate = () => {
-              if (floatingModelsRef.current.has(lesson.targetIndex)) {
-                model.rotation.y += 0.01;
-                requestAnimationFrame(animate);
-              }
-            };
-            animate();
-          }
-        },
-        undefined,
-        (error) => {
-          console.error('❌ فشل تحميل المجسم:', error);
-        }
-      );
-    } catch (error) {
-      console.error('❌ خطأ في تحميل المجسم:', error);
-    }
-  }, [showFloatingModel]);
-
-  // ⭐ دالة جديدة: إزالة المجسم المعلق ⭐
-  const removeFloatingModel = useCallback((targetIndex: number) => {
-    if (floatingModelsRef.current.has(targetIndex)) {
-      const model = floatingModelsRef.current.get(targetIndex);
-      if (model && model.parent) {
-        model.parent.remove(model);
-      }
-      floatingModelsRef.current.delete(targetIndex);
-      console.log('🗑️ تم إزالة المجسم المعلق');
     }
   }, []);
 
@@ -303,7 +305,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               : index;
             const anchor = mindarThree.addAnchor(targetIdx);
             
-            // ⭐ حفظ الـ anchor في المرجع ⭐
+            // ⭐ حفظ الـ anchor ⭐
             anchorsRef.current.set(targetIdx, anchor);
 
             let targetLostTimer: any = null;
@@ -321,7 +323,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               }
               
               console.log('🎯 تم التعرف على الصورة:', lesson.title);
-              
               onTargetDetected(lesson);
             };
 
@@ -330,7 +331,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               if (targetLostTimer) clearTimeout(targetLostTimer);
               targetLostTimer = setTimeout(() => {
                 if (!isCancelled) {
-                  // ⭐ إزالة المجسم المعلق عند فقدان الصورة ⭐
                   removeFloatingModel(targetIdx);
                   onTargetLost(lesson);
                 }
@@ -485,7 +485,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-      // ⭐ تنظيف المجسمات المعلقة ⭐
       floatingModelsRef.current.clear();
       anchorsRef.current.clear();
     };
@@ -534,7 +533,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           onClick={onCloseCamera}
           className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
           title="الخروج من الكاميرا"
-          aria-label="الخروج من الكاميرا"
         >
           <X className="w-5 h-5" />
         </button>
@@ -559,8 +557,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <button
             onClick={applyAutoFocus}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="إعادة ضبط الفوكس والوضوح التلقائي"
-            aria-label="ضبط الفوكس"
+            title="ضبط الفوكس"
           >
             <Focus className="w-4 h-4 text-amber-400" />
           </button>
@@ -568,8 +565,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <button
             onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title={facingMode === 'environment' ? 'التبديل إلى الكاميرا الأمامية' : 'التبديل إلى الكاميرا الخلفية'}
-            aria-label="تبديل الكاميرا"
+            title="تبديل الكاميرا"
           >
             <RefreshCw className="w-4 h-4 text-cyan-400" />
           </button>
@@ -578,7 +574,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             onClick={onOpenTargetCards}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
             title="عرض بطاقات الدروس"
-            aria-label="عرض بطاقات الدروس"
           >
             <Eye className="w-4 h-4 text-sky-400" />
           </button>
@@ -587,7 +582,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             onClick={onOpenTeacherConsole}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
             title="لوحة المعلم"
-            aria-label="لوحة المعلم"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
           </button>
@@ -639,7 +633,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <button
             onClick={onCloseCamera}
             className="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
-            title="إلغاء والعودة"
           >
             <X className="w-5 h-5" />
           </button>
