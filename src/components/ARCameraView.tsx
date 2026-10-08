@@ -157,7 +157,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       }
 
       // Default facing mode: ALWAYS environment (rear camera) on mobile, tablet & desktop
-      // only switch to user camera if the user explicitly requests it or device strictly lacks rear camera
       const targetFacingUser = facingMode === 'user';
 
       // 1. Wait for MindARThree to be ready from module imports (up to 4 seconds)
@@ -179,7 +178,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             uiLoading: 'no'
           });
 
-          // Always enforce rear camera (environment) unless user explicitly toggled to front
           mindarThree.shouldFaceUser = targetFacingUser;
 
           mindarThreeRef.current = mindarThree;
@@ -208,6 +206,58 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             const anchor = mindarThree.addAnchor(targetIdx);
 
             let targetLostTimer: any = null;
+
+            // ✅ FIX: Load 3D model directly onto the anchor
+            // This makes the model appear on top of the book and track its movement
+            if (lesson.model3d?.url) {
+              gltfLoader.load(
+                lesson.model3d.url,
+                (gltf) => {
+                  const model = gltf.scene;
+
+                  // Compute bounding box and center the model
+                  model.updateMatrixWorld(true);
+                  const box = new THREE.Box3().setFromObject(model);
+                  const center = box.getCenter(new THREE.Vector3());
+                  const size = box.getSize(new THREE.Vector3());
+
+                  // Center the model at origin
+                  model.position.x = -center.x;
+                  model.position.y = -center.y;
+                  model.position.z = -center.z;
+
+                  // Normalize scale to fit nicely on the book
+                  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                  const normalizedScale = 1.0 / maxDim;
+                  model.scale.setScalar(normalizedScale);
+
+                  // Position slightly above the target surface
+                  model.position.y += (size.y * normalizedScale) / 2;
+
+                  // ✅ KEY FIX: Add model to anchor's Three.js group
+                  // This makes it track the target image automatically
+                  anchor.group.add(model);
+
+                  // Optional: Add auto-rotation animation
+                  if (lesson.model3d.autoRotate) {
+                    const animateRotation = () => {
+                      if (!isCancelled) {
+                        model.rotation.y += 0.01;
+                        requestAnimationFrame(animateRotation);
+                      }
+                    };
+                    animateRotation();
+                  }
+
+                  // Store reference for cleanup
+                  animatedModels.push(model);
+                },
+                undefined,
+                (err) => {
+                  console.warn(`Failed to load 3D model for ${lesson.title}:`, err);
+                }
+              );
+            }
 
             anchor.onTargetFound = () => {
               if (isCancelled) return;
@@ -321,7 +371,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             audio: false
           });
         } catch (initialErr) {
-          // If specific facingMode failed, fallback to any available camera
           console.warn('Initial facingMode stream failed, trying any camera:', initialErr);
           stream = await navigator.mediaDevices.getUserMedia({
             video: { width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -467,17 +516,17 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <button
             onClick={applyAutoFocus}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="إعادة ضبط الفوكس والوضوح التلقائي (انقر في أي مكان على الشاشة أيضاً)"
+            title="إعادة ضبط الفوكس والوضوح التلقائي"
             aria-label="ضبط الفوكس"
           >
             <Focus className="w-4 h-4 text-amber-400" />
           </button>
 
-          {/* Flip Camera Button (Rear / Front) */}
+          {/* Flip Camera Button */}
           <button
             onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title={facingMode === 'environment' ? 'التبديل إلى الكاميرا الأمامية' : 'التبديل إلى الكاميرا الخلفية (الافتراضية)'}
+            title={facingMode === 'environment' ? 'التبديل إلى الكاميرا الأمامية' : 'التبديل إلى الكاميرا الخلفية'}
             aria-label="تبديل الكاميرا"
           >
             <RefreshCw className="w-4 h-4 text-cyan-400" />
@@ -487,29 +536,28 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <button
             onClick={onOpenTargetCards}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="عرض بطاقات الدروس للطباعة أو المسح"
+            title="عرض بطاقات الدروس"
             aria-label="عرض بطاقات الدروس"
           >
             <Eye className="w-4 h-4 text-sky-400" />
           </button>
 
-          {/* Teacher / Sheets Analytics Console */}
+          {/* Teacher Console */}
           <button
             onClick={onOpenTeacherConsole}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="لوحة المعلم ومحرر الدروس"
-            aria-label="لوحة المعلم ومحرر الدروس"
+            title="لوحة المعلم"
+            aria-label="لوحة المعلم"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
           </button>
         </div>
       </div>
 
-      {/* Target Scanning Reticle / Viewfinder Frame */}
+      {/* Target Scanning Reticle */}
       {!activeLesson && !cameraLoading && !cameraError && (
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center p-4">
-          <div className="relative w-64 h-64 sm:w-80 sm:h-80 border-2 border-dashed border-sky-400/50 rounded-3xl animate-scan-glow flex flex-col items-center justify-between p-4 shadow-2xl">
-            {/* Viewfinder Corners */}
+          <div className="relative w-64 h-64 sm:w-80 sm:h-80 border-2 border-dashed border-sky-400/50 rounded-3xl flex flex-col items-center justify-between p-4 shadow-2xl">
             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-sky-400 rounded-tr-2xl" />
             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-sky-400 rounded-tl-2xl" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-sky-400 rounded-br-2xl" />
@@ -526,33 +574,30 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             </div>
           </div>
 
-          {/* Scanning Guidance Pill */}
           <div className="mt-4 pointer-events-none">
             <span className="px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-[11px] text-sky-200 border border-sky-400/30 shadow-lg text-center block">
               📖 قرّب الكاميرا ببطء من صورة الدرس حتى تظهر كاملة في المربع
             </span>
           </div>
 
-          {/* Quick Helper Simulator Trigger */}
           {lessons.length > 0 && (
             <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
               <button
                 onClick={handleSimulateFirstLesson}
                 className="py-1.5 px-4 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                title="تجربة تفاعلية مباشرة للدرس"
+                title="تجربة تفاعلية مباشرة"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-300" />
-                <span>⚡ تجربة التعرف الفوري بنقرة واحدة (محاكاة الكاميرا)</span>
+                <span>⚡ تجربة التعرف الفوري بنقرة واحدة</span>
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Camera Loading Overlay with Close Button & Timeouts */}
+      {/* Camera Loading Overlay */}
       {cameraLoading && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white">
-          {/* Top Close Button so user is never trapped */}
           <button
             onClick={onCloseCamera}
             className="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
@@ -596,7 +641,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
       )}
 
-      {/* Camera Error Overlay with Direct Action Buttons */}
+      {/* Camera Error Overlay */}
       {cameraError && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white space-y-4">
           <div className="w-14 h-14 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40">
@@ -610,10 +655,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             
             <p className="text-xs text-slate-300 max-w-sm leading-relaxed">
               {cameraError === 'EMPTY_LESSONS' && (
-                'تم إفراغ النماذج التجريبية السابقة بنجاح. يرجى فتح محرر الدروس لإضافة أول درس وصورته من كتابك المدرسي لتتمكن الكاميرا من البحث عنها.'
+                'تم إفراغ النماذج التجريبية السابقة بنجاح. يرجى فتح محرر الدروس لإضافة أول درس.'
               )}
               {cameraError === 'PERMISSION_DENIED' && (
-                'تم رفض إذن الوصول للكاميرا. يرجى الضغط على علامة القفل 🔒 أو الكاميرا بجانب رابط المتصفح واختيار (سماح / Allow) ثم إعادة التجربة.'
+                'تم رفض إذن الوصول للكاميرا. يرجى الضغط على علامة القفل 🔒 بجانب رابط المتصفح واختيار (سماح / Allow).'
               )}
               {cameraError === 'NO_CAMERA' && (
                 'لم يتم العثور على كاميرا متصلة بجهازك الحالي. يمكنك تجربة المحاكاة المباشرة بالزر أدناه.'
