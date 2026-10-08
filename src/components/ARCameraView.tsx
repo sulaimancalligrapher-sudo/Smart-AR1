@@ -13,9 +13,8 @@ interface ARCameraViewProps {
   onTargetDetected: (lesson: LessonData) => void;
   onTargetLost: (lesson: LessonData) => void;
   onCloseCamera: () => void;
-  onOpenTargetCards?: () => void;
-  onOpenTeacherConsole?: () => void;
-  isStudentMode?: boolean;
+  onOpenTargetCards: () => void;
+  onOpenTeacherConsole: () => void;
 }
 
 // Audio chime when target is matched
@@ -45,8 +44,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   onTargetLost,
   onCloseCamera,
   onOpenTargetCards,
-  onOpenTeacherConsole,
-  isStudentMode = false
+  onOpenTeacherConsole
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
@@ -199,87 +197,15 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           fillLight.position.set(0, -10, -5);
           scene.add(fillLight);
 
-          // IMPORTANT: 3D AR models must live inside MindAR's anchor.group.
-          // A separate Three.js canvas/scene can display a model, but it cannot
-          // follow the printed target when the phone moves. We therefore load
-          // each lesson's GLB and attach it directly to its MindAR anchor.
-          const animatedModels: Array<{ pivot: THREE.Object3D; speed: number }> = [];
+          const animatedModels: THREE.Object3D[] = [];
           const gltfLoader = new GLTFLoader();
-          const loadedModelUrls = new Map<string, Promise<THREE.Object3D>>();
 
-          const loadModelForAnchor = (lesson: LessonData, anchor: any) => {
-            const url = lesson.model3d?.url;
-            if (!url || !anchor?.group) return;
-
-            const cached = loadedModelUrls.get(url);
-            const loadPromise = cached || new Promise<THREE.Object3D>((resolve, reject) => {
-              gltfLoader.load(
-                url,
-                (gltf) => resolve(gltf.scene),
-                undefined,
-                (error) => reject(error)
-              );
-            });
-
-            if (!cached) loadedModelUrls.set(url, loadPromise);
-
-            loadPromise.then((sourceModel) => {
-              if (isCancelled || !anchor?.group) return;
-
-              // Clone the loaded scene so the same model URL can be used by
-              // more than one target without sharing transforms.
-              const model = sourceModel.clone(true);
-              model.visible = false;
-
-              // Normalize the model to a predictable size relative to the
-              // MindAR target (target width is approximately 1 world unit).
-              model.updateMatrixWorld(true);
-              const box = new THREE.Box3().setFromObject(model);
-              const center = box.getCenter(new THREE.Vector3());
-              const size = box.getSize(new THREE.Vector3());
-              const maxDim = Math.max(size.x, size.y, size.z) || 1;
-
-              model.position.set(-center.x, -center.y, -center.z);
-              model.scale.setScalar(0.55 / maxDim);
-
-              // A small positive Z offset places the model just above the
-              // printed target instead of fighting with the target plane.
-              const pivot = new THREE.Group();
-              pivot.position.set(0, 0, 0.08);
-              pivot.add(model);
-              anchor.group.add(pivot);
-
-              animatedModels.push({
-                pivot,
-                speed: lesson.model3d?.autoRotate ? 0.008 : 0
-              });
-
-              // Store references on the anchor so target callbacks can show/
-              // hide the exact model belonging to this lesson.
-              anchor.__arModel = pivot;
-              anchor.__arModelReady = true;
-              anchor.__arModelLoadError = false;
-              pivot.visible = Boolean(anchor.__targetFound);
-            }).catch((error) => {
-              anchor.__arModelLoadError = true;
-              console.warn(`تعذر تحميل المجسم للدرس ${lesson.targetId}:`, error);
-            });
-          };
-
-          // Attach anchors and their real AR models for all configured lessons.
+          // Attach anchors safely for all configured lessons
           activeLessons.forEach((lesson, index) => {
             const targetIdx = typeof lesson.targetIndex === 'number' && !isNaN(lesson.targetIndex)
               ? lesson.targetIndex
               : index;
-            const anchor = mindarThree.addAnchor(targetIdx) as any;
-            anchor.__lesson = lesson;
-            anchor.__arModel = null;
-            anchor.__arModelReady = false;
-            anchor.__targetFound = false;
-
-            // Start loading immediately so the model is ready when the target
-            // is first recognized. Loading is done only once per URL.
-            loadModelForAnchor(lesson, anchor);
+            const anchor = mindarThree.addAnchor(targetIdx);
 
             let targetLostTimer: any = null;
 
@@ -289,12 +215,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 clearTimeout(targetLostTimer);
                 targetLostTimer = null;
               }
-
-              anchor.__targetFound = true;
-              if (anchor.__arModel) {
-                anchor.__arModel.visible = true;
-              }
-
               setIsScanning(false);
               playMatchChime();
               if ('vibrate' in navigator) {
@@ -309,8 +229,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               if (targetLostTimer) clearTimeout(targetLostTimer);
               targetLostTimer = setTimeout(() => {
                 if (!isCancelled) {
-                  anchor.__targetFound = false;
-                  if (anchor.__arModel) anchor.__arModel.visible = false;
                   onTargetLost(lesson);
                 }
               }, 1500);
@@ -371,9 +289,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           // MindAR animation loop: pure camera tracking rendering (ultra lightweight, 60fps)
           renderer.setAnimationLoop(() => {
-            for (const item of animatedModels) {
-              if (item.speed !== 0) item.pivot.rotation.y += item.speed;
-            }
             renderer.render(scene, camera);
           });
 
@@ -568,29 +483,25 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             <RefreshCw className="w-4 h-4 text-cyan-400" />
           </button>
 
-          {/* Target Cards View (Hidden for students) */}
-          {!isStudentMode && onOpenTargetCards && (
-            <button
-              onClick={onOpenTargetCards}
-              className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-              title="عرض بطاقات الدروس للطباعة أو المسح"
-              aria-label="عرض بطاقات الدروس"
-            >
-              <Eye className="w-4 h-4 text-sky-400" />
-            </button>
-          )}
+          {/* Target Cards View */}
+          <button
+            onClick={onOpenTargetCards}
+            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            title="عرض بطاقات الدروس للطباعة أو المسح"
+            aria-label="عرض بطاقات الدروس"
+          >
+            <Eye className="w-4 h-4 text-sky-400" />
+          </button>
 
-          {/* Teacher / Sheets Analytics Console (Hidden for students) */}
-          {!isStudentMode && onOpenTeacherConsole && (
-            <button
-              onClick={onOpenTeacherConsole}
-              className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-              title="لوحة المعلم ومحرر الدروس"
-              aria-label="لوحة المعلم ومحرر الدروس"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            </button>
-          )}
+          {/* Teacher / Sheets Analytics Console */}
+          <button
+            onClick={onOpenTeacherConsole}
+            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            title="لوحة المعلم ومحرر الدروس"
+            aria-label="لوحة المعلم ومحرر الدروس"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+          </button>
         </div>
       </div>
 
@@ -610,7 +521,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
             <div className="text-center">
               <span className="text-[10px] text-white/90 bg-black/60 px-2.5 py-1 rounded-md border border-white/10 block">
-                {isStudentMode ? 'الماسح الذكي نشط' : 'MindAR Image Tracking نشط'}
+                MindAR Image Tracking نشط
               </span>
             </div>
           </div>
@@ -622,8 +533,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             </span>
           </div>
 
-          {/* Quick Helper Simulator Trigger (Hidden for students) */}
-          {!isStudentMode && lessons.length > 0 && (
+          {/* Quick Helper Simulator Trigger */}
+          {lessons.length > 0 && (
             <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
               <button
                 onClick={handleSimulateFirstLesson}
