@@ -16,6 +16,7 @@ import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
+import { StudentQRModal } from './components/StudentQRModal';
 import { LessonData } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
@@ -29,14 +30,38 @@ type ActiveModalType =
   | 'model3d'
   | 'target_cards'
   | 'teacher_console'
-  | 'compiler';
+  | 'compiler'
+  | 'student_qr';
 
 export default function App() {
   const [lessons, setLessons] = useState<LessonData[]>(() => {
     const stored = getStoredLessons();
     return stored && stored.length > 0 ? stored : DEFAULT_LESSONS;
   });
-  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+
+  // Check if URL contains ?mode=student or ?camera=1 or /camera or hash #camera
+  const [isStudentMode, setIsStudentMode] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get('mode') === 'student' ||
+      params.get('student') === 'true' ||
+      params.get('camera') === '1' ||
+      window.location.pathname.endsWith('/camera') ||
+      window.location.hash.includes('camera')
+    );
+  });
+
+  // Automatically start camera if in student mode or requested via URL
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get('mode') === 'student' ||
+      params.get('camera') === '1' ||
+      params.get('student') === 'true' ||
+      window.location.pathname.endsWith('/camera') ||
+      window.location.hash.includes('camera')
+    );
+  });
   const [activeLesson, setActiveLesson] = useState<LessonData | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
   const [showHologram3D, setShowHologram3D] = useState<boolean>(false);
@@ -129,6 +154,7 @@ export default function App() {
           onOpenTargetCards={() => setActiveModal('target_cards')}
           onOpenTeacherConsole={() => setActiveModal('teacher_console')}
           onOpenCompiler={() => setActiveModal('compiler')}
+          onOpenStudentQR={() => setActiveModal('student_qr')}
           onSimulateLesson={handleSimulateLesson}
           onPurgeAllData={handlePurgeAllData}
         />
@@ -139,8 +165,9 @@ export default function App() {
           onTargetDetected={handleTargetDetected}
           onTargetLost={handleTargetLost}
           onCloseCamera={handleCloseCamera}
-          onOpenTargetCards={() => setActiveModal('target_cards')}
-          onOpenTeacherConsole={() => setActiveModal('teacher_console')}
+          onOpenTargetCards={!isStudentMode ? () => setActiveModal('target_cards') : undefined}
+          onOpenTeacherConsole={!isStudentMode ? () => setActiveModal('teacher_console') : undefined}
+          isStudentMode={isStudentMode}
         />
       )}
 
@@ -253,6 +280,10 @@ export default function App() {
 
       {activeModal === 'compiler' && (
         <MindARCompilerModal onClose={() => setActiveModal('none')} />
+      )}
+
+      {activeModal === 'student_qr' && (
+        <StudentQRModal onClose={() => setActiveModal('none')} />
       )}
     </div>
   );

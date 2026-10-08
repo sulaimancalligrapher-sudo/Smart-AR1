@@ -13,8 +13,9 @@ interface ARCameraViewProps {
   onTargetDetected: (lesson: LessonData) => void;
   onTargetLost: (lesson: LessonData) => void;
   onCloseCamera: () => void;
-  onOpenTargetCards: () => void;
-  onOpenTeacherConsole: () => void;
+  onOpenTargetCards?: () => void;
+  onOpenTeacherConsole?: () => void;
+  isStudentMode?: boolean;
 }
 
 // Audio chime when target is matched
@@ -44,7 +45,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   onTargetLost,
   onCloseCamera,
   onOpenTargetCards,
-  onOpenTeacherConsole
+  onOpenTeacherConsole,
+  isStudentMode = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
@@ -483,25 +485,29 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             <RefreshCw className="w-4 h-4 text-cyan-400" />
           </button>
 
-          {/* Target Cards View */}
-          <button
-            onClick={onOpenTargetCards}
-            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="عرض بطاقات الدروس للطباعة أو المسح"
-            aria-label="عرض بطاقات الدروس"
-          >
-            <Eye className="w-4 h-4 text-sky-400" />
-          </button>
+          {/* Target Cards View (Hidden for students) */}
+          {!isStudentMode && onOpenTargetCards && (
+            <button
+              onClick={onOpenTargetCards}
+              className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+              title="عرض بطاقات الدروس للطباعة أو المسح"
+              aria-label="عرض بطاقات الدروس"
+            >
+              <Eye className="w-4 h-4 text-sky-400" />
+            </button>
+          )}
 
-          {/* Teacher / Sheets Analytics Console */}
-          <button
-            onClick={onOpenTeacherConsole}
-            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="لوحة المعلم ومحرر الدروس"
-            aria-label="لوحة المعلم ومحرر الدروس"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-          </button>
+          {/* Teacher / Sheets Analytics Console (Hidden for students) */}
+          {!isStudentMode && onOpenTeacherConsole && (
+            <button
+              onClick={onOpenTeacherConsole}
+              className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+              title="لوحة المعلم ومحرر الدروس"
+              aria-label="لوحة المعلم ومحرر الدروس"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -521,7 +527,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
             <div className="text-center">
               <span className="text-[10px] text-white/90 bg-black/60 px-2.5 py-1 rounded-md border border-white/10 block">
-                MindAR Image Tracking نشط
+                {isStudentMode ? 'الماسح الذكي نشط' : 'MindAR Image Tracking نشط'}
               </span>
             </div>
           </div>
@@ -533,8 +539,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             </span>
           </div>
 
-          {/* Quick Helper Simulator Trigger */}
-          {lessons.length > 0 && (
+          {/* Quick Helper Simulator Trigger (Hidden for students) */}
+          {!isStudentMode && lessons.length > 0 && (
             <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
               <button
                 onClick={handleSimulateFirstLesson}
