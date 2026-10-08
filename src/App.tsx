@@ -40,8 +40,10 @@ export default function App() {
   const [activeLesson, setActiveLesson] = useState<LessonData | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
   const [showHologram3D, setShowHologram3D] = useState<boolean>(false);
+  
+  // ⭐ حالة جديدة: المجسم المعلق فوق الصورة ⭐
+  const [showFloatingModel, setShowFloatingModel] = useState<boolean>(false);
 
-  // Load custom lessons from storage or content.json on startup
   useEffect(() => {
     fetchLessons().then((loadedLessons) => {
       if (loadedLessons) {
@@ -55,10 +57,8 @@ export default function App() {
     saveStoredLessons(updated);
   };
 
-  // When a lesson target is recognized by MindAR or simulator
   const handleTargetDetected = (lesson: LessonData) => {
     setActiveLesson(lesson);
-    // Initial recognition displays clean floating toolbar; 3D activates on-demand to prevent GPU fighting
     setShowHologram3D(false);
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
@@ -70,20 +70,18 @@ export default function App() {
     });
   };
 
-  // When camera loses view of the target
   const handleTargetLost = (lesson: LessonData) => {
     analytics.trackEvent({
       targetId: lesson.targetId,
       lessonTitle: lesson.title,
       action: 'target_lost'
     });
-    // Note: We retain the activeLesson in state for a smooth student experience
-    // so the overlay doesn't flicker away if the child moves the book slightly.
   };
 
   const handleStartCamera = () => {
     setIsCameraActive(true);
     setShowHologram3D(false);
+    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
     setActiveModal('none');
   };
 
@@ -91,6 +89,7 @@ export default function App() {
     setIsCameraActive(false);
     setActiveLesson(null);
     setShowHologram3D(false);
+    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
     setActiveModal('none');
   };
 
@@ -109,7 +108,14 @@ export default function App() {
     }
     setActiveLesson(null);
     setShowHologram3D(false);
+    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
     setActiveModal('none');
+  };
+
+  // ⭐ دالة جديدة: تبديل المجسم المعلق ⭐
+  const handleToggleFloatingModel = () => {
+    setShowFloatingModel(prev => !prev);
+    setShowHologram3D(false); // إلغاء تفعيل الوضع الآخر
   };
 
   const handlePurgeAllData = async () => {
@@ -141,10 +147,11 @@ export default function App() {
           onCloseCamera={handleCloseCamera}
           onOpenTargetCards={() => setActiveModal('target_cards')}
           onOpenTeacherConsole={() => setActiveModal('teacher_console')}
+          showFloatingModel={showFloatingModel} // ⭐ تمرير الحالة ⭐
         />
       )}
 
-      {/* 2. Real Holographic 3D AR Layer over Live Camera (100% Transparent, No Dark Window) */}
+      {/* 2. Real Holographic 3D AR Layer over Live Camera */}
       {isCameraActive && activeLesson && activeLesson.model3d && showHologram3D && activeModal === 'none' && (
         <Holographic3DOverlay
           model={activeLesson.model3d}
@@ -154,33 +161,42 @@ export default function App() {
         />
       )}
 
-      {/* 3. Transparent HTML/CSS Overlay (Action buttons at bottom of camera screen) */}
+      {/* 3. Transparent HTML/CSS Overlay */}
       {isCameraActive && activeLesson && activeModal === 'none' && (
         <TransparentOverlay
           lesson={activeLesson}
           isModel3DActive={showHologram3D}
+          isFloatingModelActive={showFloatingModel} // ⭐ تمرير الحالة ⭐
           onOpenVideo={() => {
             setShowHologram3D(false);
+            setShowFloatingModel(false);
             setActiveModal('video');
           }}
           onOpenImages={() => {
             setShowHologram3D(false);
+            setShowFloatingModel(false);
             setActiveModal('images');
           }}
           onOpenAudio={() => {
             setShowHologram3D(false);
+            setShowFloatingModel(false);
             setActiveModal('audio');
           }}
           onOpenExplanation={() => {
             setShowHologram3D(false);
+            setShowFloatingModel(false);
             setActiveModal('explanation');
           }}
-          onOpenModel3D={() => setShowHologram3D((prev) => !prev)}
+          onOpenModel3D={() => {
+            setShowFloatingModel(false);
+            setShowHologram3D((prev) => !prev);
+          }}
+          onToggleFloatingModel={handleToggleFloatingModel} // ⭐ تمرير الدالة ⭐
           onCloseLesson={handleCloseOverlayLesson}
         />
       )}
 
-      {/* 3. Interactive Content Modals (Video, Gallery, Audio, Explanation, 3D Model) */}
+      {/* 4. Interactive Content Modals */}
       {activeModal === 'model3d' && activeLesson && activeLesson.model3d && (
         <Model3DModal
           model={activeLesson.model3d}
@@ -230,7 +246,7 @@ export default function App() {
         />
       )}
 
-      {/* 4. Utility Modals (Printable Targets, Teacher Console, Target Compiler) */}
+      {/* 5. Utility Modals */}
       {activeModal === 'target_cards' && (
         <TargetCardsModal
           lessons={lessons}
