@@ -61,24 +61,18 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
   // ⭐ مراجع جديدة للمجسمات المعلقة ⭐
   const floatingModelsRef = useRef<Map<number, THREE.Object3D>>(new Map());
-  const activeAnchorRef = useRef<any>(null);
-  const showFloatingModelRef = useRef<boolean>(showFloatingModel);
+  const anchorsRef = useRef<Map<number, any>>(new Map());
+  const currentLessonRef = useRef<LessonData | null>(null);
 
-  // تحديث المرجع عند تغير prop
+  // تحديث المرجع عند تغير activeLesson
   useEffect(() => {
-    showFloatingModelRef.current = showFloatingModel;
+    currentLessonRef.current = activeLesson;
     
-    // إذا تم إيقاف المجسم المعلق → إزالة المجسمات من المشهد
-    if (!showFloatingModel) {
-      floatingModelsRef.current.forEach((model) => {
-        if (model.parent) {
-          model.parent.remove(model);
-        }
-      });
-      floatingModelsRef.current.clear();
-    } else if (activeAnchorRef.current && activeLesson?.model3d) {
-      // إذا تم تفعيل المجسم المعلق → تحميله
-      loadFloatingModel(activeLesson, activeAnchorRef.current);
+    // ⭐ إذا تم تفعيل المجسم المعلق && هناك درس نشط && هناك anchor ⭐
+    if (showFloatingModel && activeLesson && anchorsRef.current.has(activeLesson.targetIndex)) {
+      console.log('🎯 تفعيل المجسم المعلق للدرس:', activeLesson.title);
+      const anchor = anchorsRef.current.get(activeLesson.targetIndex);
+      loadFloatingModel(activeLesson, anchor);
     }
   }, [showFloatingModel, activeLesson]);
 
@@ -132,10 +126,23 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
   // ⭐ دالة جديدة: تحميل المجسم 3D وربطه بالـ anchor ⭐
   const loadFloatingModel = useCallback((lesson: LessonData, anchor: any) => {
-    if (!lesson.model3d || !showFloatingModelRef.current) return;
+    if (!lesson.model3d) {
+      console.warn('⚠️ الدرس لا يحتوي على مجسم 3D');
+      return;
+    }
+    
+    if (!showFloatingModel) {
+      console.warn('⚠️ المجسم المعلق غير مفعل');
+      return;
+    }
     
     // إذا كان المجسم موجوداً مسبقاً → لا نحمله مرة أخرى
-    if (floatingModelsRef.current.has(lesson.targetIndex)) return;
+    if (floatingModelsRef.current.has(lesson.targetIndex)) {
+      console.log('✓ المجسم موجود مسبقاً');
+      return;
+    }
+
+    console.log('🔄 بدء تحميل المجسم من:', lesson.model3d.url);
 
     try {
       const loader = new GLTFLoader();
@@ -143,6 +150,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       loader.load(
         lesson.model3d.url,
         (gltf) => {
+          console.log('✅ تم تحميل المجسم بنجاح');
           const model = gltf.scene.clone();
           
           // حساب حجم النموذج وضبطه
@@ -175,6 +183,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           // حفظ المرجع
           floatingModelsRef.current.set(lesson.targetIndex, model);
           
+          console.log('✅ تم إضافة المجسم للـ anchor');
+          
           // تفعيل الدوران التلقائي إذا كان مفعلاً
           if (lesson.model3d.autoRotate) {
             const animate = () => {
@@ -188,13 +198,13 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         },
         undefined,
         (error) => {
-          console.warn('Failed to load floating 3D model:', error);
+          console.error('❌ فشل تحميل المجسم:', error);
         }
       );
     } catch (error) {
-      console.warn('Error loading floating model:', error);
+      console.error('❌ خطأ في تحميل المجسم:', error);
     }
-  }, []);
+  }, [showFloatingModel]);
 
   // ⭐ دالة جديدة: إزالة المجسم المعلق ⭐
   const removeFloatingModel = useCallback((targetIndex: number) => {
@@ -204,6 +214,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         model.parent.remove(model);
       }
       floatingModelsRef.current.delete(targetIndex);
+      console.log('🗑️ تم إزالة المجسم المعلق');
     }
   }, []);
 
@@ -291,6 +302,9 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               ? lesson.targetIndex
               : index;
             const anchor = mindarThree.addAnchor(targetIdx);
+            
+            // ⭐ حفظ الـ anchor في المرجع ⭐
+            anchorsRef.current.set(targetIdx, anchor);
 
             let targetLostTimer: any = null;
 
@@ -306,11 +320,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 try { navigator.vibrate(100); } catch (_) {}
               }
               
-              // ⭐ حفظ الـ anchor النشط وتحميل المجسم المعلق ⭐
-              activeAnchorRef.current = anchor;
-              if (showFloatingModelRef.current && lesson.model3d) {
-                loadFloatingModel(lesson, anchor);
-              }
+              console.log('🎯 تم التعرف على الصورة:', lesson.title);
               
               onTargetDetected(lesson);
             };
@@ -322,7 +332,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 if (!isCancelled) {
                   // ⭐ إزالة المجسم المعلق عند فقدان الصورة ⭐
                   removeFloatingModel(targetIdx);
-                  activeAnchorRef.current = null;
                   onTargetLost(lesson);
                 }
               }, 1500);
@@ -478,6 +487,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       }
       // ⭐ تنظيف المجسمات المعلقة ⭐
       floatingModelsRef.current.clear();
+      anchorsRef.current.clear();
     };
   }, [facingMode, lessons.length]);
 
