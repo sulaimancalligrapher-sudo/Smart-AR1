@@ -17,6 +17,7 @@ import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
 import { StudentQRModal } from './components/StudentQRModal';
+import { StudentExitScreen } from './components/StudentExitScreen';
 import { LessonData } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
@@ -50,6 +51,8 @@ export default function App() {
       window.location.hash.includes('camera')
     );
   });
+
+  const [isStudentExited, setIsStudentExited] = useState<boolean>(false);
 
   // Automatically start camera if in student mode or requested via URL
   const [isCameraActive, setIsCameraActive] = useState<boolean>(() => {
@@ -108,11 +111,25 @@ export default function App() {
 
   const handleStartCamera = () => {
     setIsCameraActive(true);
+    setIsStudentExited(false);
     setShowHologram3D(false);
     setActiveModal('none');
   };
 
   const handleCloseCamera = () => {
+    if (isStudentMode) {
+      // In student mode: attempt browser tab closure, and display clean student exit screen
+      try {
+        window.close();
+      } catch (_) {}
+      setIsStudentExited(true);
+      setIsCameraActive(false);
+      setActiveLesson(null);
+      setShowHologram3D(false);
+      setActiveModal('none');
+      return;
+    }
+
     setIsCameraActive(false);
     setActiveLesson(null);
     setShowHologram3D(false);
@@ -146,8 +163,10 @@ export default function App() {
 
   return (
     <div className="relative w-full h-full min-h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* 1. Main View: Welcome Screen OR Live AR Camera View */}
-      {!isCameraActive ? (
+      {/* 1. Main View: Welcome Screen OR Live AR Camera View OR Student Exit Screen */}
+      {isStudentMode && (!isCameraActive || isStudentExited) ? (
+        <StudentExitScreen onReopenCamera={handleStartCamera} />
+      ) : !isCameraActive ? (
         <WelcomeScreen
           lessons={lessons}
           onStartCamera={handleStartCamera}
