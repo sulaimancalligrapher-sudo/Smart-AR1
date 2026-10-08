@@ -63,42 +63,51 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const floatingModelsRef = useRef<Map<number, any>>(new Map());
   const anchorsRef = useRef<Map<number, any>>(new Map());
 
-  // ⭐ دالة لإنشاء مجسم اختبار بسيط (مكعب ملون) ⭐
-  const createTestModel = useCallback((THREE_NS: any) => {
+  // ⭐ دالة لإنشاء مجسم اختبار باستخدام THREE_MINDAR ⭐
+  const createTestModel = useCallback(() => {
+    // استخدام نفس نسخة Three.js التي يستخدمها MindAR
+    const THREE_MINDAR = (window as any).THREE_MINDAR;
+    if (!THREE_MINDAR) {
+      console.error('❌ THREE_MINDAR غير متاح!');
+      return null;
+    }
+
+    console.log('🎨 إنشاء مجسم اختبار باستخدام THREE_MINDAR');
+    
     // إنشاء مجموعة
-    const group = new THREE_NS.Group();
+    const group = new THREE_MINDAR.Group();
     
     // مكعب أساسي
-    const geometry = new THREE_NS.BoxGeometry(0.3, 0.3, 0.3);
-    const material = new THREE_NS.MeshBasicMaterial({ 
+    const geometry = new THREE_MINDAR.BoxGeometry(0.3, 0.3, 0.3);
+    const material = new THREE_MINDAR.MeshBasicMaterial({ 
       color: 0x00ffff,
       wireframe: false
     });
-    const cube = new THREE_NS.Mesh(geometry, material);
+    const cube = new THREE_MINDAR.Mesh(geometry, material);
     cube.position.y = 0.15;
     group.add(cube);
     
     // إطار سلكي
-    const wireGeometry = new THREE_NS.BoxGeometry(0.32, 0.32, 0.32);
-    const wireMaterial = new THREE_NS.MeshBasicMaterial({ 
+    const wireGeometry = new THREE_MINDAR.BoxGeometry(0.32, 0.32, 0.32);
+    const wireMaterial = new THREE_MINDAR.MeshBasicMaterial({ 
       color: 0x00ff88,
       wireframe: true
     });
-    const wireframe = new THREE_NS.Mesh(wireGeometry, wireMaterial);
+    const wireframe = new THREE_MINDAR.Mesh(wireGeometry, wireMaterial);
     wireframe.position.y = 0.15;
     group.add(wireframe);
     
     // كرة صغيرة فوق المكعب
-    const sphereGeometry = new THREE_NS.SphereGeometry(0.08, 16, 16);
-    const sphereMaterial = new THREE_NS.MeshBasicMaterial({ color: 0xff00ff });
-    const sphere = new THREE_NS.Mesh(sphereGeometry, sphereMaterial);
+    const sphereGeometry = new THREE_MINDAR.SphereGeometry(0.08, 16, 16);
+    const sphereMaterial = new THREE_MINDAR.MeshBasicMaterial({ color: 0xff00ff });
+    const sphere = new THREE_MINDAR.Mesh(sphereGeometry, sphereMaterial);
     sphere.position.y = 0.4;
     group.add(sphere);
     
     return group;
   }, []);
 
-  // ⭐ دالة لإضافة مجسم بسيط للـ anchor ⭐
+  // ⭐ دالة لإضافة مجسم للـ anchor ⭐
   const addSimpleModelToAnchor = useCallback((lesson: LessonData, anchor: any) => {
     if (!showFloatingModel) return;
     
@@ -110,10 +119,11 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
     console.log('🎨 إنشاء مجسم اختبار للدرس:', lesson.title);
 
     try {
-      // استخدام THREE من نفس النسخة التي يستخدمها MindAR
-      const THREE_NS = (window as any).THREE || THREE;
-      
-      const model = createTestModel(THREE_NS);
+      const model = createTestModel();
+      if (!model) {
+        console.error('❌ فشل إنشاء المجسم');
+        return;
+      }
       
       // وضع المجسم فوق الصورة
       model.position.set(0, 0, 0);

@@ -1,36 +1,21 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>كتابي الذكي للواقع المعزز - Smart AR Book</title>
-    <meta name="description" content="منصة تعليمية مجانية للواقع المعزز (WebAR) لكتب المدارس والتعليم التفاعلي باستخدام MindAR وواجهة Overlay شفافة وتسجيل Google Sheets." />
-    <meta property="og:title" content="كتابي الذكي للواقع المعزز - Smart AR Book" />
-    <meta property="og:description" content="منصة تعليمية مجانية للواقع المعزز (WebAR) لكتب المدارس والتعليم التفاعلي باستخدام MindAR وواجهة Overlay شفافة وتسجيل Google Sheets." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#0f172a" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <!-- Three.js and MindAR for Image Tracking WebAR -->
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-      }
-    }
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>كتابي الذكي - الواقع المعزز التعليمي</title>
+    
+    <!-- ⭐ إضافة هذا السطر ⭐ -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.min.js"></script>
+    <script>
+      // حفظ نسخة Three.js القديمة المستخدمة من MindAR
+      window.THREE_MINDAR = window.THREE;
     </script>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
-    <!-- Google Model Viewer for fast 3D GLB inspection and interaction -->
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+    
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased font-sans select-none overflow-hidden touch-manipulation">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
-
