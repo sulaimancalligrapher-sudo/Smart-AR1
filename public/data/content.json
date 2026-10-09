@@ -48,6 +48,11 @@
         "url": "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
         "title": "مجسم ثلاثي الأبعاد تفاعلي",
         "autoRotate": false
+      },
+      "arModel3d": {
+        "url": "blob:https://smart-ar-1-murex.vercel.app/999d7f39-283f-4aba-9b99-34b15dc5e16a",
+        "title": "مجسم AR: Untitled",
+        "autoRotate": true
       }
     },
     {
