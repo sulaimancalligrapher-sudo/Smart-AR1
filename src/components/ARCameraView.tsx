@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap, BookOpen, Focus } from 'lucide-react';
+import { RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Zap, BookOpen, Focus, CheckCircle2, Box, Layers } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData } from '../types/ar';
-import { getStoredLessons, DEFAULT_LESSONS, fetchLessons } from '../data/lessons';
+import { getStoredLessons, DEFAULT_LESSONS } from '../data/lessons';
 import { analytics } from '../services/analytics';
 import { targetCompiler } from '../services/targetCompiler';
 
@@ -37,6 +37,85 @@ function playMatchChime() {
   } catch (_) {}
 }
 
+/**
+ * دالة لإنشاء قاعدة ثلاثية الأبعاد هولوجرافية متوهجة تثبت فوراً فوق الصورة
+ * تعطي تأكيداً بصرياً فورياً بأن تتبع الواقع المعزز قيد العمل
+ */
+function createHolographicPedestal(THREE_NS: any) {
+  const baseGroup = new THREE_NS.Group();
+
+  // 1. حلقة دائرية خارجية شفافة متوهجة
+  const ringGeo = new THREE_NS.RingGeometry(0.36, 0.40, 48);
+  const ringMat = new THREE_NS.MeshBasicMaterial({
+    color: 0x00f0ff,
+    transparent: true,
+    opacity: 0.75,
+    side: THREE_NS.DoubleSide
+  });
+  const ringMesh = new THREE_NS.Mesh(ringGeo, ringMat);
+  baseGroup.add(ringMesh);
+
+  // 2. قرص داخلي شبه شفاف
+  const discGeo = new THREE_NS.CircleGeometry(0.34, 48);
+  const discMat = new THREE_NS.MeshBasicMaterial({
+    color: 0x0ea5e9,
+    transparent: true,
+    opacity: 0.22,
+    side: THREE_NS.DoubleSide
+  });
+  const discMesh = new THREE_NS.Mesh(discGeo, discMat);
+  baseGroup.add(discMesh);
+
+  // 3. علامات زوايا وشبكة AR دقيقة
+  const crossGeo = new THREE_NS.RingGeometry(0.18, 0.20, 24);
+  const crossMat = new THREE_NS.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.6,
+    side: THREE_NS.DoubleSide
+  });
+  const innerRing = new THREE_NS.Mesh(crossGeo, crossMat);
+  baseGroup.add(innerRing);
+
+  // رفع القاعدة قليلاً جداً عن سطح الصورة لمنع تداخل Z-fighting
+  baseGroup.position.z = 0.01;
+
+  return baseGroup;
+}
+
+/**
+ * مجسم AR هولوجرافي هندسي متلألئ (كرستالة ثلاثية الأبعاد)
+ * يُعرض في حال تعذر تحميل GLB أو عدم وجود رابط لضمان عمل تجربة الواقع المعزز دائماً
+ */
+function createARCrystalFallback(THREE_NS: any) {
+  const group = new THREE_NS.Group();
+
+  const geometry = new THREE_NS.OctahedronGeometry(0.22, 0);
+  const material = new THREE_NS.MeshStandardMaterial({
+    color: 0x00ffff,
+    metalness: 0.8,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.9,
+    wireframe: false
+  });
+  const crystal = new THREE_NS.Mesh(geometry, material);
+  group.add(crystal);
+
+  const wireGeo = new THREE_NS.OctahedronGeometry(0.23, 0);
+  const wireMat = new THREE_NS.MeshBasicMaterial({
+    color: 0xffffff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.5
+  });
+  const wire = new THREE_NS.Mesh(wireGeo, wireMat);
+  group.add(wire);
+
+  group.position.z = 0.22;
+  return group;
+}
+
 export const ARCameraView: React.FC<ARCameraViewProps> = ({
   lessons,
   activeLesson,
@@ -45,7 +124,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   onCloseCamera,
   onOpenTargetCards,
   onOpenTeacherConsole,
-  showFloatingModel = false
+  showFloatingModel = true
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
@@ -59,118 +138,29 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const [showFocusRing, setShowFocusRing] = useState(false);
 
-  // ⭐ مراجع جديدة للمجسمات المعلقة ⭐
-  const floatingModelsRef = useRef<Map<number, any>>(new Map());
+  // مراجع لحفظ مجموعات المحتوى ثلاثي الأبعاد لكل هدف (Anchor)
   const anchorsRef = useRef<Map<number, any>>(new Map());
-
-  // ⭐ دالة لإنشاء مجسم اختبار بسيط (مكعب ملون) ⭐
-  const createTestModel = useCallback((THREE_NS: any) => {
-    // إنشاء مجموعة
-    const group = new THREE_NS.Group();
-    
-    // مكعب أساسي
-    const geometry = new THREE_NS.BoxGeometry(0.3, 0.3, 0.3);
-    const material = new THREE_NS.MeshBasicMaterial({ 
-      color: 0x00ffff,
-      wireframe: false
-    });
-    const cube = new THREE_NS.Mesh(geometry, material);
-    cube.position.y = 0.15;
-    group.add(cube);
-    
-    // إطار سلكي
-    const wireGeometry = new THREE_NS.BoxGeometry(0.32, 0.32, 0.32);
-    const wireMaterial = new THREE_NS.MeshBasicMaterial({ 
-      color: 0x00ff88,
-      wireframe: true
-    });
-    const wireframe = new THREE_NS.Mesh(wireGeometry, wireMaterial);
-    wireframe.position.y = 0.15;
-    group.add(wireframe);
-    
-    // كرة صغيرة فوق المكعب
-    const sphereGeometry = new THREE_NS.SphereGeometry(0.08, 16, 16);
-    const sphereMaterial = new THREE_NS.MeshBasicMaterial({ color: 0xff00ff });
-    const sphere = new THREE_NS.Mesh(sphereGeometry, sphereMaterial);
-    sphere.position.y = 0.4;
-    group.add(sphere);
-    
-    return group;
-  }, []);
-
-  // ⭐ دالة لإضافة مجسم بسيط للـ anchor ⭐
-  const addSimpleModelToAnchor = useCallback((lesson: LessonData, anchor: any) => {
-    if (!showFloatingModel) return;
-    
-    if (floatingModelsRef.current.has(lesson.targetIndex)) {
-      console.log('✓ المجسم موجود مسبقاً');
-      return;
-    }
-
-    console.log('🎨 إنشاء مجسم اختبار للدرس:', lesson.title);
-
-    try {
-      // استخدام THREE من نفس النسخة التي يستخدمها MindAR
-      const THREE_NS = (window as any).THREE || THREE;
-      
-      const model = createTestModel(THREE_NS);
-      
-      // وضع المجسم فوق الصورة
-      model.position.set(0, 0, 0);
-      
-      // إضافة المجسم للـ anchor
-      anchor.group.add(model);
-      
-      // حفظ المرجع
-      floatingModelsRef.current.set(lesson.targetIndex, model);
-      
-      console.log('✅ تم إضافة المجسم للـ anchor بنجاح!');
-      
-      // دوران تلقائي
-      const animate = () => {
-        if (floatingModelsRef.current.has(lesson.targetIndex)) {
-          model.rotation.y += 0.02;
-          requestAnimationFrame(animate);
-        }
-      };
-      animate();
-      
-    } catch (error) {
-      console.error('❌ خطأ في إنشاء المجسم:', error);
-    }
-  }, [showFloatingModel, createTestModel]);
-
-  // ⭐ دالة لإزالة المجسم ⭐
-  const removeFloatingModel = useCallback((targetIndex: number) => {
-    if (floatingModelsRef.current.has(targetIndex)) {
-      const model = floatingModelsRef.current.get(targetIndex);
-      if (model && model.parent) {
-        model.parent.remove(model);
+  const contentGroupsRef = useRef<Map<number, any>>(new Map());
+  const modelEntriesRef = useRef<
+    Map<
+      number,
+      {
+        modelWrapper: any;
+        pedestalGroup?: any;
+        mixer?: any;
+        autoRotate: boolean;
       }
-      floatingModelsRef.current.delete(targetIndex);
-      console.log('🗑️ تم إزالة المجسم المعلق');
-    }
-  }, []);
+    >
+  >(new Map());
 
-  // تحديث المجسم عند تغير showFloatingModel
+  // مزامنة حالة إظهار المجسم المعلق مع مجموعات المحتوى
   useEffect(() => {
-    console.log('🔄 showFloatingModel تغير إلى:', showFloatingModel);
-    
-    if (showFloatingModel && activeLesson) {
-      const anchor = anchorsRef.current.get(activeLesson.targetIndex);
-      if (anchor) {
-        console.log('🎯 تفعيل المجسم المعلق للدرس:', activeLesson.title);
-        addSimpleModelToAnchor(activeLesson, anchor);
-      } else {
-        console.warn('⚠️ لا يوجد anchor نشط للدرس');
+    contentGroupsRef.current.forEach((group) => {
+      if (group) {
+        group.visible = showFloatingModel;
       }
-    } else if (!showFloatingModel) {
-      // إزالة جميع المجسمات
-      floatingModelsRef.current.forEach((_, key) => {
-        removeFloatingModel(key);
-      });
-    }
-  }, [showFloatingModel, activeLesson, addSimpleModelToAnchor, removeFloatingModel]);
+    });
+  }, [showFloatingModel]);
 
   const applyAutoFocus = useCallback(() => {
     setShowFocusRing(true);
@@ -211,6 +201,9 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           }
           if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
             advanced.push({ exposureMode: 'continuous' });
+          }
+          if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) {
+            advanced.push({ whiteBalanceMode: 'continuous' });
           }
           if (advanced.length > 0) {
             track.applyConstraints({ advanced } as any).catch(() => {});
@@ -275,6 +268,11 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
       if (window.MINDAR?.IMAGE?.MindARThree && containerRef.current) {
         try {
+          // تفريغ أي حاوية سابقة
+          while (containerRef.current.firstChild) {
+            containerRef.current.removeChild(containerRef.current.firstChild);
+          }
+
           const mindarThree = new window.MINDAR.IMAGE.MindARThree({
             container: containerRef.current,
             imageTargetSrc: targetCompiler.getActiveMindUrl(),
@@ -288,28 +286,130 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           mindarThreeRef.current = mindarThree;
           const { renderer, scene, camera } = mindarThree;
 
-          const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
+          // استخدام كائن Three الموحد من المتصفح لضمان توافق تام مع MindAR
+          const THREE_NS = (window as any).THREE || THREE;
+          const GLTFLoaderClass = (window as any).GLTFLoader || GLTFLoader;
+
+          // إضاءة غنية ومناسبة للمجسمات ثلاثية الأبعاد PBR
+          const ambientLight = new THREE_NS.AmbientLight(0xffffff, 2.0);
           scene.add(ambientLight);
 
-          const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
-          dirLight.position.set(0, 10, 10);
+          const hemiLight = new THREE_NS.HemisphereLight(0xffffff, 0x444455, 1.5);
+          scene.add(hemiLight);
+
+          const dirLight = new THREE_NS.DirectionalLight(0xffffff, 2.5);
+          dirLight.position.set(2, 5, 5);
           scene.add(dirLight);
 
-          const fillLight = new THREE.DirectionalLight(0xffffff, 1.2);
-          fillLight.position.set(0, -10, -5);
+          const fillLight = new THREE_NS.DirectionalLight(0x99ccff, 1.2);
+          fillLight.position.set(-2, -3, 2);
           scene.add(fillLight);
 
+          // إعداد الـ Anchors وربط المجسمات ثلاثية الأبعاد بكل صورة هدف
           activeLessons.forEach((lesson, index) => {
-            const targetIdx = typeof lesson.targetIndex === 'number' && !isNaN(lesson.targetIndex)
-              ? lesson.targetIndex
-              : index;
+            const targetIdx =
+              typeof lesson.targetIndex === 'number' && !isNaN(lesson.targetIndex)
+                ? lesson.targetIndex
+                : index;
+
             const anchor = mindarThree.addAnchor(targetIdx);
-            
-            // ⭐ حفظ الـ anchor ⭐
             anchorsRef.current.set(targetIdx, anchor);
 
-            let targetLostTimer: any = null;
+            // حاوية المحتوى ثلاثي الأبعاد المربوطة بالـ Anchor
+            const contentGroup = new THREE_NS.Group();
+            contentGroup.visible = showFloatingModel;
+            anchor.group.add(contentGroup);
+            contentGroupsRef.current.set(targetIdx, contentGroup);
 
+            // 1. إضافة قاعدة هولوجرافية بصرية للواقع المعزز
+            const pedestalGroup = createHolographicPedestal(THREE_NS);
+            contentGroup.add(pedestalGroup);
+
+            // 2. تحميل المجسم ثلاثي الأبعاد الحقيقي للدرس (GLTF / GLB)
+            // نستخدم المجسم المخصص للواقع المعزز arModel3d إن وجد، أو نعتمد على model3d تلقائياً لمنع التكرار
+            const targetARModel = lesson.arModel3d?.url ? lesson.arModel3d : lesson.model3d;
+
+            if (targetARModel?.url) {
+              const modelWrapper = new THREE_NS.Group();
+              contentGroup.add(modelWrapper);
+
+              const loader = new GLTFLoaderClass();
+              loader.load(
+                targetARModel.url,
+                (gltf: any) => {
+                  if (isCancelled) return;
+                  const model = gltf.scene;
+
+                  // حساب أبعاد المجسم بدقة وتوحيد حجمه بالنسبة لأبعاد البطاقة (1.0)
+                  model.updateMatrixWorld(true);
+                  const box = new THREE_NS.Box3().setFromObject(model);
+                  const size = box.getSize(new THREE_NS.Vector3());
+                  const center = box.getCenter(new THREE_NS.Vector3());
+
+                  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                  // حجم مثالي: يملأ حوالي 55% من عرض البطاقة
+                  const targetScale = 0.55 / maxDim;
+                  model.scale.setScalar(targetScale);
+
+                  // محاذاة المجسم في المنتصف ورفعه فوق سطح البطاقة مباشرة
+                  model.position.x = -center.x * targetScale;
+                  model.position.y = -center.y * targetScale;
+                  model.position.z = 0.05;
+
+                  // تفعيل الظلال وتعديل المواد للرؤية من جميع الزوايا
+                  model.traverse((child: any) => {
+                    if (child.isMesh) {
+                      child.castShadow = true;
+                      if (child.material) {
+                        child.material.side = THREE_NS.DoubleSide;
+                      }
+                    }
+                  });
+
+                  modelWrapper.add(model);
+
+                  // دعم تحريك الرسوم المتحركة إذا كان المجسم يحتوي على أنيميشن
+                  let mixer: any = null;
+                  if (gltf.animations && gltf.animations.length > 0) {
+                    mixer = new THREE_NS.AnimationMixer(model);
+                    const action = mixer.clipAction(gltf.animations[0]);
+                    action.play();
+                  }
+
+                  modelEntriesRef.current.set(targetIdx, {
+                    modelWrapper,
+                    pedestalGroup,
+                    mixer,
+                    autoRotate: targetARModel.autoRotate ?? true
+                  });
+                },
+                undefined,
+                (err: any) => {
+                  console.warn(`فشل تحميل مجسم GLB للدرس ${lesson.title}، استخدام بديل هولوجرافي:`, err);
+                  const crystal = createARCrystalFallback(THREE_NS);
+                  contentGroup.add(crystal);
+                  modelEntriesRef.current.set(targetIdx, {
+                    modelWrapper: crystal,
+                    pedestalGroup,
+                    mixer: null,
+                    autoRotate: true
+                  });
+                }
+              );
+            } else {
+              // إذا لم يتوفر رابط مجسم للدرس، عرض كرستالة هولوجرافية تفاعلية
+              const crystal = createARCrystalFallback(THREE_NS);
+              contentGroup.add(crystal);
+              modelEntriesRef.current.set(targetIdx, {
+                modelWrapper: crystal,
+                pedestalGroup,
+                mixer: null,
+                autoRotate: true
+              });
+            }
+
+            // أحداث العثور على الهدف وفقدانه
+            let targetLostTimer: any = null;
             anchor.onTargetFound = () => {
               if (isCancelled) return;
               if (targetLostTimer) {
@@ -319,10 +419,12 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               setIsScanning(false);
               playMatchChime();
               if ('vibrate' in navigator) {
-                try { navigator.vibrate(100); } catch (_) {}
+                try {
+                  navigator.vibrate(100);
+                } catch (_) {}
               }
-              
-              console.log('🎯 تم التعرف على الصورة:', lesson.title);
+
+              console.log('🎯 تم التعرف على صورة الدرس وتثبيت المجسم:', lesson.title);
               onTargetDetected(lesson);
             };
 
@@ -331,7 +433,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               if (targetLostTimer) clearTimeout(targetLostTimer);
               targetLostTimer = setTimeout(() => {
                 if (!isCancelled) {
-                  removeFloatingModel(targetIdx);
+                  // لا نحذف المجسم من الـ group! MindAR يقوم بإخفائه تلقائياً وسيعود فوراً عند رؤية الصورة
                   onTargetLost(lesson);
                 }
               }, 1500);
@@ -339,7 +441,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           });
 
           const startPromise = mindarThree.start();
-          const timeoutPromise = new Promise((_, reject) => 
+          const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), 8000)
           );
 
@@ -388,7 +490,26 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             }
           }
 
+          // حلقة الرسوم المتحركة المتكاملة
+          const clock = new THREE_NS.Clock();
           renderer.setAnimationLoop(() => {
+            const delta = clock.getDelta();
+
+            // تحديث حركة المجسمات والقواعد الهولوجرافية
+            modelEntriesRef.current.forEach((entry) => {
+              if (entry.mixer) {
+                entry.mixer.update(delta);
+              }
+              if (entry.autoRotate && entry.modelWrapper) {
+                // تدوير المجسم حول محوره ليظهر بشكل حيوي جذاب
+                entry.modelWrapper.rotation.y += delta * 0.7;
+              }
+              if (entry.pedestalGroup) {
+                // تدوير حلقة القاعدة الهولوجرافية ببطء
+                entry.pedestalGroup.rotation.z += delta * 0.4;
+              }
+            });
+
             renderer.render(scene, camera);
           });
 
@@ -407,6 +528,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         }
       }
 
+      // خطة بديلة للكاميرا في حال تعذر تشغيل محرك MindAR مباشرة
       try {
         let stream: MediaStream;
         try {
@@ -427,36 +549,20 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           });
         }
 
-        stream.getVideoTracks().forEach((track) => {
-          try {
-            const caps = (track.getCapabilities ? track.getCapabilities() : {}) as any;
-            const advanced: any[] = [];
-            if (caps.focusMode && (caps.focusMode.includes('continuous') || caps.focusMode.includes('auto'))) {
-              advanced.push({ focusMode: 'continuous' });
-            }
-            if (advanced.length > 0) {
-              track.applyConstraints({ advanced } as any).catch(() => {});
-            }
-          } catch (_) {}
-        });
-
         if (isCancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
 
         streamRef.current = stream;
-
         if (videoFallbackRef.current) {
           videoFallbackRef.current.srcObject = stream;
-          await videoFallbackRef.current.play();
+          videoFallbackRef.current.play().catch(() => {});
         }
 
-        setIsMindArActive(false);
         setCameraLoading(false);
-      } catch (err: unknown) {
-        console.error('Camera fallback access error:', err);
-        const error = err as Error;
+      } catch (error: any) {
+        if (isCancelled) return;
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
           setCameraError('PERMISSION_DENIED');
         } else if (error.name === 'NotFoundError') {
@@ -485,26 +591,45 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-      floatingModelsRef.current.clear();
       anchorsRef.current.clear();
+      contentGroupsRef.current.clear();
+      modelEntriesRef.current.clear();
     };
   }, [facingMode, lessons.length]);
 
   const handleSimulateFirstLesson = () => {
     if (lessons.length > 0) {
       playMatchChime();
-      onTargetDetected(lessons[0]);
+      const firstLesson = lessons[0];
+      const targetIdx =
+        typeof firstLesson.targetIndex === 'number' && !isNaN(firstLesson.targetIndex)
+          ? firstLesson.targetIndex
+          : 0;
+      
+      // إظهار المحتوى التفاعلي للـ anchor في وضع المحاكاة
+      const contentGroup = contentGroupsRef.current.get(targetIdx);
+      if (contentGroup) {
+        contentGroup.visible = true;
+      }
+      const anchor = anchorsRef.current.get(targetIdx);
+      if (anchor && anchor.group) {
+        anchor.group.visible = true;
+      }
+
+      onTargetDetected(firstLesson);
     }
   };
 
   return (
     <div className="relative w-full h-full min-h-screen bg-black overflow-hidden select-none">
-      <div 
+      {/* 1. حاوية عرض محرك MindAR ثلاثي الأبعاد + الكاميرا الحية */}
+      <div
         ref={containerRef}
         onClick={applyAutoFocus}
         className="mindar-container absolute inset-0 w-full h-full z-0 overflow-hidden cursor-crosshair"
       />
 
+      {/* 2. كاميرا بديلة احتياطية في حال تعذر تشغيل WebGL AR */}
       {!isMindArActive && (
         <video
           ref={videoFallbackRef}
@@ -516,6 +641,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         />
       )}
 
+      {/* 3. حلقة التركيز التلقائي (Auto-focus) */}
       {showFocusRing && (
         <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-fadeIn">
           <div className="w-24 h-24 rounded-full border-2 border-amber-400 animate-ping opacity-60" />
@@ -528,6 +654,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
       )}
 
+      {/* 4. شريط التحكم العلوي وشارة الحالة */}
       <div className="absolute top-0 inset-x-0 z-40 p-3 sm:p-4 flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/80 via-black/40 to-transparent">
         <button
           onClick={onCloseCamera}
@@ -588,6 +715,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
       </div>
 
+      {/* 5. تلميح وإطار توجيه الكاميرا عند البحث */}
       {!activeLesson && !cameraLoading && !cameraError && (
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center p-4">
           <div className="relative w-64 h-64 sm:w-80 sm:h-80 border-2 border-dashed border-sky-400/50 rounded-3xl animate-scan-glow flex flex-col items-center justify-between p-4 shadow-2xl">
@@ -602,7 +730,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
             <div className="text-center">
               <span className="text-[10px] text-white/90 bg-black/60 px-2.5 py-1 rounded-md border border-white/10 block">
-                MindAR Image Tracking نشط
+                تتبع ثلاثي الأبعاد AR نشط ومجهز
               </span>
             </div>
           </div>
@@ -618,7 +746,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               <button
                 onClick={handleSimulateFirstLesson}
                 className="py-1.5 px-4 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                title="تجربة تفاعلية مباشرة"
+                title="تجربة تفاعلية مباشرة بدون كاميرا ورقية"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-300" />
                 <span>⚡ تجربة التعرف الفوري بنقرة واحدة</span>
@@ -628,6 +756,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
       )}
 
+      {/* 6. شاشة تحميل الكاميرا ومحرك AR */}
       {cameraLoading && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white">
           <button
@@ -638,16 +767,16 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           </button>
 
           <div className="w-16 h-16 rounded-full border-4 border-sky-500 border-t-transparent animate-spin mb-4" />
-          
+
           <h3 className="text-base font-bold mb-1">
-            {loadingSeconds < 3 
-              ? 'جارٍ تشغيل الكاميرا ومحرك الواقع المعزز...'
+            {loadingSeconds < 3
+              ? 'جارٍ تشغيل الكاميرا وتجهيز مجسمات الواقع المعزز...'
               : 'في انتظار تأكيد إذن الكاميرا...'}
           </h3>
 
           <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-4">
             {loadingSeconds < 3
-              ? 'يرجى الانتظار ثوانٍ معدودة لبدء المسح البصري.'
+              ? 'يرجى الانتظار ثوانٍ معدودة لبدء المسح البصري الذكي.'
               : 'إذا ظهر لك مربع في أعلى المتصفح يطلب إذن الكاميرا، اضغط على (سماح / Allow).'}
           </p>
 
@@ -672,6 +801,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
       )}
 
+      {/* 7. شاشة الخطأ وتنبيهات الكاميرا */}
       {cameraError && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white space-y-4">
           <div className="w-14 h-14 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40">
@@ -682,20 +812,17 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             <h3 className="text-base font-bold text-rose-300 mb-1">
               {cameraError === 'EMPTY_LESSONS' ? 'لم يتم إضافة دروس بعد' : 'تنبيه في تشغيل الكاميرا'}
             </h3>
-            
+
             <p className="text-xs text-slate-300 max-w-sm leading-relaxed">
-              {cameraError === 'EMPTY_LESSONS' && (
-                'تم إفراغ النماذج التجريبية السابقة بنجاح. يرجى فتح محرر الدروس لإضافة أول درس وصورته.'
-              )}
-              {cameraError === 'PERMISSION_DENIED' && (
-                'تم رفض إذن الوصول للكاميرا. يرجى الضغط على علامة القفل 🔒 واختيار (سماح / Allow).'
-              )}
-              {cameraError === 'NO_CAMERA' && (
-                'لم يتم العثور على كاميرا متصلة بجهازك الحالي.'
-              )}
-              {cameraError !== 'EMPTY_LESSONS' && cameraError !== 'PERMISSION_DENIED' && cameraError !== 'NO_CAMERA' && (
-                cameraError
-              )}
+              {cameraError === 'EMPTY_LESSONS' &&
+                'تم إفراغ النماذج التجريبية السابقة بنجاح. يرجى فتح محرر الدروس لإضافة أول درس وصورته.'}
+              {cameraError === 'PERMISSION_DENIED' &&
+                'تم رفض إذن الوصول للكاميرا. يرجى الضغط على علامة القفل 🔒 واختيار (سماح / Allow).'}
+              {cameraError === 'NO_CAMERA' && 'لم يتم العثور على كاميرا متصلة بجهازك الحالي.'}
+              {cameraError !== 'EMPTY_LESSONS' &&
+                cameraError !== 'PERMISSION_DENIED' &&
+                cameraError !== 'NO_CAMERA' &&
+                cameraError}
             </p>
           </div>
 

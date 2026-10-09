@@ -1,10 +1,6 @@
 {
-  "name": "Smart AR Book - كتابي الذكي للواقع المعزز",
-  "description": "تطبيق الواقع المعزز التعليمي التفاعلي لكتب الخط العربي والدروس المدرسية مع حل مشكلة مطابقة أهداف MindAR",
-  "requestFramePermissions": [
-    "CAMERA"
-  ],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "name": "Smart-AR1 - كتابي الذكي للواقع المعزز",
+  "description": "منصة تعليمية للواقع المعزز (WebAR) لعرض وتتبع المجسمات ثلاثية الأبعاد على صفحات وكتب المدارس",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

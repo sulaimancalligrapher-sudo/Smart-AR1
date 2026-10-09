@@ -36,9 +36,9 @@ export const TargetCardsModal: React.FC<TargetCardsModalProps> = ({
       setCompiledBlob(res.blob);
       setIsCompiling(false);
     } catch (err: any) {
-      alert('خطأ أثناء التجميع: ' + (err.message || String(err)));
+      console.warn('خطأ أثناء التجميع:', err);
+      setCompileProgress({ percent: 0, statusText: 'خطأ أثناء التجميع: ' + (err.message || String(err)) });
       setIsCompiling(false);
-      setCompileProgress(null);
     }
   };
 

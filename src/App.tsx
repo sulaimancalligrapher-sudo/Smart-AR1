@@ -41,8 +41,8 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
   const [showHologram3D, setShowHologram3D] = useState<boolean>(false);
   
-  // ⭐ حالة جديدة: المجسم المعلق فوق الصورة ⭐
-  const [showFloatingModel, setShowFloatingModel] = useState<boolean>(false);
+  // ⭐ النوع الأول: المجسم مثبت على الصورة ويتابعها (AR) ⭐
+  const [showFloatingModel, setShowFloatingModel] = useState<boolean>(true);
 
   useEffect(() => {
     fetchLessons().then((loadedLessons) => {
@@ -60,6 +60,7 @@ export default function App() {
   const handleTargetDetected = (lesson: LessonData) => {
     setActiveLesson(lesson);
     setShowHologram3D(false);
+    setShowFloatingModel(true); // تفعيل مجسم الواقع المعزز على الصورة تلقائياً
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
     }
@@ -81,7 +82,7 @@ export default function App() {
   const handleStartCamera = () => {
     setIsCameraActive(true);
     setShowHologram3D(false);
-    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
+    setShowFloatingModel(true);
     setActiveModal('none');
   };
 
@@ -89,7 +90,7 @@ export default function App() {
     setIsCameraActive(false);
     setActiveLesson(null);
     setShowHologram3D(false);
-    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
+    setShowFloatingModel(true);
     setActiveModal('none');
   };
 
@@ -108,14 +109,13 @@ export default function App() {
     }
     setActiveLesson(null);
     setShowHologram3D(false);
-    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
+    setShowFloatingModel(true);
     setActiveModal('none');
   };
 
-  // ⭐ دالة جديدة: تبديل المجسم المعلق ⭐
+  // تبديل إظهار/إخفاء المجسم المعلق على الصورة (النوع الأول)
   const handleToggleFloatingModel = () => {
-    setShowFloatingModel(prev => !prev);
-    setShowHologram3D(false); // إلغاء تفعيل الوضع الآخر
+    setShowFloatingModel((prev) => !prev);
   };
 
   const handlePurgeAllData = async () => {

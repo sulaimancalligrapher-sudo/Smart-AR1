@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>كتابي الذكي للواقع المعزز - Smart AR Book</title>
-    <meta name="description" content="منصة تعليمية مجانية للواقع المعزز (WebAR) لكتب المدارس والتعليم التفاعلي باستخدام MindAR وواجهة Overlay شفافة وتسجيل Google Sheets." />
-    <meta property="og:title" content="كتابي الذكي للواقع المعزز - Smart AR Book" />
-    <meta property="og:description" content="منصة تعليمية مجانية للواقع المعزز (WebAR) لكتب المدارس والتعليم التفاعلي باستخدام MindAR وواجهة Overlay شفافة وتسجيل Google Sheets." />
+    <title>Smart-AR1 - كتابي الذكي للواقع المعزز</title>
+    <meta name="description" content="منصة تعليمية للواقع المعزز (WebAR) لعرض وتتبع المجسمات ثلاثية الأبعاد على صفحات وكتب المدارس" />
+    <meta property="og:title" content="Smart-AR1 - كتابي الذكي للواقع المعزز" />
+    <meta property="og:description" content="منصة تعليمية للواقع المعزز (WebAR) لعرض وتتبع المجسمات ثلاثية الأبعاد على صفحات وكتب المدارس" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#0f172a" />
@@ -24,6 +24,12 @@
     </script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      window.THREE = THREE;
+      window.GLTFLoader = GLTFLoader;
+    </script>
     <!-- Google Model Viewer for fast 3D GLB inspection and interaction -->
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
   </head>
@@ -32,5 +38,4 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
 

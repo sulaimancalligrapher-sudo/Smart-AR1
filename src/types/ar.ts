@@ -53,6 +53,7 @@ export interface LessonData {
   audio: LessonAudio;
   description: LessonDescription;
   model3d?: LessonModel3D;
+  arModel3d?: LessonModel3D; // مجسم مخصص اختياري للواقع المعزز (AR) - إذا لم يُحدد يستخدم model3d تلقائياً
 }
 
 export type ARActionType =
@@ -114,12 +115,16 @@ declare global {
           };
           video: HTMLVideoElement;
           addAnchor: (index: number) => {
+            group: any;
+            targetIndex: number;
             onTargetFound?: () => void;
             onTargetLost?: () => void;
           };
         };
       };
     };
+    THREE?: any;
+    GLTFLoader?: any;
   }
 }
 

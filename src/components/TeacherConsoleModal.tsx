@@ -34,6 +34,8 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [editableLessons, setEditableLessons] = useState<LessonData[]>(lessons);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [uploadedModelFileName, setUploadedModelFileName] = useState<string | null>(null);
+  const [uploadedARModelFileName, setUploadedARModelFileName] = useState<string | null>(null);
+  const [showCustomARModelOverride, setShowCustomARModelOverride] = useState(false);
 
   useEffect(() => {
     setEditableLessons(lessons);
@@ -95,6 +97,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       else if (field === 'grade') cur.grade = value;
       else if (field === 'targetImage') cur.targetImage = value;
       else if (field === 'model3d') cur.model3d = value;
+      else if (field === 'arModel3d') cur.arModel3d = value;
       else if (field === 'videoUrl') {
         cur.video = {
           ...cur.video,
@@ -745,7 +748,7 @@ function doPost(e) {
                 </div>
 
                 {/* 🧊 Card 3: 3D Model (GLB from Blender) */}
-                <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-500/40 space-y-3">
+                <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-500/40 space-y-3.5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
@@ -753,13 +756,13 @@ function doPost(e) {
                       </span>
                       <div>
                         <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>٣. المجسم ثلاثي الأبعاد (3D Model - Blender)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
-                            .glb
+                          <span>٣. المجسم ثلاثي الأبعاد المشترك (3D Model - .glb)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+                            .glb / .gltf
                           </span>
                         </h5>
                         <p className="text-[11px] text-slate-300">
-                          ارفع نموذجك من بلندر بصيغة GLB أو ضع مسار الملف لعرضه للطالب بتقنية 360° تفاعلية.
+                          نفس صيغة الملف القياسية تعمل تلقائياً في <strong className="text-cyan-300">النوعين معاً</strong>: (١) الواقع المعزز فوق صفحة الكتاب، و(٢) العرض التفاعلي باللمس والفأرة.
                         </p>
                       </div>
                     </div>
@@ -768,7 +771,10 @@ function doPost(e) {
                       {currentLesson.model3d?.url && (
                         <button
                           type="button"
-                          onClick={() => handleFieldChange('model3d', undefined)}
+                          onClick={() => {
+                            handleFieldChange('model3d', undefined);
+                            setUploadedModelFileName(null);
+                          }}
                           className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
                           title="حذف المجسم ثلاثي الأبعاد من هذا الدرس"
                         >
@@ -783,7 +789,7 @@ function doPost(e) {
                         <input
                           key={`model3d_upload_${currentLesson.targetId}`}
                           type="file"
-                          accept=".glb,model/gltf-binary"
+                          accept=".glb,model/gltf-binary,.gltf"
                           className="hidden"
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
@@ -799,7 +805,7 @@ function doPost(e) {
                               };
                               handleFieldChange('model3d', newModel);
 
-                              // Also convert to data URL for persistent storage in localStorage
+                              // حفظ بصيغة Data URL للتخزين المحلي إذا كان الحجم ملائماً
                               if (file.size < 6 * 1024 * 1024) {
                                 const reader = new FileReader();
                                 reader.onload = (uploadEv) => {
@@ -819,6 +825,47 @@ function doPost(e) {
                         />
                       </label>
                     </div>
+                  </div>
+
+                  {/* إشعار ذكي يوضح قاعدة عدم تكرار الملف */}
+                  <div className="p-2.5 rounded-lg bg-sky-950/40 border border-sky-500/20 text-sky-200 text-[11px] leading-relaxed flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong>قاعدة الاستخدام الموحد والمرن:</strong> امتداد المجسم المعتمد دائماً هو <code className="px-1 py-0.2 bg-black/40 rounded text-cyan-300 font-bold">.glb</code>. عند إضافة المجسم هنا، سيعمل تلقائياً في شاشة الواقع المعزز (AR) فوق الصورة، وكذلك عند النقر على زر التدوير 360° بالإصبع والفأرة دون الحاجة لإدخاله مرتين!
+                    </div>
+                  </div>
+
+                  {/* نماذج سريعة للتجربة الفورية بنقرة واحدة */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-300">
+                    <span className="text-[11px] text-slate-400">نماذج جاهزة للتجربة السريعة:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleFieldChange('model3d', {
+                          url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+                          title: 'رائد فضاء (نموذج تجريبي)',
+                          autoRotate: true
+                        });
+                        setUploadedModelFileName(null);
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
+                    >
+                      🚀 رائد الفضاء (Astronaut.glb)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleFieldChange('model3d', {
+                          url: 'https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb',
+                          title: 'مجسم تعليمي تجريبي',
+                          autoRotate: true
+                        });
+                        setUploadedModelFileName(null);
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
+                    >
+                      👨‍🚀 مجسم بديل تجريبي
+                    </button>
                   </div>
 
                   {/* Uploaded File Feedback Pill */}
@@ -853,7 +900,7 @@ function doPost(e) {
                   <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div className="space-y-0.5">
                       <label className="text-[11px] font-bold text-slate-300">
-                        حقل رابط أو مسار المجسم (3D Model URL):
+                        رابط أو مسار ملف المجسم المشترك (3D Model URL .glb):
                       </label>
                       <input
                         type="text"
@@ -870,7 +917,7 @@ function doPost(e) {
                             });
                           }
                         }}
-                        placeholder="مثال: /models/letter_ruqaa.glb أو رابط سحابي مباشر ينتهي بـ .glb"
+                        placeholder="مثال: /models/letter_ruqaa.glb أو رابط مباشر ينتهي بـ .glb"
                         className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
                       />
                     </div>
@@ -917,6 +964,100 @@ function doPost(e) {
                     </div>
                   </div>
 
+                  {/* ⚡ خيار مخصص ذكي: تخصيص مجسم مختلف للواقع المعزز AR فقط (اختياري) */}
+                  <div className="p-3 rounded-lg bg-slate-900/90 border border-cyan-500/20 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-cyan-400" />
+                        <span className="text-xs font-bold text-white">
+                          تخصيص مجسم خاص بتتبع الواقع المعزز (AR Model) فقط (اختياري):
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomARModelOverride(prev => !prev)}
+                        className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                      >
+                        {showCustomARModelOverride || currentLesson.arModel3d?.url
+                          ? 'إخفاء الإعداد المتقدم'
+                          : '+ تخصيص مجسم مختلف للـ AR'}
+                      </button>
+                    </div>
+
+                    {(showCustomARModelOverride || currentLesson.arModel3d?.url) && (
+                      <div className="space-y-2 pt-1 border-t border-slate-800 animate-fadeIn">
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          📌 <strong>ملاحظة مرنة:</strong> إذا تركت هذا الحقل فارغاً، سيعتمد نظام الواقع المعزز تلقائياً على المجسم الرئيسي أعلاه بدون تكرار! استخدم هذا الحقل فقط إذا أردت إظهار مجسم مختلف كلياً فوق صورة الكتاب.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-2 items-center">
+                          <input
+                            type="text"
+                            value={currentLesson.arModel3d?.url || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val.trim() === '') {
+                                handleFieldChange('arModel3d', undefined);
+                              } else {
+                                handleFieldChange('arModel3d', {
+                                  url: val,
+                                  title: currentLesson.arModel3d?.title || `مجسم AR: ${currentLesson.title}`,
+                                  autoRotate: currentLesson.arModel3d?.autoRotate !== false
+                                });
+                              }
+                            }}
+                            placeholder="مسار أو رابط مجسم AR مخصص (.glb) - أو اتركه فارغاً"
+                            className="flex-1 w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
+                          />
+
+                          <label className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-200 text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5 border border-cyan-500/30 flex-shrink-0">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>رفع .glb خاص بـ AR</span>
+                            <input
+                              type="file"
+                              accept=".glb,model/gltf-binary,.gltf"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  const file = e.target.files[0];
+                                  const objectUrl = URL.createObjectURL(file);
+                                  setUploadedARModelFileName(`${file.name} (${Math.round(file.size / 1024)} KB)`);
+                                  handleFieldChange('arModel3d', {
+                                    url: objectUrl,
+                                    title: `مجسم AR: ${file.name.replace(/\.[^/.]+$/, '')}`,
+                                    autoRotate: true
+                                  });
+                                }
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+
+                          {currentLesson.arModel3d?.url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleFieldChange('arModel3d', undefined);
+                                setUploadedARModelFileName(null);
+                              }}
+                              className="px-2 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs cursor-pointer"
+                              title="إلغاء التخصيص والعودة للمجسم الرئيسي المشترك"
+                            >
+                              إلغاء والعودة للمشترك
+                            </button>
+                          )}
+                        </div>
+
+                        {uploadedARModelFileName && (
+                          <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>تم رفع مجسم AR مخصص: {uploadedARModelFileName}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* 3D Interactive Live Preview Window */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
@@ -926,7 +1067,7 @@ function doPost(e) {
                       </span>
                       {currentLesson.model3d?.url && (
                         <span className="text-[10px] text-emerald-400 font-bold">
-                          ✓ جاهز للعرض
+                          ✓ جاهز للنوعين (AR و 360°)
                         </span>
                       )}
                     </div>
@@ -947,7 +1088,7 @@ function doPost(e) {
                             لا يوجد مجسم 3D مرتبط بهذا الدرس حالياً
                           </p>
                           <p className="text-[11px] text-slate-500 max-w-sm leading-relaxed">
-                            اضغط <strong>[ 📁 اختيار ملف .glb من جهازك ]</strong> أو الصق الرابط في الحقل أعلاه لتظهر لك المعاينة الحية فوراً هنا وتتحقق من شكله قبل الحفظ.
+                            اضغط <strong>[ 📁 اختيار ملف .glb من جهازك ]</strong> أو اختر أحد النماذج الجاهزة أعلاه لتظهر لك المعاينة الحية فوراً هنا وتتحقق من شكله قبل الحفظ.
                           </p>
                         </div>
                       </div>
@@ -985,12 +1126,11 @@ function doPost(e) {
                             setEditableLessons(fresh);
                             if (onUpdateLessons) onUpdateLessons(fresh);
                             saveStoredLessons(fresh);
-                            alert(`تم بنجاح تحميل وتحديث ${fresh.length} دروس من ملف content.json المرفوع على السيرفر!`);
-                          } else {
-                            alert('لم يتم العثور على دروس في ملف السيرفر public/data/content.json بعد.');
+                            setSaveSuccess(true);
+                            setTimeout(() => setSaveSuccess(false), 4000);
                           }
                         } catch (err: any) {
-                          alert('خطأ أثناء جلب الملف: ' + err.message);
+                          console.warn('خطأ أثناء جلب الملف:', err);
                         }
                       }}
                       className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-xs transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-500/30"
@@ -1004,7 +1144,7 @@ function doPost(e) {
                   {saveSuccess && (
                     <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn">
                       <CheckCircle2 className="w-4 h-4" />
-                      تم الحفظ والتحديث بنجاح!
+                      <span>تم حفظ ومزامنة البيانات بنجاح!</span>
                     </span>
                   )}
                 </div>

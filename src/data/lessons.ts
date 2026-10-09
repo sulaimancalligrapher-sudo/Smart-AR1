@@ -118,8 +118,63 @@ export function saveStoredLessons(lessons: LessonData[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lessons));
   } catch (err) {
-    console.warn('Error saving stored lessons:', err);
+    console.warn('Error saving stored lessons, attempting compact save without large data URIs:', err);
+    try {
+      const compact = lessons.map((l) => ({
+        ...l,
+        targetImage: l.targetImage?.startsWith('data:') ? '' : l.targetImage,
+        images: l.images?.filter((img) => !img.url?.startsWith('data:')) || []
+      }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(compact));
+    } catch (e2) {
+      console.warn('Could not save compact lessons to localStorage:', e2);
+    }
   }
+}
+
+/**
+ * تشفير بيانات الدروس في رابط URL آمن base64 لمشاركتها مع الطلاب
+ */
+export function encodeLessonsPayload(lessons: LessonData[]): string {
+  try {
+    const clean = lessons.map((l) => ({
+      targetIndex: l.targetIndex,
+      targetId: l.targetId,
+      title: l.title,
+      subtitle: l.subtitle,
+      subject: l.subject,
+      grade: l.grade,
+      targetImage: l.targetImage?.startsWith('data:') ? '' : (l.targetImage || `/targets/target_${l.targetId}.jpg`),
+      video: l.video,
+      model3d: l.model3d,
+      arModel3d: l.arModel3d,
+      audio: l.audio,
+      description: l.description,
+      images: l.images?.filter((img) => !img.url?.startsWith('data:')) || []
+    }));
+    const json = JSON.stringify(clean);
+    return btoa(encodeURIComponent(json));
+  } catch (err) {
+    console.warn('Could not encode lessons payload:', err);
+    return '';
+  }
+}
+
+/**
+ * فك تشفير بيانات الدروس من الرابط
+ */
+export function decodeLessonsPayload(payload: string): LessonData[] | null {
+  try {
+    if (!payload) return null;
+    const json = decodeURIComponent(atob(payload));
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed as LessonData[];
+    }
+  } catch (err) {
+    console.warn('Could not decode lessons payload:', err);
+  }
+  return null;
 }
 
 export function clearStoredLessons(): void {
