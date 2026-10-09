@@ -1,17 +1,25 @@
 import React, { useState } from 'react';
-import { X, QrCode, Copy, Check, Camera, Download, Share2, Sparkles, Smartphone, ExternalLink } from 'lucide-react';
+import { X, QrCode, Copy, Check, Camera, Download, Share2, Sparkles, Smartphone, ExternalLink, Database, Link as LinkIcon } from 'lucide-react';
+import { LessonData } from '../types/ar';
+import { encodeLessonsPayload } from '../data/lessons';
 
 interface StudentQRModalProps {
+  lessons?: LessonData[];
   onClose: () => void;
 }
 
-export const StudentQRModal: React.FC<StudentQRModalProps> = ({ onClose }) => {
+export const StudentQRModal: React.FC<StudentQRModalProps> = ({ lessons = [], onClose }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedFull, setCopiedFull] = useState(false);
 
   // Generate student direct camera URL
   const origin = window.location.origin;
   const pathname = window.location.pathname;
   const studentCameraUrl = `${origin}${pathname}?mode=student`;
+
+  // Generate student direct camera URL with complete embedded lessons payload
+  const payload = lessons && lessons.length > 0 ? encodeLessonsPayload(lessons) : '';
+  const primaryStudentUrl = payload ? `${origin}${pathname}?mode=student#d=${payload}` : studentCameraUrl;
 
   // QR Code URL using high-res QR API
   const qrCodeImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(
@@ -19,9 +27,15 @@ export const StudentQRModal: React.FC<StudentQRModalProps> = ({ onClose }) => {
   )}`;
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(studentCameraUrl);
+    navigator.clipboard.writeText(primaryStudentUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleCopyFullDataLink = () => {
+    navigator.clipboard.writeText(primaryStudentUrl);
+    setCopiedFull(true);
+    setTimeout(() => setCopiedFull(false), 2500);
   };
 
   const handleDownloadQR = () => {
@@ -40,7 +54,7 @@ export const StudentQRModal: React.FC<StudentQRModalProps> = ({ onClose }) => {
         await navigator.share({
           title: 'كتابي الذكي - كاميرا الواقع المعزز للطلاب',
           text: 'افتح الكاميرا مباشرة ووجّهها لكتابك المدرسي للاستمتاع بالمجسمات والشروحات التفاعلية!',
-          url: studentCameraUrl,
+          url: primaryStudentUrl,
         });
       } catch (_) {}
     } else {
@@ -49,8 +63,8 @@ export const StudentQRModal: React.FC<StudentQRModalProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn select-none">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col items-center text-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn select-none overflow-y-auto">
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col items-center text-center my-auto">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -68,7 +82,7 @@ export const StudentQRModal: React.FC<StudentQRModalProps> = ({ onClose }) => {
 
         <h3 className="text-lg font-black text-white">رابط وباركود كاميرا الطلاب</h3>
         <p className="text-xs text-slate-300 mt-1 max-w-xs leading-relaxed">
-          صفحة مخصصة للطلاب تفتح <span className="text-emerald-400 font-bold">الكاميرا فقط مباشرة</span> بدون أي إعدادات أو أزرار معقدة.
+          صفحة مخصصة للطلاب تفتح <span className="text-emerald-400 font-bold">الكاميرا فقط مباشرة</span> بدون أي إعدادات أو أزرار إضافية.
         </p>
 
         {/* QR Code Frame */}
@@ -76,7 +90,7 @@ export const StudentQRModal: React.FC<StudentQRModalProps> = ({ onClose }) => {
           <img
             src={qrCodeImageUrl}
             alt="باركود كاميرا الطلاب المباشرة"
-            className="w-56 h-56 object-contain"
+            className="w-48 h-48 sm:w-52 sm:h-52 object-contain"
           />
           <span className="text-[10px] text-slate-600 font-bold mt-1.5 flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-emerald-600" />
@@ -86,17 +100,45 @@ export const StudentQRModal: React.FC<StudentQRModalProps> = ({ onClose }) => {
 
         {/* Student Link Display Box */}
         <div className="mt-4 w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
-          <span className="text-xs font-mono text-sky-400 truncate text-left dir-ltr flex-1 select-all">
-            {studentCameraUrl}
-          </span>
+          <div className="flex-1 min-w-0 text-left">
+            <span className="text-xs font-mono text-sky-400 truncate block dir-ltr select-all">
+              {primaryStudentUrl}
+            </span>
+            <span className="text-[10px] text-emerald-400 font-semibold block text-right mt-0.5">
+              ✓ يتضمن جميع الدروس والمجسمات والبيانات المحدثة
+            </span>
+          </div>
           <button
             onClick={handleCopyLink}
             className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all flex-shrink-0"
+            title="نسخ الرابط المباشر"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'تم النسخ!' : 'نسخ الرابط'}</span>
           </button>
         </div>
+
+        {/* Full Data Link Box (For syncing newly added lessons across devices) */}
+        {payload && (
+          <div className="mt-2.5 w-full bg-slate-950/80 border border-emerald-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2">
+            <div className="text-right flex-1 truncate">
+              <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                <Database className="w-3 h-3" />
+                رابط شامل لبيانات وتعديلات الدروس
+              </span>
+              <span className="text-[10px] text-slate-400 block truncate">
+                ينقل كافة الدروس التي عدلتها فوراً لأي جهاز طالب
+              </span>
+            </div>
+            <button
+              onClick={handleCopyFullDataLink}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all flex-shrink-0"
+            >
+              {copiedFull ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedFull ? 'تم النسخ!' : 'نسخ الشامل'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="mt-4 grid grid-cols-2 gap-2.5 w-full">

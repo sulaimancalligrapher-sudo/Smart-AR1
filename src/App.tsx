@@ -16,8 +16,10 @@ import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
+import { StudentQRModal } from './components/StudentQRModal';
+import { StudentExitScreen } from './components/StudentExitScreen';
 import { LessonData } from './types/ar';
-import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
+import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache, decodeLessonsPayload } from './data/lessons';
 import { analytics } from './services/analytics';
 
 type ActiveModalType =
@@ -29,24 +31,90 @@ type ActiveModalType =
   | 'model3d'
   | 'target_cards'
   | 'teacher_console'
-  | 'compiler';
+  | 'compiler'
+  | 'student_qr';
 
 export default function App() {
   const [lessons, setLessons] = useState<LessonData[]>(() => {
+    // 1. Check if URL carries encoded lesson data in hash or query
+    try {
+      let payload = '';
+      const hash = window.location.hash;
+      if (hash.startsWith('#')) {
+        const hashParams = new URLSearchParams(hash.slice(1));
+        payload = hashParams.get('d') || hashParams.get('data') || '';
+      }
+      if (!payload) {
+        const searchParams = new URLSearchParams(window.location.search);
+        payload = searchParams.get('d') || searchParams.get('data') || '';
+      }
+      if (payload) {
+        const decoded = decodeLessonsPayload(payload);
+        if (decoded && decoded.length > 0) {
+          saveStoredLessons(decoded);
+          return decoded;
+        }
+      }
+    } catch (err) {
+      console.warn('Error reading URL lessons payload:', err);
+    }
+
+    // 2. Fallback to localStorage or defaults
     const stored = getStoredLessons();
     return stored && stored.length > 0 ? stored : DEFAULT_LESSONS;
   });
-  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+
+  // Check if URL contains ?mode=student or ?camera=1 or /camera or hash #camera
+  const [isStudentMode, setIsStudentMode] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
+    const isStudent = (
+      params.get('mode') === 'student' ||
+      params.get('student') === 'true' ||
+      params.get('camera') === '1' ||
+      hash.includes('mode=student') ||
+      window.location.pathname.endsWith('/camera') ||
+      sessionStorage.getItem('ar_student_mode') === 'true'
+    );
+    if (isStudent) {
+      try {
+        sessionStorage.setItem('ar_student_mode', 'true');
+      } catch (_) {}
+    }
+    return isStudent;
+  });
+
+  const [isStudentExited, setIsStudentExited] = useState<boolean>(false);
+
+  // Automatically start camera if in student mode or requested via URL
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
+    return (
+      params.get('mode') === 'student' ||
+      params.get('camera') === '1' ||
+      params.get('student') === 'true' ||
+      hash.includes('mode=student') ||
+      window.location.pathname.endsWith('/camera') ||
+      sessionStorage.getItem('ar_student_mode') === 'true'
+    );
+  });
   const [activeLesson, setActiveLesson] = useState<LessonData | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
   const [showHologram3D, setShowHologram3D] = useState<boolean>(false);
-  
-  // ⭐ حالة جديدة: المجسم المعلق فوق الصورة ⭐
-  const [showFloatingModel, setShowFloatingModel] = useState<boolean>(false);
 
+  // Load custom lessons from storage or content.json on startup
   useEffect(() => {
+    const hash = window.location.hash;
+    const search = window.location.search;
+    const hasPayload = hash.includes('d=') || hash.includes('data=') || search.includes('d=') || search.includes('data=');
+    if (hasPayload) {
+      // Do not overwrite freshly unpacked payload
+      return;
+    }
+
     fetchLessons().then((loadedLessons) => {
-      if (loadedLessons) {
+      if (loadedLessons && loadedLessons.length > 0) {
         setLessons(loadedLessons);
       }
     });
@@ -57,8 +125,10 @@ export default function App() {
     saveStoredLessons(updated);
   };
 
+  // When a lesson target is recognized by MindAR or simulator
   const handleTargetDetected = (lesson: LessonData) => {
     setActiveLesson(lesson);
+    // Initial recognition displays clean floating toolbar; 3D activates on-demand to prevent GPU fighting
     setShowHologram3D(false);
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
@@ -70,26 +140,41 @@ export default function App() {
     });
   };
 
+  // When camera loses view of the target
   const handleTargetLost = (lesson: LessonData) => {
     analytics.trackEvent({
       targetId: lesson.targetId,
       lessonTitle: lesson.title,
       action: 'target_lost'
     });
+    // Note: We retain the activeLesson in state for a smooth student experience
+    // so the overlay doesn't flicker away if the child moves the book slightly.
   };
 
   const handleStartCamera = () => {
     setIsCameraActive(true);
+    setIsStudentExited(false);
     setShowHologram3D(false);
-    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
     setActiveModal('none');
   };
 
   const handleCloseCamera = () => {
+    if (isStudentMode) {
+      // In student mode: attempt browser tab closure, and display clean student exit screen
+      try {
+        window.close();
+      } catch (_) {}
+      setIsStudentExited(true);
+      setIsCameraActive(false);
+      setActiveLesson(null);
+      setShowHologram3D(false);
+      setActiveModal('none');
+      return;
+    }
+
     setIsCameraActive(false);
     setActiveLesson(null);
     setShowHologram3D(false);
-    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
     setActiveModal('none');
   };
 
@@ -108,14 +193,7 @@ export default function App() {
     }
     setActiveLesson(null);
     setShowHologram3D(false);
-    setShowFloatingModel(false); // ⭐ إعادة ضبط ⭐
     setActiveModal('none');
-  };
-
-  // ⭐ دالة جديدة: تبديل المجسم المعلق ⭐
-  const handleToggleFloatingModel = () => {
-    setShowFloatingModel(prev => !prev);
-    setShowHologram3D(false); // إلغاء تفعيل الوضع الآخر
   };
 
   const handlePurgeAllData = async () => {
@@ -127,14 +205,17 @@ export default function App() {
 
   return (
     <div className="relative w-full h-full min-h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* 1. Main View: Welcome Screen OR Live AR Camera View */}
-      {!isCameraActive ? (
+      {/* 1. Main View: Welcome Screen OR Live AR Camera View OR Student Exit Screen */}
+      {isStudentMode && (!isCameraActive || isStudentExited) ? (
+        <StudentExitScreen onReopenCamera={handleStartCamera} />
+      ) : !isCameraActive ? (
         <WelcomeScreen
           lessons={lessons}
           onStartCamera={handleStartCamera}
           onOpenTargetCards={() => setActiveModal('target_cards')}
           onOpenTeacherConsole={() => setActiveModal('teacher_console')}
           onOpenCompiler={() => setActiveModal('compiler')}
+          onOpenStudentQR={() => setActiveModal('student_qr')}
           onSimulateLesson={handleSimulateLesson}
           onPurgeAllData={handlePurgeAllData}
         />
@@ -145,13 +226,13 @@ export default function App() {
           onTargetDetected={handleTargetDetected}
           onTargetLost={handleTargetLost}
           onCloseCamera={handleCloseCamera}
-          onOpenTargetCards={() => setActiveModal('target_cards')}
-          onOpenTeacherConsole={() => setActiveModal('teacher_console')}
-          showFloatingModel={showFloatingModel} // ⭐ تمرير الحالة ⭐
+          onOpenTargetCards={!isStudentMode ? () => setActiveModal('target_cards') : undefined}
+          onOpenTeacherConsole={!isStudentMode ? () => setActiveModal('teacher_console') : undefined}
+          isStudentMode={isStudentMode}
         />
       )}
 
-      {/* 2. Real Holographic 3D AR Layer over Live Camera */}
+      {/* 2. Real Holographic 3D AR Layer over Live Camera (100% Transparent, No Dark Window) */}
       {isCameraActive && activeLesson && activeLesson.model3d && showHologram3D && activeModal === 'none' && (
         <Holographic3DOverlay
           model={activeLesson.model3d}
@@ -161,42 +242,33 @@ export default function App() {
         />
       )}
 
-      {/* 3. Transparent HTML/CSS Overlay */}
+      {/* 3. Transparent HTML/CSS Overlay (Action buttons at bottom of camera screen) */}
       {isCameraActive && activeLesson && activeModal === 'none' && (
         <TransparentOverlay
           lesson={activeLesson}
           isModel3DActive={showHologram3D}
-          isFloatingModelActive={showFloatingModel} // ⭐ تمرير الحالة ⭐
           onOpenVideo={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('video');
           }}
           onOpenImages={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('images');
           }}
           onOpenAudio={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('audio');
           }}
           onOpenExplanation={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('explanation');
           }}
-          onOpenModel3D={() => {
-            setShowFloatingModel(false);
-            setShowHologram3D((prev) => !prev);
-          }}
-          onToggleFloatingModel={handleToggleFloatingModel} // ⭐ تمرير الدالة ⭐
+          onOpenModel3D={() => setShowHologram3D((prev) => !prev)}
           onCloseLesson={handleCloseOverlayLesson}
         />
       )}
 
-      {/* 4. Interactive Content Modals */}
+      {/* 3. Interactive Content Modals (Video, Gallery, Audio, Explanation, 3D Model) */}
       {activeModal === 'model3d' && activeLesson && activeLesson.model3d && (
         <Model3DModal
           model={activeLesson.model3d}
@@ -246,7 +318,7 @@ export default function App() {
         />
       )}
 
-      {/* 5. Utility Modals */}
+      {/* 4. Utility Modals (Printable Targets, Teacher Console, Target Compiler) */}
       {activeModal === 'target_cards' && (
         <TargetCardsModal
           lessons={lessons}
@@ -269,6 +341,10 @@ export default function App() {
 
       {activeModal === 'compiler' && (
         <MindARCompilerModal onClose={() => setActiveModal('none')} />
+      )}
+
+      {activeModal === 'student_qr' && (
+        <StudentQRModal lessons={lessons} onClose={() => setActiveModal('none')} />
       )}
     </div>
   );
