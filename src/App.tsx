@@ -152,12 +152,15 @@ export default function App() {
       )}
 
       {/* 2. Real Holographic 3D AR Layer over Live Camera */}
-      {isCameraActive && activeLesson && activeLesson.model3d && showHologram3D && activeModal === 'none' && (
+      {isCameraActive && activeLesson && (activeLesson.model3d || activeLesson.arModel3d) && showHologram3D && activeModal === 'none' && (
         <Holographic3DOverlay
-          model={activeLesson.model3d}
+          model={(activeLesson.model3d || activeLesson.arModel3d)!}
           lessonTitle={activeLesson.title}
           audioUrl={activeLesson.audio?.url}
-          onClose={() => setShowHologram3D(false)}
+          onClose={() => {
+            setShowHologram3D(false);
+            setShowFloatingModel(true);
+          }}
         />
       )}
 
@@ -166,43 +169,47 @@ export default function App() {
         <TransparentOverlay
           lesson={activeLesson}
           isModel3DActive={showHologram3D}
-          isFloatingModelActive={showFloatingModel} // ⭐ تمرير الحالة ⭐
+          isFloatingModelActive={showFloatingModel}
           onOpenVideo={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('video');
           }}
           onOpenImages={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('images');
           }}
           onOpenAudio={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('audio');
           }}
           onOpenExplanation={() => {
             setShowHologram3D(false);
-            setShowFloatingModel(false);
             setActiveModal('explanation');
           }}
           onOpenModel3D={() => {
-            setShowFloatingModel(false);
-            setShowHologram3D((prev) => !prev);
+            setShowHologram3D((prev) => {
+              const next = !prev;
+              if (!next) {
+                setShowFloatingModel(true);
+              }
+              return next;
+            });
           }}
-          onToggleFloatingModel={handleToggleFloatingModel} // ⭐ تمرير الدالة ⭐
+          onToggleFloatingModel={handleToggleFloatingModel}
           onCloseLesson={handleCloseOverlayLesson}
         />
       )}
 
       {/* 4. Interactive Content Modals */}
-      {activeModal === 'model3d' && activeLesson && activeLesson.model3d && (
+      {activeModal === 'model3d' && activeLesson && (activeLesson.model3d || activeLesson.arModel3d) && (
         <Model3DModal
-          model={activeLesson.model3d}
+          model={(activeLesson.model3d || activeLesson.arModel3d)!}
           lessonTitle={activeLesson.title}
           audioUrl={activeLesson.audio?.url}
-          onClose={() => setActiveModal('none')}
+          onClose={() => {
+            setActiveModal('none');
+            setShowFloatingModel(true);
+          }}
         />
       )}
 
@@ -211,7 +218,10 @@ export default function App() {
           video={activeLesson.video}
           lessonTitle={activeLesson.title}
           targetId={activeLesson.targetId}
-          onClose={() => setActiveModal('none')}
+          onClose={() => {
+            setActiveModal('none');
+            setShowFloatingModel(true);
+          }}
         />
       )}
 
@@ -221,7 +231,10 @@ export default function App() {
           targetImage={activeLesson.targetImage}
           lessonTitle={activeLesson.title}
           targetId={activeLesson.targetId}
-          onClose={() => setActiveModal('none')}
+          onClose={() => {
+            setActiveModal('none');
+            setShowFloatingModel(true);
+          }}
         />
       )}
 
@@ -231,7 +244,10 @@ export default function App() {
           lessonTitle={activeLesson.title}
           targetId={activeLesson.targetId}
           lessonSummary={activeLesson.description.summary}
-          onClose={() => setActiveModal('none')}
+          onClose={() => {
+            setActiveModal('none');
+            setShowFloatingModel(true);
+          }}
         />
       )}
 
@@ -242,7 +258,10 @@ export default function App() {
           targetId={activeLesson.targetId}
           grade={activeLesson.grade}
           subject={activeLesson.subject}
-          onClose={() => setActiveModal('none')}
+          onClose={() => {
+            setActiveModal('none');
+            setShowFloatingModel(true);
+          }}
         />
       )}
 

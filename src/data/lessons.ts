@@ -26,7 +26,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
       title: 'تسجيل صوتي تعليمي'
     },
     model3d: {
-      url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+      url: '/models/Astronaut.glb',
       title: 'مجسم ثلاثي الأبعاد تفاعلي',
       autoRotate: false
     },
@@ -65,7 +65,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
       title: 'تسجيل صوتي تعليمي'
     },
     model3d: {
-      url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+      url: '/models/Astronaut.glb',
       title: 'مجسم ثلاثي الأبعاد تفاعلي',
       autoRotate: false
     },
@@ -123,7 +123,9 @@ export function saveStoredLessons(lessons: LessonData[]): void {
       const compact = lessons.map((l) => ({
         ...l,
         targetImage: l.targetImage?.startsWith('data:') ? '' : l.targetImage,
-        images: l.images?.filter((img) => !img.url?.startsWith('data:')) || []
+        images: l.images?.filter((img) => !img.url?.startsWith('data:')) || [],
+        model3d: l.model3d?.url?.startsWith('data:') ? { ...l.model3d, url: '' } : l.model3d,
+        arModel3d: l.arModel3d?.url?.startsWith('data:') ? { ...l.arModel3d, url: '' } : l.arModel3d
       }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(compact));
     } catch (e2) {

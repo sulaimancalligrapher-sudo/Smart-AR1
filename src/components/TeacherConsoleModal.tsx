@@ -1021,12 +1021,29 @@ function doPost(e) {
                                 if (e.target.files && e.target.files[0]) {
                                   const file = e.target.files[0];
                                   const objectUrl = URL.createObjectURL(file);
+                                  const cleanName = file.name.replace(/\.[^/.]+$/, '');
                                   setUploadedARModelFileName(`${file.name} (${Math.round(file.size / 1024)} KB)`);
-                                  handleFieldChange('arModel3d', {
+                                  
+                                  const newARModel: LessonModel3D = {
                                     url: objectUrl,
-                                    title: `مجسم AR: ${file.name.replace(/\.[^/.]+$/, '')}`,
+                                    title: `مجسم AR: ${cleanName}`,
                                     autoRotate: true
-                                  });
+                                  };
+                                  handleFieldChange('arModel3d', newARModel);
+
+                                  if (file.size < 6 * 1024 * 1024) {
+                                    const reader = new FileReader();
+                                    reader.onload = (uploadEv) => {
+                                      const dataUrl = uploadEv.target?.result as string;
+                                      if (dataUrl) {
+                                        handleFieldChange('arModel3d', {
+                                          ...newARModel,
+                                          url: dataUrl
+                                        });
+                                      }
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
                                 }
                                 e.target.value = '';
                               }}
