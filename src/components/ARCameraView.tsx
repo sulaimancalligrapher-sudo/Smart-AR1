@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap, BookOpen, Focus, LogOut } from 'lucide-react';
+import { Camera, RefreshCw, X, Eye, FileSpreadsheet, AlertTriangle, Layers, Sparkles, CheckCircle2, Zap, BookOpen, Focus } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData } from '../types/ar';
@@ -13,12 +13,11 @@ interface ARCameraViewProps {
   onTargetDetected: (lesson: LessonData) => void;
   onTargetLost: (lesson: LessonData) => void;
   onCloseCamera: () => void;
-  onOpenTargetCards?: () => void;
-  onOpenTeacherConsole?: () => void;
-  isStudentMode?: boolean;
+  onOpenTargetCards: () => void;
+  onOpenTeacherConsole: () => void;
+  showFloatingModel?: boolean;
 }
 
-// Audio chime when target is matched
 function playMatchChime() {
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -29,8 +28,8 @@ function playMatchChime() {
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.08); // A5
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.08);
     gain.gain.setValueAtTime(0.2, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
     osc.start();
@@ -46,7 +45,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   onCloseCamera,
   onOpenTargetCards,
   onOpenTeacherConsole,
-  isStudentMode = false
+  showFloatingModel = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
@@ -58,24 +57,125 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const [isScanning, setIsScanning] = useState(true);
   const mindarThreeRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
-  // Keep stable refs to prevent effect re-triggering and duplicate camera permission prompts
-  const lessonsRef = useRef(lessons);
-  lessonsRef.current = lessons;
-
-  const onTargetDetectedRef = useRef(onTargetDetected);
-  onTargetDetectedRef.current = onTargetDetected;
-
-  const onTargetLostRef = useRef(onTargetLost);
-  onTargetLostRef.current = onTargetLost;
-
   const [showFocusRing, setShowFocusRing] = useState(false);
+
+  // ⭐ مراجع جديدة للمجسمات المعلقة ⭐
+  const floatingModelsRef = useRef<Map<number, any>>(new Map());
+  const anchorsRef = useRef<Map<number, any>>(new Map());
+
+  // ⭐ دالة لإنشاء مجسم اختبار بسيط (مكعب ملون) ⭐
+  const createTestModel = useCallback((THREE_NS: any) => {
+    // إنشاء مجموعة
+    const group = new THREE_NS.Group();
+    
+    // مكعب أساسي
+    const geometry = new THREE_NS.BoxGeometry(0.3, 0.3, 0.3);
+    const material = new THREE_NS.MeshBasicMaterial({ 
+      color: 0x00ffff,
+      wireframe: false
+    });
+    const cube = new THREE_NS.Mesh(geometry, material);
+    cube.position.y = 0.15;
+    group.add(cube);
+    
+    // إطار سلكي
+    const wireGeometry = new THREE_NS.BoxGeometry(0.32, 0.32, 0.32);
+    const wireMaterial = new THREE_NS.MeshBasicMaterial({ 
+      color: 0x00ff88,
+      wireframe: true
+    });
+    const wireframe = new THREE_NS.Mesh(wireGeometry, wireMaterial);
+    wireframe.position.y = 0.15;
+    group.add(wireframe);
+    
+    // كرة صغيرة فوق المكعب
+    const sphereGeometry = new THREE_NS.SphereGeometry(0.08, 16, 16);
+    const sphereMaterial = new THREE_NS.MeshBasicMaterial({ color: 0xff00ff });
+    const sphere = new THREE_NS.Mesh(sphereGeometry, sphereMaterial);
+    sphere.position.y = 0.4;
+    group.add(sphere);
+    
+    return group;
+  }, []);
+
+  // ⭐ دالة لإضافة مجسم بسيط للـ anchor ⭐
+  const addSimpleModelToAnchor = useCallback((lesson: LessonData, anchor: any) => {
+    if (!showFloatingModel) return;
+    
+    if (floatingModelsRef.current.has(lesson.targetIndex)) {
+      console.log('✓ المجسم موجود مسبقاً');
+      return;
+    }
+
+    console.log('🎨 إنشاء مجسم اختبار للدرس:', lesson.title);
+
+    try {
+      // استخدام THREE من نفس النسخة التي يستخدمها MindAR
+      const THREE_NS = (window as any).THREE || THREE;
+      
+      const model = createTestModel(THREE_NS);
+      
+      // وضع المجسم فوق الصورة
+      model.position.set(0, 0, 0);
+      
+      // إضافة المجسم للـ anchor
+      anchor.group.add(model);
+      
+      // حفظ المرجع
+      floatingModelsRef.current.set(lesson.targetIndex, model);
+      
+      console.log('✅ تم إضافة المجسم للـ anchor بنجاح!');
+      
+      // دوران تلقائي
+      const animate = () => {
+        if (floatingModelsRef.current.has(lesson.targetIndex)) {
+          model.rotation.y += 0.02;
+          requestAnimationFrame(animate);
+        }
+      };
+      animate();
+      
+    } catch (error) {
+      console.error('❌ خطأ في إنشاء المجسم:', error);
+    }
+  }, [showFloatingModel, createTestModel]);
+
+  // ⭐ دالة لإزالة المجسم ⭐
+  const removeFloatingModel = useCallback((targetIndex: number) => {
+    if (floatingModelsRef.current.has(targetIndex)) {
+      const model = floatingModelsRef.current.get(targetIndex);
+      if (model && model.parent) {
+        model.parent.remove(model);
+      }
+      floatingModelsRef.current.delete(targetIndex);
+      console.log('🗑️ تم إزالة المجسم المعلق');
+    }
+  }, []);
+
+  // تحديث المجسم عند تغير showFloatingModel
+  useEffect(() => {
+    console.log('🔄 showFloatingModel تغير إلى:', showFloatingModel);
+    
+    if (showFloatingModel && activeLesson) {
+      const anchor = anchorsRef.current.get(activeLesson.targetIndex);
+      if (anchor) {
+        console.log('🎯 تفعيل المجسم المعلق للدرس:', activeLesson.title);
+        addSimpleModelToAnchor(activeLesson, anchor);
+      } else {
+        console.warn('⚠️ لا يوجد anchor نشط للدرس');
+      }
+    } else if (!showFloatingModel) {
+      // إزالة جميع المجسمات
+      floatingModelsRef.current.forEach((_, key) => {
+        removeFloatingModel(key);
+      });
+    }
+  }, [showFloatingModel, activeLesson, addSimpleModelToAnchor, removeFloatingModel]);
 
   const applyAutoFocus = useCallback(() => {
     setShowFocusRing(true);
     setTimeout(() => setShowFocusRing(false), 1200);
 
-    // 1. MindAR video element autofocus
     if (containerRef.current) {
       const vid = containerRef.current.querySelector('video') as HTMLVideoElement;
       if (vid && vid.srcObject) {
@@ -101,7 +201,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       }
     }
 
-    // 2. Fallback stream autofocus
     if (streamRef.current) {
       streamRef.current.getVideoTracks().forEach((track) => {
         try {
@@ -121,7 +220,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
     }
   }, []);
 
-  // Loading timer counter to give user progressive feedback
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     if (cameraLoading) {
@@ -142,7 +240,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       setCameraLoading(true);
       setCameraError(null);
 
-      // Check for HTTPS / Localhost security requirement
       if (
         window.location.protocol !== 'https:' &&
         window.location.hostname !== 'localhost' &&
@@ -153,8 +250,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         return;
       }
 
-      // Ensure active lessons are available immediately
-      let activeLessons = lessonsRef.current;
+      let activeLessons = lessons;
       if (!activeLessons || activeLessons.length === 0) {
         activeLessons = getStoredLessons();
       }
@@ -168,11 +264,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         return;
       }
 
-      // Default facing mode: ALWAYS environment (rear camera) on mobile, tablet & desktop
-      // only switch to user camera if the user explicitly requests it or device strictly lacks rear camera
       const targetFacingUser = facingMode === 'user';
 
-      // 1. Wait for MindARThree to be ready from module imports (up to 4 seconds)
       let attempts = 0;
       while (!window.MINDAR?.IMAGE?.MindARThree && attempts < 40) {
         if (isCancelled) return;
@@ -191,13 +284,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             uiLoading: 'no'
           });
 
-          // Always enforce rear camera (environment) unless user explicitly toggled to front
           mindarThree.shouldFaceUser = targetFacingUser;
-
           mindarThreeRef.current = mindarThree;
           const { renderer, scene, camera } = mindarThree;
 
-          // Add lighting to scene so 3D models appear brightly illuminated over the book
           const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
           scene.add(ambientLight);
 
@@ -209,15 +299,14 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           fillLight.position.set(0, -10, -5);
           scene.add(fillLight);
 
-          const animatedModels: THREE.Object3D[] = [];
-          const gltfLoader = new GLTFLoader();
-
-          // Attach anchors safely for all configured lessons using stable refs
           activeLessons.forEach((lesson, index) => {
             const targetIdx = typeof lesson.targetIndex === 'number' && !isNaN(lesson.targetIndex)
               ? lesson.targetIndex
               : index;
             const anchor = mindarThree.addAnchor(targetIdx);
+            
+            // ⭐ حفظ الـ anchor ⭐
+            anchorsRef.current.set(targetIdx, anchor);
 
             let targetLostTimer: any = null;
 
@@ -232,38 +321,39 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               if ('vibrate' in navigator) {
                 try { navigator.vibrate(100); } catch (_) {}
               }
-              if (onTargetDetectedRef.current) {
-                onTargetDetectedRef.current(lesson);
-              }
+              
+              console.log('🎯 تم التعرف على الصورة:', lesson.title);
+              onTargetDetected(lesson);
             };
 
             anchor.onTargetLost = () => {
               if (isCancelled) return;
-              // 1.5s tolerance to prevent flickering when student hands tremble
               if (targetLostTimer) clearTimeout(targetLostTimer);
               targetLostTimer = setTimeout(() => {
-                if (!isCancelled && onTargetLostRef.current) {
-                  onTargetLostRef.current(lesson);
+                if (!isCancelled) {
+                  removeFloatingModel(targetIdx);
+                  onTargetLost(lesson);
                 }
               }, 1500);
             };
           });
 
-          // Start MindAR directly without premature timeout that aborts while user is tapping Allow
+          const startPromise = mindarThree.start();
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('CAMERA_TIMEOUT')), 8000)
+          );
+
           try {
-            await mindarThree.start();
+            await Promise.race([startPromise, timeoutPromise]);
           } catch (startErr: any) {
-            if (isCancelled) return;
-            // Stop immediately on permission denial - NEVER re-prompt the user
-            if (startErr.name === 'NotAllowedError' || startErr.name === 'PermissionDeniedError') {
-              setCameraError('PERMISSION_DENIED');
-              setCameraLoading(false);
-              return;
+            if (startErr.message === 'CAMERA_TIMEOUT') {
+              throw new Error('TIMEOUT');
             }
-            throw startErr;
+            console.warn('Initial start failed, retrying with user camera mode:', startErr);
+            mindarThree.shouldFaceUser = true;
+            await mindarThree.start();
           }
 
-          // Apply hardware autofocus and crisp video styling to MindAR video element
           if (containerRef.current) {
             const vid = containerRef.current.querySelector('video') as HTMLVideoElement;
             if (vid) {
@@ -298,7 +388,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             }
           }
 
-          // MindAR animation loop: pure camera tracking rendering (ultra lightweight, 60fps)
           renderer.setAnimationLoop(() => {
             renderer.render(scene, camera);
           });
@@ -309,8 +398,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           }
           return;
         } catch (mindarErr: any) {
-          if (isCancelled) return;
-          console.warn('MindAR start issue, attempting direct camera stream fallback:', mindarErr);
+          console.warn('MindAR start failed, attempting direct camera stream fallback:', mindarErr);
           if (mindarErr.name === 'NotAllowedError' || mindarErr.name === 'PermissionDeniedError') {
             setCameraError('PERMISSION_DENIED');
             setCameraLoading(false);
@@ -319,17 +407,26 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         }
       }
 
-      // 2. Direct Camera Stream Fallback (getUserMedia) with single clean request
       try {
-        const stream: MediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: facingMode },
-            width: { ideal: 1280 }
-          },
-          audio: false
-        });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: facingMode },
+              width: { ideal: 1920, min: 1280 },
+              height: { ideal: 1080, min: 720 },
+              advanced: [{ focusMode: 'continuous' }] as any
+            },
+            audio: false
+          });
+        } catch (initialErr) {
+          console.warn('Initial facingMode stream failed, trying any camera:', initialErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+          });
+        }
 
-        // Apply hardware autofocus to fallback stream tracks
         stream.getVideoTracks().forEach((track) => {
           try {
             const caps = (track.getCapabilities ? track.getCapabilities() : {}) as any;
@@ -388,8 +485,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
+      floatingModelsRef.current.clear();
+      anchorsRef.current.clear();
     };
-  }, [facingMode]);
+  }, [facingMode, lessons.length]);
 
   const handleSimulateFirstLesson = () => {
     if (lessons.length > 0) {
@@ -398,42 +497,14 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
     }
   };
 
-  const handleStudentExit = useCallback(() => {
-    // 1. Immediately kill all camera tracks to shut off hardware sensor
-    if (mindarThreeRef.current) {
-      try {
-        if (mindarThreeRef.current.video?.srcObject) {
-          const s = mindarThreeRef.current.video.srcObject as MediaStream;
-          s.getTracks().forEach((track) => track.stop());
-        }
-        mindarThreeRef.current.stop();
-      } catch (_) {}
-    }
-    if (videoFallbackRef.current?.srcObject) {
-      try {
-        const stream = videoFallbackRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (_) {}
-    }
-    if (streamRef.current) {
-      try {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      } catch (_) {}
-    }
-    // 2. Trigger parent close
-    onCloseCamera();
-  }, [onCloseCamera]);
-
   return (
     <div className="relative w-full h-full min-h-screen bg-black overflow-hidden select-none">
-      {/* 1. MindAR Container (renders video & three.js canvas) */}
       <div 
         ref={containerRef}
         onClick={applyAutoFocus}
         className="mindar-container absolute inset-0 w-full h-full z-0 overflow-hidden cursor-crosshair"
       />
 
-      {/* 2. Direct Camera Stream Fallback Video */}
       {!isMindArActive && (
         <video
           ref={videoFallbackRef}
@@ -445,7 +516,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         />
       )}
 
-      {/* Focus Ring Indicator (when user taps to focus) */}
       {showFocusRing && (
         <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-fadeIn">
           <div className="w-24 h-24 rounded-full border-2 border-amber-400 animate-ping opacity-60" />
@@ -458,31 +528,15 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
       )}
 
-      {/* Top Floating Action Bar */}
       <div className="absolute top-0 inset-x-0 z-40 p-3 sm:p-4 flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/80 via-black/40 to-transparent">
-        {/* Dedicated Student Exit Button OR Teacher Close Button */}
-        {isStudentMode ? (
-          <button
-            onClick={handleStudentExit}
-            className="py-1.5 px-3.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs border border-white/20 shadow-xl flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
-            title="خروج نهائي من الكاميرا وإغلاق الجلسة"
-            aria-label="خروج نهائي"
-          >
-            <LogOut className="w-4 h-4 text-white" />
-            <span>خروج نهائي</span>
-          </button>
-        ) : (
-          <button
-            onClick={onCloseCamera}
-            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="الخروج من الكاميرا"
-            aria-label="الخروج من الكاميرا"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
+        <button
+          onClick={onCloseCamera}
+          className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+          title="الخروج من الكاميرا"
+        >
+          <X className="w-5 h-5" />
+        </button>
 
-        {/* Status Indicator Banner */}
         <div className="px-3.5 py-1.5 rounded-full ar-glass-panel border border-white/20 text-xs font-bold flex items-center gap-2 text-white shadow-lg max-w-[65%] truncate">
           {activeLesson ? (
             <>
@@ -499,59 +553,44 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           )}
         </div>
 
-        {/* Secondary Tool Buttons */}
         <div className="flex items-center gap-2">
-          {/* Hardware Auto-Focus Trigger */}
           <button
             onClick={applyAutoFocus}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="إعادة ضبط الفوكس والوضوح التلقائي (انقر في أي مكان على الشاشة أيضاً)"
-            aria-label="ضبط الفوكس"
+            title="ضبط الفوكس"
           >
             <Focus className="w-4 h-4 text-amber-400" />
           </button>
 
-          {/* Flip Camera Button (Rear / Front) */}
           <button
             onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title={facingMode === 'environment' ? 'التبديل إلى الكاميرا الأمامية' : 'التبديل إلى الكاميرا الخلفية (الافتراضية)'}
-            aria-label="تبديل الكاميرا"
+            title="تبديل الكاميرا"
           >
             <RefreshCw className="w-4 h-4 text-cyan-400" />
           </button>
 
-          {/* Target Cards View (Hidden for students) */}
-          {!isStudentMode && onOpenTargetCards && (
-            <button
-              onClick={onOpenTargetCards}
-              className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-              title="عرض بطاقات الدروس للطباعة أو المسح"
-              aria-label="عرض بطاقات الدروس"
-            >
-              <Eye className="w-4 h-4 text-sky-400" />
-            </button>
-          )}
+          <button
+            onClick={onOpenTargetCards}
+            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            title="عرض بطاقات الدروس"
+          >
+            <Eye className="w-4 h-4 text-sky-400" />
+          </button>
 
-          {/* Teacher / Sheets Analytics Console (Hidden for students) */}
-          {!isStudentMode && onOpenTeacherConsole && (
-            <button
-              onClick={onOpenTeacherConsole}
-              className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-              title="لوحة المعلم ومحرر الدروس"
-              aria-label="لوحة المعلم ومحرر الدروس"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            </button>
-          )}
+          <button
+            onClick={onOpenTeacherConsole}
+            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            title="لوحة المعلم"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+          </button>
         </div>
       </div>
 
-      {/* Target Scanning Reticle / Viewfinder Frame */}
       {!activeLesson && !cameraLoading && !cameraError && (
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center p-4">
           <div className="relative w-64 h-64 sm:w-80 sm:h-80 border-2 border-dashed border-sky-400/50 rounded-3xl animate-scan-glow flex flex-col items-center justify-between p-4 shadow-2xl">
-            {/* Viewfinder Corners */}
             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-sky-400 rounded-tr-2xl" />
             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-sky-400 rounded-tl-2xl" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-sky-400 rounded-br-2xl" />
@@ -563,56 +602,40 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
             <div className="text-center">
               <span className="text-[10px] text-white/90 bg-black/60 px-2.5 py-1 rounded-md border border-white/10 block">
-                {isStudentMode ? 'الماسح الذكي نشط' : 'MindAR Image Tracking نشط'}
+                MindAR Image Tracking نشط
               </span>
             </div>
           </div>
 
-          {/* Scanning Guidance Pill */}
           <div className="mt-4 pointer-events-none">
             <span className="px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-[11px] text-sky-200 border border-sky-400/30 shadow-lg text-center block">
               📖 قرّب الكاميرا ببطء من صورة الدرس حتى تظهر كاملة في المربع
             </span>
           </div>
 
-          {/* Quick Helper Simulator Trigger (Hidden for students) */}
-          {!isStudentMode && lessons.length > 0 && (
+          {lessons.length > 0 && (
             <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
               <button
                 onClick={handleSimulateFirstLesson}
                 className="py-1.5 px-4 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                title="تجربة تفاعلية مباشرة للدرس"
+                title="تجربة تفاعلية مباشرة"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-300" />
-                <span>⚡ تجربة التعرف الفوري بنقرة واحدة (محاكاة الكاميرا)</span>
+                <span>⚡ تجربة التعرف الفوري بنقرة واحدة</span>
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Camera Loading Overlay: clean message only as requested */}
       {cameraLoading && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white">
-          {/* Top Close Button */}
-          {isStudentMode ? (
-            <button
-              onClick={handleStudentExit}
-              className="absolute top-4 right-4 py-1.5 px-3.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs border border-white/20 shadow-xl flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
-              title="خروج نهائي"
-            >
-              <LogOut className="w-4 h-4 text-white" />
-              <span>خروج نهائي</span>
-            </button>
-          ) : (
-            <button
-              onClick={onCloseCamera}
-              className="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
-              title="إلغاء والعودة"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+          <button
+            onClick={onCloseCamera}
+            className="absolute top-4 right-4 p-2.5 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
 
           <div className="w-16 h-16 rounded-full border-4 border-sky-500 border-t-transparent animate-spin mb-4" />
           
@@ -622,15 +645,33 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               : 'في انتظار تأكيد إذن الكاميرا...'}
           </h3>
 
-          <p className="text-xs text-slate-300 max-w-xs leading-relaxed">
+          <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-4">
             {loadingSeconds < 3
               ? 'يرجى الانتظار ثوانٍ معدودة لبدء المسح البصري.'
               : 'إذا ظهر لك مربع في أعلى المتصفح يطلب إذن الكاميرا، اضغط على (سماح / Allow).'}
           </p>
+
+          <div className="flex flex-col gap-2 w-full max-w-xs">
+            {lessons.length > 0 && loadingSeconds >= 3 && (
+              <button
+                onClick={handleSimulateFirstLesson}
+                className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all animate-fadeIn"
+              >
+                <Zap className="w-4 h-4 text-amber-300" />
+                <span>⚡ فتح الدرس فوراً (تخطي انتظار الكاميرا)</span>
+              </button>
+            )}
+
+            <button
+              onClick={onCloseCamera}
+              className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer border border-slate-700 transition-colors"
+            >
+              ✕ إلغاء والعودة للشاشة الرئيسية
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Camera Error Overlay with Direct Action Buttons */}
       {cameraError && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center text-white space-y-4">
           <div className="w-14 h-14 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40">
@@ -644,12 +685,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             
             <p className="text-xs text-slate-300 max-w-sm leading-relaxed">
               {cameraError === 'EMPTY_LESSONS' && (
-                isStudentMode 
-                  ? 'لم يتم إعداد دروس في النظام بعد، يرجى التواصل مع المعلم.'
-                  : 'تم إفراغ النماذج التجريبية السابقة بنجاح. يرجى فتح محرر الدروس لإضافة أول درس وصورته من كتابك المدرسي لتتمكن الكاميرا من البحث عنها.'
+                'تم إفراغ النماذج التجريبية السابقة بنجاح. يرجى فتح محرر الدروس لإضافة أول درس وصورته.'
               )}
               {cameraError === 'PERMISSION_DENIED' && (
-                'تم رفض إذن الوصول للكاميرا. يرجى الضغط على علامة القفل 🔒 أو الكاميرا بجانب رابط المتصفح واختيار (سماح / Allow) ثم إعادة التجربة.'
+                'تم رفض إذن الوصول للكاميرا. يرجى الضغط على علامة القفل 🔒 واختيار (سماح / Allow).'
               )}
               {cameraError === 'NO_CAMERA' && (
                 'لم يتم العثور على كاميرا متصلة بجهازك الحالي.'
@@ -662,34 +701,32 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           <div className="flex flex-col gap-2 w-full max-w-xs pt-2">
             {cameraError === 'EMPTY_LESSONS' ? (
-              !isStudentMode && onOpenTeacherConsole ? (
-                <button
-                  onClick={() => {
-                    onCloseCamera();
-                    onOpenTeacherConsole();
-                  }}
-                  className="py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-lg"
-                >
-                  <BookOpen className="w-4 h-4" />
-                  <span>فتح محرر الدروس وإضافة أول درس</span>
-                </button>
-              ) : null
+              <button
+                onClick={() => {
+                  onCloseCamera();
+                  onOpenTeacherConsole();
+                }}
+                className="py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-lg"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>فتح محرر الدروس</span>
+              </button>
             ) : (
               <>
-                {!isStudentMode && lessons.length > 0 && (
+                {lessons.length > 0 && (
                   <button
                     onClick={handleSimulateFirstLesson}
                     className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-lg"
                   >
                     <Zap className="w-4 h-4 text-amber-300" />
-                    <span>⚡ تجربة محتوى الدرس فوراً (بدون كاميرا)</span>
+                    <span>⚡ تجربة محتوى الدرس فوراً</span>
                   </button>
                 )}
                 <button
                   onClick={() => window.location.reload()}
                   className="py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors cursor-pointer"
                 >
-                  إعادة تحميل الصفحة والمحاولة
+                  إعادة تحميل الصفحة
                 </button>
               </>
             )}
@@ -698,7 +735,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               onClick={onCloseCamera}
               className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
             >
-              {isStudentMode ? 'إغلاق الكاميرا والخروج' : 'العودة للشاشة الرئيسية'}
+              العودة للشاشة الرئيسية
             </button>
           </div>
         </div>

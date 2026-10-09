@@ -1,108 +1,120 @@
 import React from 'react';
-import { Film, Image as ImageIcon, Volume2, BookOpen, Box, RefreshCw } from 'lucide-react';
+import { Video, Image, Music, BookOpen, Box, X, Layers } from 'lucide-react';
 import { LessonData } from '../types/ar';
 
 interface TransparentOverlayProps {
   lesson: LessonData;
-  isModel3DActive?: boolean;
+  isModel3DActive: boolean;
+  isFloatingModelActive?: boolean;
   onOpenVideo: () => void;
   onOpenImages: () => void;
   onOpenAudio: () => void;
   onOpenExplanation: () => void;
-  onOpenModel3D?: () => void;
-  onCloseLesson?: () => void;
+  onOpenModel3D: () => void;
+  onToggleFloatingModel?: () => void;
+  onCloseLesson: () => void;
 }
 
 export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
   lesson,
-  isModel3DActive = false,
+  isModel3DActive,
+  isFloatingModelActive = false,
   onOpenVideo,
   onOpenImages,
   onOpenAudio,
   onOpenExplanation,
   onOpenModel3D,
+  onToggleFloatingModel,
   onCloseLesson
 }) => {
   return (
-    <div className="absolute inset-0 z-30 pointer-events-none select-none flex flex-col justify-between p-4 sm:p-6 transition-all duration-300">
-      {/* 1. Top: Minimalist Lesson Title Badge positioned cleanly BELOW the top camera navbar across all devices */}
-      <div className="pointer-events-auto flex items-center justify-between gap-2 max-w-md mx-auto w-full pt-16 sm:pt-20 animate-fadeIn">
-        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white shadow-xl">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-          <h2 className="text-sm sm:text-base font-black tracking-tight drop-shadow truncate max-w-[200px] sm:max-w-xs">
-            {lesson.title}
-          </h2>
+    <div className="absolute bottom-0 inset-x-0 z-30 pointer-events-none">
+      <div className="pointer-events-auto p-3 sm:p-4 flex flex-col items-center gap-3">
+        {/* شريط الأزرار الرئيسي */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-black/70 backdrop-blur-xl border border-white/20 shadow-2xl">
+          
+          {/* زر الفيديو */}
+          {lesson.video && (
+            <button
+              onClick={onOpenVideo}
+              className="p-3 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 hover:from-rose-400 hover:to-pink-500 text-white shadow-lg active:scale-95 transition-all cursor-pointer group"
+              title="فتح الفيديو التعليمي"
+            >
+              <Video className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            </button>
+          )}
+
+          {/* زر الصور */}
+          {lesson.images && lesson.images.length > 0 && (
+            <button
+              onClick={onOpenImages}
+              className="p-3 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white shadow-lg active:scale-95 transition-all cursor-pointer group"
+              title="فتح معرض الصور"
+            >
+              <Image className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            </button>
+          )}
+
+          {/* زر الصوت */}
+          {lesson.audio && (
+            <button
+              onClick={onOpenAudio}
+              className="p-3 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg active:scale-95 transition-all cursor-pointer group"
+              title="تشغيل التسجيل الصوتي"
+            >
+              <Music className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            </button>
+          )}
+
+          {/* زر الشرح */}
+          {lesson.description && (
+            <button
+              onClick={onOpenExplanation}
+              className="p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-lg active:scale-95 transition-all cursor-pointer group"
+              title="فتح الشرح التفصيلي"
+            >
+              <BookOpen className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            </button>
+          )}
+
+          {/* زر المجسم التفاعلي (بالإصبع) */}
+          {lesson.model3d && (
+            <button
+              onClick={onOpenModel3D}
+              className={`p-3 rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer group ${
+                isModel3DActive
+                  ? 'bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 ring-2 ring-violet-300'
+                  : 'bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500'
+              }`}
+              title="فتح المجسم ثلاثي الأبعاد (تحريك بالإصبع)"
+            >
+              <Box className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            </button>
+          )}
+
+          {/* ⭐ الزر الجديد: المجسم المعلق فوق الصورة ⭐ */}
+          {lesson.model3d && onToggleFloatingModel && (
+            <button
+              onClick={onToggleFloatingModel}
+              className={`p-3 rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer group ${
+                isFloatingModelActive
+                  ? 'bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 ring-2 ring-cyan-300 animate-pulse'
+                  : 'bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500'
+              }`}
+              title="عرض المجسم معلقاً فوق الصورة (يتبع الكاميرا)"
+            >
+              <Layers className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            </button>
+          )}
         </div>
 
-        {onCloseLesson && (
-          <button
-            onClick={onCloseLesson}
-            className="px-3 py-1.5 rounded-full bg-black/60 hover:bg-slate-800 text-sky-200 border border-white/20 flex items-center gap-1.5 backdrop-blur-md transition-all active:scale-95 cursor-pointer shadow-xl text-xs font-semibold"
-            title="إخفاء بطاقة هذا الدرس لمسح صفحة أخرى في الكتاب"
-            aria-label="مسح صفحة أخرى"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-sky-400" />
-            <span>صفحة أخرى</span>
-          </button>
-        )}
-      </div>
-
-      {/* 2. Bottom: Floating Bar of Large Circular Icon Buttons (lifted cleanly on mobile with pb-8/pb-10 and env(safe-area-inset-bottom)) */}
-      <div className="pointer-events-auto flex items-center justify-center gap-2.5 sm:gap-4 max-w-lg mx-auto w-full pb-9 sm:pb-6 animate-slideUp">
-        {/* Button 1: 3D Model (Icon Only, Large, Glowing) */}
-        {lesson.model3d?.url && onOpenModel3D && (
-          <button
-            onClick={onOpenModel3D}
-            className={`w-13 h-13 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-xl active:scale-90 transition-all cursor-pointer border-2 ${
-              isModel3DActive
-                ? 'bg-cyan-400 text-slate-950 border-white ring-4 ring-cyan-400/50 shadow-cyan-400/50 scale-105'
-                : 'bg-gradient-to-tr from-cyan-600 to-sky-500 hover:from-cyan-500 hover:to-sky-400 text-white border-white/30 shadow-cyan-500/30'
-            }`}
-            title={isModel3DActive ? 'إغلاق عرض المجسم 3D' : 'تشغيل المجسم ثلاثي الأبعاد 3D'}
-            aria-label="المجسم 3D"
-          >
-            <Box className="w-6 h-6 sm:w-8 sm:h-8" />
-          </button>
-        )}
-
-        {/* Button 2: Video (Icon Only, Large) */}
+        {/* زر إغلاق الدرس */}
         <button
-          onClick={onOpenVideo}
-          className="w-13 h-13 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-sky-600/90 text-sky-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
-          title="مشاهدة فيديو الدرس"
-          aria-label="فيديو الدرس"
+          onClick={onCloseLesson}
+          className="px-5 py-2 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white text-xs font-bold shadow-xl backdrop-blur-md active:scale-95 transition-all cursor-pointer flex items-center gap-2 border border-white/20"
         >
-          <Film className="w-6 h-6 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
-        </button>
-
-        {/* Button 3: Gallery / Images (Icon Only, Large) */}
-        <button
-          onClick={onOpenImages}
-          className="w-13 h-13 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-emerald-600/90 text-emerald-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
-          title="معرض المخططات والصور"
-          aria-label="معرض الصور"
-        >
-          <ImageIcon className="w-6 h-6 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
-        </button>
-
-        {/* Button 4: Audio (Icon Only, Large) */}
-        <button
-          onClick={onOpenAudio}
-          className="w-13 h-13 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-amber-600/90 text-amber-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
-          title="الاستماع للشرح الصوتي"
-          aria-label="الشرح الصوتي"
-        >
-          <Volume2 className="w-6 h-6 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
-        </button>
-
-        {/* Button 5: Explanation / Book (Icon Only, Large) */}
-        <button
-          onClick={onOpenExplanation}
-          className="w-13 h-13 sm:w-16 sm:h-16 rounded-full bg-slate-900/80 hover:bg-indigo-600/90 text-indigo-300 hover:text-white flex items-center justify-center backdrop-blur-md shadow-xl border border-white/20 active:scale-90 transition-all cursor-pointer group"
-          title="شرح الدرس والتدريبات"
-          aria-label="شرح الدرس"
-        >
-          <BookOpen className="w-6 h-6 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" />
+          <X className="w-4 h-4" />
+          <span>✕ إغلاق الدرس</span>
         </button>
       </div>
     </div>

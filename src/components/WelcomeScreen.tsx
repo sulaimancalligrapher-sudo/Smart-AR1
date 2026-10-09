@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { Camera, Sparkles, BookOpen, Layers, FileSpreadsheet, Eye, Play, QrCode, Copy, Check, Smartphone, Monitor, RotateCcw } from 'lucide-react';
 import { LessonData } from '../types/ar';
-import { encodeLessonsPayload } from '../data/lessons';
 
 interface WelcomeScreenProps {
   onStartCamera: () => void;
   onOpenTargetCards: () => void;
   onOpenTeacherConsole: () => void;
   onOpenCompiler: () => void;
-  onOpenStudentQR?: () => void;
   onSimulateLesson: (lesson: LessonData) => void;
   onPurgeAllData?: () => void;
   lessons: LessonData[];
@@ -19,24 +17,16 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenTargetCards,
   onOpenTeacherConsole,
   onOpenCompiler,
-  onOpenStudentQR,
   onSimulateLesson,
   onPurgeAllData,
   lessons
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
-  const origin = window.location.origin;
-  const pathname = window.location.pathname;
-  const payload = lessons && lessons.length > 0 ? encodeLessonsPayload(lessons) : '';
-  const studentCameraUrl = payload
-    ? `${origin}${pathname}?mode=student#d=${payload}`
-    : `${origin}${pathname}?mode=student`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(
-    `${origin}${pathname}?mode=student`
-  )}`;
+  const sharedUrl = window.location.href;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(sharedUrl)}`;
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(studentCameraUrl);
+    navigator.clipboard.writeText(sharedUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
@@ -112,7 +102,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </p>
         </div>
 
-        {/* Primary CTA: Start Camera & Student QR */}
+        {/* Primary CTA: Start Camera */}
         <div className="w-full max-w-sm space-y-2.5">
           <button
             onClick={onStartCamera}
@@ -122,65 +112,46 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <span>📷 تشغيل الكاميرا الآن</span>
           </button>
 
-          <div className="grid grid-cols-2 gap-2">
-            {onOpenStudentQR && (
-              <button
-                onClick={onOpenStudentQR}
-                className="py-2.5 px-3 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 hover:text-white border border-emerald-700/60 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md"
-                title="إنشاء ومشاركة رابط وباركود كاميرا الطلاب المباشرة"
-              >
-                <QrCode className="w-4 h-4 text-emerald-400" />
-                <span>رابط وباركود الطلاب</span>
-              </button>
-            )}
-
-            <button
-              onClick={onOpenTargetCards}
-              className={`py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                !onOpenStudentQR ? 'col-span-2' : ''
-              }`}
-            >
-              <Eye className="w-4 h-4 text-sky-400" />
-              <span>بطاقات الدروس</span>
-            </button>
-          </div>
+          <button
+            onClick={onOpenTargetCards}
+            className="w-full py-2.5 px-4 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/80 text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Eye className="w-4 h-4 text-sky-400" />
+            <span>عرض بطاقات أهداف الدروس (Targets)</span>
+          </button>
         </div>
 
-        {/* Mobile Real-Device Tester Card (Scan QR with phone for student direct camera) */}
-        <div className="w-full p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/30 text-right space-y-3 shadow-lg">
+        {/* Mobile Real-Device Tester Card (Scan QR with phone) */}
+        <div className="w-full p-4 rounded-2xl bg-slate-900/90 border border-slate-800 text-right space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
               <Smartphone className="w-4 h-4 text-emerald-400" />
-              <span>📱 رابط وباركود الكاميرا المباشرة للطلاب (بدون إعدادات)</span>
+              <span>📱 هل تريد تجربة الكاميرا من هاتفك الذكي الآن؟</span>
             </div>
             <button
               onClick={handleCopyLink}
-              className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer bg-emerald-950/60 px-2 py-1 rounded-lg border border-emerald-800/60"
+              className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300 font-medium cursor-pointer"
             >
               {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              {copiedLink ? 'تم نسخ رابط الطلاب!' : 'نسخ رابط الطلاب'}
+              {copiedLink ? 'تم نسخ الرابط!' : 'نسخ رابط الموقع'}
             </button>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-950 p-3 rounded-xl border border-slate-800/80">
-            <div 
-              onClick={onOpenStudentQR}
-              className="p-1.5 bg-white rounded-xl shadow-md flex-shrink-0 cursor-pointer hover:scale-105 transition-transform"
-              title="انقر لتكبير وحفظ الباركود"
-            >
+            <div className="p-1.5 bg-white rounded-lg shadow-md flex-shrink-0">
               <img
                 src={qrCodeUrl}
-                alt="امسح الباركود لفتح الكاميرا للطلاب مباشرة"
+                alt="امسح الباركود لفتح الموقع على الهاتف"
                 className="w-24 h-24 sm:w-28 sm:h-28 object-contain"
               />
             </div>
-            <div className="text-xs text-slate-300 space-y-1.5 leading-relaxed text-right flex-1">
-              <p className="font-bold text-emerald-400">امسح الباركود بجوال الطالب لفتح الكاميرا فوراً:</p>
-              <p className="text-slate-300 text-[11px]">
-                • هذا الرابط مخصص للطلاب: يفتح الكاميرا فقط بدون أزرار الإعدادات أو لوحة المعلم.
+            <div className="text-xs text-slate-300 space-y-1.5 leading-relaxed text-right">
+              <p className="font-bold text-white">امسح هذا الباركود بكاميرا هاتفك العادية:</p>
+              <p className="text-slate-400 text-[11px]">
+                ١. سيفتح لك هذا الموقع في متصفح جوالك مباشرة عبر HTTPS.
               </p>
               <p className="text-slate-400 text-[11px]">
-                • يمكن إرسال الرابط للطلاب أو طباعة الباركود في مقدمة الكتاب المدرسي.
+                ٢. اضغط تشغيل الكاميرا من الجوال، ووجّه كاميرا الجوال نحو صورة الدرس المعروضة على شاشة الكمبيوتر!
               </p>
             </div>
           </div>

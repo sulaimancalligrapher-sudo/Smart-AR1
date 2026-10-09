@@ -3,7 +3,7 @@ import { LessonData } from '../types/ar';
 // Storage version key to automatically discard stale data from older testing sessions
 const STORAGE_KEY = 'ar_school_lessons_v3';
 const STORAGE_VERSION_KEY = 'ar_data_build_version';
-const CURRENT_BUILD_VERSION = '3.2.0';
+const CURRENT_BUILD_VERSION = '3.1.0';
 
 export const DEFAULT_LESSONS: LessonData[] = [
   {
@@ -13,23 +13,17 @@ export const DEFAULT_LESSONS: LessonData[] = [
     subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
     subject: 'الخط واللغة العربية',
     grade: 'الصف الابتدائي',
-    targetImage: '/targets/target_lesson_001.jpg',
+    targetImage: '',
     video: {
-      type: 'youtube',
-      url: 'https://www.youtube.com/watch?v=ncORPosDrjI',
-      embedUrl: 'https://www.youtube.com/embed/ncORPosDrjI?autoplay=1&rel=0',
-      title: 'فيديو شرح كتاب الرقعة'
+      type: 'mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      title: 'فيديو تعليمي تفاعلي'
     },
-    images: [
-      {
-        url: '/targets/target_lesson_001.jpg',
-        title: 'بطاقة درس كتاب الرقعة',
-        caption: 'بطاقة درس كتاب الرقعة'
-      }
-    ],
+    images: [],
     audio: {
       url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
-      title: 'الشرح الصوتي لكتاب الرقعة'
+      title: 'تسجيل صوتي تعليمي'
     },
     model3d: {
       url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
@@ -37,18 +31,17 @@ export const DEFAULT_LESSONS: LessonData[] = [
       autoRotate: false
     },
     description: {
-      summary: 'درس استكشافي تفاعلي لخط الرقعة وقواعده وجمالياته الفنية عبر تقنية الواقع المعزز.',
+      summary: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
       keyPoints: [
-        'التعرف على خصائص وحروف خط الرقعة',
-        'مشاهدة المجسم ثلاثي الأبعاد والتدوير بزاوية 360 درجة',
-        'متابعة الفيديو التعليمي التفاعلي والاستماع للشرح الصوتي'
+        'التعرف على خصائص ومكونات الدرس',
+        'فحص المجسم التفاعلي بزوايا 360 درجة'
       ],
-      fullText: 'خط الرقعة هو أحد الخطوط العربية الأصيلة التي تتميز بالبساطة والسرعة في الكتابة وسهولة القراءة، ويستخدم بكثرة في الحياة اليومية.',
+      fullText: 'شرح مفصل للدرس يظهر للطالب عند فتح أيقونة الشرح والاستكشاف...',
       quiz: {
-        question: 'ما هي أهم ميزة في خط الرقعة؟',
-        options: ['السرعة والسهولة في الكتابة', 'صعوبة القراءة', 'كثرة الزخارف المعقدة', 'يكتب بأقلام خاصة فقط'],
+        question: 'ما هي أهم ميزة في هذا المجسم التفاعلي؟',
+        options: ['ثابت ويمكن تدويره 360°', 'يتحرك تلقائياً', 'لا يمكن لمسه', 'صغير جداً'],
         correctIndex: 0,
-        explanation: 'يتميز خط الرقعة بسلاسة وسرعة كتابته ووضوح حروفه.'
+        explanation: 'المجسم يتميز بالثبات الكامل التفاعلي تحت تحكم الطالب.'
       }
     }
   },
@@ -59,23 +52,17 @@ export const DEFAULT_LESSONS: LessonData[] = [
     subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
     subject: 'الخط واللغة العربية',
     grade: 'الصف الابتدائي',
-    targetImage: '/targets/target_lesson_002.jpg',
+    targetImage: '',
     video: {
-      type: 'youtube',
-      url: 'https://www.youtube.com/watch?v=ncORPosDrjI',
-      embedUrl: 'https://www.youtube.com/embed/ncORPosDrjI?autoplay=1&rel=0',
-      title: 'فيديو شرح كتاب الديواني'
+      type: 'mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+      embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+      title: 'فيديو تعليمي تفاعلي'
     },
-    images: [
-      {
-        url: '/targets/target_lesson_002.jpg',
-        title: 'بطاقة درس كتاب الديواني',
-        caption: 'بطاقة درس كتاب الديواني'
-      }
-    ],
+    images: [],
     audio: {
       url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
-      title: 'الشرح الصوتي لكتاب الديواني'
+      title: 'تسجيل صوتي تعليمي'
     },
     model3d: {
       url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
@@ -83,64 +70,17 @@ export const DEFAULT_LESSONS: LessonData[] = [
       autoRotate: false
     },
     description: {
-      summary: 'درس استكشافي لخط الديواني وانحناءاته الفنية الرائعة والمجسم التفاعلي.',
+      summary: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
       keyPoints: [
-        'فهم أسلوب الخط الديواني واستخداماته التاريخية',
-        'فحص المجسم 3D التفاعلي من كافة الجهات',
-        'التدريب على رسم الحروف والكلمات بانسيابية'
+        'فهم الخطوات التطبيقية',
+        'المعاينة ثلاثية الأبعاد'
       ],
-      fullText: 'الخط الديواني هو خط عربي فني متميز بالمرونة والتداخل الجمالي في الحروف، وكان يستخدم في الدواوين والوثائق الرسمية القديمة.',
+      fullText: 'شرح مفصل للدرس الثاني يظهر للطالب في المنصة...',
       quiz: {
-        question: 'أين كان يستخدم الخط الديواني قديماً؟',
-        options: ['في الدواوين والمراسلات الرسمية', 'في الإعلانات فقط', 'لم يستخدم قط', 'في الصحف الحديثة فقط'],
+        question: 'كيف يمكن تدوير المجسم؟',
+        options: ['بالسحب بالإصبع في أي اتجاه', 'بالهز', 'بالصوت', 'تلقائياً فقط'],
         correctIndex: 0,
-        explanation: 'سمي بالديواني لأنه كان الخط المعتمد في الدواوين الملكية والرسمية.'
-      }
-    }
-  },
-  {
-    targetIndex: 2,
-    targetId: 'lesson_003',
-    title: 'كتاب النسخ',
-    subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
-    subject: 'الخط واللغة العربية',
-    grade: 'الصف الابتدائي',
-    targetImage: '/targets/target_lesson_003.jpg',
-    video: {
-      type: 'youtube',
-      url: 'https://www.youtube.com/watch?v=ncORPosDrjI',
-      embedUrl: 'https://www.youtube.com/embed/ncORPosDrjI?autoplay=1&rel=0',
-      title: 'فيديو شرح كتاب النسخ'
-    },
-    images: [
-      {
-        url: '/targets/target_lesson_003.jpg',
-        title: 'بطاقة درس كتاب النسخ',
-        caption: 'بطاقة درس كتاب النسخ'
-      }
-    ],
-    audio: {
-      url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
-      title: 'الشرح الصوتي لكتاب النسخ'
-    },
-    model3d: {
-      url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
-      title: 'مجسم ثلاثي الأبعاد تفاعلي',
-      autoRotate: false
-    },
-    description: {
-      summary: 'درس شامل لخط النسخ المستخدم في طباعة الكتب المدرسية والقرآن الكريم.',
-      keyPoints: [
-        'التعرف على قواعد خط النسخ ووضوح رسم حروفه',
-        'التفاعل مع المجسم التعليمي ثلاثي الأبعاد',
-        'إتقان الكتابة بالنسخ للمرحلة الابتدائية'
-      ],
-      fullText: 'خط النسخ هو الخط الأكثر انتشاراً واستخداماً في طباعة الكتب والصحف والمناهج المدرسية، لشدة وضوحه ودقته وتناسق حروفه.',
-      quiz: {
-        question: 'لماذا سمي خط النسخ بهذا الاسم؟',
-        options: ['لكثرة استخدامه في نسخ الكتب والمخطوطات', 'لأنه جديد', 'لأنه صعب جداً', 'لأنه يكتب بسرعة دون تاني'],
-        correctIndex: 0,
-        explanation: 'سمي خط النسخ بهذا الاسم لأنه كان الخط الأساسي الذي ينسخ به الوراقون الكتب والمصاحف.'
+        explanation: 'يمكنك تحريك إصبعك في أي اتجاه لمعاينة المجسم بدقة.'
       }
     }
   }
@@ -178,64 +118,8 @@ export function saveStoredLessons(lessons: LessonData[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lessons));
   } catch (err) {
-    console.warn('Error saving stored lessons, attempting compact save without large data URIs:', err);
-    try {
-      // Strip large data URIs if quota exceeded to ensure core text/models/videos are preserved
-      const compact = lessons.map(l => ({
-        ...l,
-        targetImage: l.targetImage?.startsWith('data:') ? '' : l.targetImage,
-        images: l.images?.filter(img => !img.url?.startsWith('data:')) || []
-      }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(compact));
-    } catch (e2) {
-      console.warn('Could not save even compact lessons to localStorage:', e2);
-    }
+    console.warn('Error saving stored lessons:', err);
   }
-}
-
-/**
- * Encode lessons into a compact URL-safe base64 string for direct student sharing
- */
-export function encodeLessonsPayload(lessons: LessonData[]): string {
-  try {
-    // Strip heavy base64 to ensure URL fits easily
-    const clean = lessons.map(l => ({
-      targetIndex: l.targetIndex,
-      targetId: l.targetId,
-      title: l.title,
-      subtitle: l.subtitle,
-      subject: l.subject,
-      grade: l.grade,
-      targetImage: l.targetImage?.startsWith('data:') ? '' : (l.targetImage || `/targets/target_${l.targetId}.jpg`),
-      video: l.video,
-      model3d: l.model3d,
-      audio: l.audio,
-      description: l.description,
-      images: l.images?.filter(img => !img.url?.startsWith('data:')) || []
-    }));
-    const json = JSON.stringify(clean);
-    return btoa(encodeURIComponent(json));
-  } catch (err) {
-    console.warn('Could not encode lessons payload:', err);
-    return '';
-  }
-}
-
-/**
- * Decode lessons from a URL-safe base64 string
- */
-export function decodeLessonsPayload(payload: string): LessonData[] | null {
-  try {
-    if (!payload) return null;
-    const json = decodeURIComponent(atob(payload));
-    const parsed = JSON.parse(json);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed as LessonData[];
-    }
-  } catch (err) {
-    console.warn('Could not decode lessons payload:', err);
-  }
-  return null;
 }
 
 export function clearStoredLessons(): void {
@@ -287,22 +171,9 @@ export async function purgeAllLocalDataAndCache(): Promise<void> {
 
 export async function fetchLessons(forceRefreshServer = false): Promise<LessonData[]> {
   try {
-    // Check if URL hash or search params contains an encoded lessons payload
-    const hash = window.location.hash;
-    if (hash.includes('d=')) {
-      const parts = hash.split('d=');
-      if (parts[1]) {
-        const decoded = decodeLessonsPayload(parts[1]);
-        if (decoded && decoded.length > 0) {
-          saveStoredLessons(decoded);
-          return decoded;
-        }
-      }
-    }
-
-    // Fetch deployed /data/content.json (now clean and <10KB)
+    // Fetch deployed /data/content.json with timeout guard (3.5s max to prevent mobile hang)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
     const res = await fetch(`/data/content.json?t=${Date.now()}`, {
       headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
@@ -324,19 +195,16 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
           return data.lessons;
         }
 
-        // Merge carefully: ensure 3D model and video and description exist
+        // Merge carefully: only preserve user modifications if the server doesn't provide them
         const merged = data.lessons.map((serverLesson: LessonData, idx: number) => {
           const localLesson = local[idx] || local.find(l => l.targetId === serverLesson.targetId);
           if (localLesson) {
             return {
               ...serverLesson,
-              title: localLesson.title || serverLesson.title,
-              subtitle: localLesson.subtitle || serverLesson.subtitle,
-              model3d: localLesson.model3d || serverLesson.model3d,
-              targetImage: localLesson.targetImage || serverLesson.targetImage,
-              video: localLesson.video || serverLesson.video,
-              audio: localLesson.audio || serverLesson.audio,
-              description: localLesson.description || serverLesson.description
+              // Keep local user-uploaded media only if server did not specify it
+              model3d: serverLesson.model3d || localLesson.model3d,
+              targetImage: serverLesson.targetImage || localLesson.targetImage,
+              video: serverLesson.video || localLesson.video
             };
           }
           return serverLesson;
