@@ -16,6 +16,7 @@ import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { StudentQRModal } from './components/StudentQRModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
+import { AdminPortalView } from './components/AdminPortalView';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
 import { LessonData, getActiveLessonModel } from './types/ar';
@@ -35,6 +36,20 @@ type ActiveModalType =
   | 'compiler'
   | 'qr';
 
+// التحقق من الرابط الخاص بالإدارة
+function checkIsAdminUrl(): boolean {
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    return (
+      searchParams.has('admin') ||
+      searchParams.get('mode') === 'admin' ||
+      window.location.hash.toLowerCase().includes('admin')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const [lessons, setLessons] = useState<LessonData[]>(() => {
     const stored = getStoredLessons();
@@ -48,6 +63,19 @@ export default function App() {
   // صلاحيات ومستوى الإدارة والمعلم
   const [isAdmin, setIsAdmin] = useState<boolean>(() => getIsAdminLoggedIn());
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'student' | 'admin'>(() => {
+    return checkIsAdminUrl() ? 'admin' : 'student';
+  });
+
+  // كشف الدخول عبر الرابط الخاص بالإدارة
+  useEffect(() => {
+    if (checkIsAdminUrl()) {
+      setViewMode('admin');
+      if (!getIsAdminLoggedIn()) {
+        setIsAdminLoginOpen(true);
+      }
+    }
+  }, []);
 
   // ⭐ النوع الأول: المجسم مثبت على الصورة ويتابعها (AR) ⭐
   const [showFloatingModel, setShowFloatingModel] = useState<boolean>(true);
@@ -137,30 +165,68 @@ export default function App() {
     setIsAdmin(true);
     setAdminLoggedIn(true);
     setIsAdminLoginOpen(false);
+    setViewMode('admin');
   };
 
   const handleAdminLogout = () => {
     setIsAdmin(false);
     setAdminLoggedIn(false);
+    setViewMode('student');
+    try {
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch (_) {}
+  };
+
+  const handleCloseAdminLogin = () => {
+    setIsAdminLoginOpen(false);
+    if (viewMode === 'admin' && !isAdmin) {
+      setViewMode('student');
+      try {
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (_) {}
+    }
   };
 
   return (
-    <div className="relative w-full h-full min-h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* 1. Main View: Welcome Screen OR Live AR Camera View */}
+    <div className={`relative w-full min-h-screen bg-slate-950 text-slate-100 font-sans ${isCameraActive ? 'fixed inset-0 overflow-hidden' : 'overflow-x-hidden overflow-y-auto'}`}>
+      {/* 1. Main View: Welcome Screen OR Dedicated Admin Portal OR Live AR Camera View */}
       {!isCameraActive ? (
-        <WelcomeScreen
-          lessons={lessons}
-          isAdmin={isAdmin}
-          onStartCamera={handleStartCamera}
-          onOpenTargetCards={() => setActiveModal('target_cards')}
-          onOpenTeacherConsole={() => setActiveModal('teacher_console')}
-          onOpenCompiler={() => setActiveModal('compiler')}
-          onOpenQRModal={() => setActiveModal('qr')}
-          onSimulateLesson={handleSimulateLesson}
-          onPurgeAllData={handlePurgeAllData}
-          onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
-          onAdminLogout={handleAdminLogout}
-        />
+        viewMode === 'admin' ? (
+          isAdmin ? (
+            <AdminPortalView
+              lessons={lessons}
+              onOpenTeacherConsole={() => setActiveModal('teacher_console')}
+              onOpenCompiler={() => setActiveModal('compiler')}
+              onOpenTargetCards={() => setActiveModal('target_cards')}
+              onOpenQRModal={() => setActiveModal('qr')}
+              onSimulateLesson={handleSimulateLesson}
+              onPurgeAllData={handlePurgeAllData}
+              onGoToStudentView={() => {
+                setViewMode('student');
+                try {
+                  window.history.replaceState({}, '', window.location.pathname);
+                } catch (_) {}
+              }}
+              onLogout={handleAdminLogout}
+            />
+          ) : (
+            <div className="min-h-screen w-full flex flex-col items-center justify-center p-6 text-center text-white" dir="rtl">
+              <AdminLoginModal
+                isOpen={true}
+                onClose={handleCloseAdminLogin}
+                onSuccess={handleAdminLoginSuccess}
+              />
+            </div>
+          )
+        ) : (
+          <WelcomeScreen
+            lessons={lessons}
+            isAdmin={isAdmin}
+            onStartCamera={handleStartCamera}
+            onOpenAdminPortal={() => setViewMode('admin')}
+            onAdminLogout={handleAdminLogout}
+          />
+        )
       ) : (
         <ARCameraView
           lessons={lessons}
@@ -323,7 +389,7 @@ export default function App() {
 
       <AdminLoginModal
         isOpen={isAdminLoginOpen}
-        onClose={() => setIsAdminLoginOpen(false)}
+        onClose={handleCloseAdminLogin}
         onSuccess={handleAdminLoginSuccess}
       />
     </div>

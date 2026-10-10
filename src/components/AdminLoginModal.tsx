@@ -202,6 +202,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
               >
                 تغيير اسم ورقم الإدارة السري
               </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-1.5 px-3 text-xs text-sky-400 hover:text-sky-300 font-bold transition-colors cursor-pointer"
+              >
+                ← العودة إلى صفحة الطالب
+              </button>
             </div>
           </form>
         ) : (
