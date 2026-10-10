@@ -1027,7 +1027,7 @@ function doPost(e) {
                                   const newARModel: LessonModel3D = {
                                     url: objectUrl,
                                     title: `مجسم AR: ${cleanName}`,
-                                    autoRotate: true
+                                    autoRotate: false
                                   };
                                   handleFieldChange('arModel3d', newARModel);
 
@@ -1069,6 +1069,27 @@ function doPost(e) {
                           <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>تم رفع مجسم AR مخصص: {uploadedARModelFileName}</span>
+                          </div>
+                        )}
+
+                        {currentLesson.arModel3d?.url && (
+                          <div className="pt-1 flex items-center gap-2">
+                            <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                              <input
+                                type="checkbox"
+                                checked={currentLesson.arModel3d.autoRotate === true}
+                                onChange={(e) => {
+                                  if (currentLesson.arModel3d) {
+                                    handleFieldChange('arModel3d', {
+                                      ...currentLesson.arModel3d,
+                                      autoRotate: e.target.checked
+                                    });
+                                  }
+                                }}
+                                className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
+                              />
+                              <span>تدوير تلقائي للمجسم في الـ AR (أو اتركه بدون تفعيل ليبقى ثابتاً تماماً فوق صفحة الكتاب)</span>
+                            </label>
                           </div>
                         )}
                       </div>

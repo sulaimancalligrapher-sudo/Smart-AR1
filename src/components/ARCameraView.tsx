@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen } from 'lucide-react';
+import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData, getActiveLessonModel } from '../types/ar';
@@ -130,9 +130,16 @@ function createARCrystalFallback(THREE_NS: any, scale = 0.3) {
 
 /**
  * توحيد أبعاد وتمركز المجسم ثلاثي الأبعاد فوق صفحة الكتاب بحجم كبير وبارز وبدون أي خلفيات أو تظليل
+ * وتصفير نقطة المركز (Bounding Box Center) لضمان ثباته فوق الورقة ودورانه حول محوره فقط دون أي حركة دائرية واسعة
  */
 function setupModelForAnchor(model: any, THREE_NS: any) {
   model.updateMatrixWorld(true);
+
+  // إزالة أي إزاحات داخلية قديمة
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+
+  // حساب الصندوق المحيط الهندسي الدقيق
   const box = new THREE_NS.Box3().setFromObject(model);
   const size = box.getSize(new THREE_NS.Vector3());
   const center = box.getCenter(new THREE_NS.Vector3());
@@ -142,10 +149,11 @@ function setupModelForAnchor(model: any, THREE_NS: any) {
   const targetScale = 1.35 / maxDim;
   model.scale.setScalar(targetScale);
 
-  // تمركز المجسم تماماً فوق نقطة الارتكاز مع رفعه قليلاً فوق الورقة ليطفو بحرية
+  // تصحيح نقطة الأصل (Pivot / Center) بحيث يتطابق مركز الكلمة/المجسم مع نقطة الارتكاز (0,0) تماماً
+  // هذا يمنع أي دوران مداري أو حركة دائرية واسعة إذا كان مركز المجسم في بليندر بعيداً عن نقطة الصفر
   model.position.x = -center.x * targetScale;
   model.position.y = -center.y * targetScale;
-  model.position.z = 0.14;
+  model.position.z = 0.12 - center.z * targetScale;
 
   const sanitizeMaterial = (mat: any) => {
     if (!mat) return;
@@ -195,6 +203,13 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [showFocusRing, setShowFocusRing] = useState(false);
   const [isPhysicalTargetTracked, setIsPhysicalTargetTracked] = useState(false);
+  // تحكم فوري للمستخدم: المجسم ثابت تماماً فوق صفحة الكتاب افتراضياً لتتبعه بدقة 360 درجة مع الكاميرا
+  const [isARAutoRotateActive, setIsARAutoRotateActive] = useState(false);
+  const isARAutoRotateActiveRef = useRef(false);
+
+  useEffect(() => {
+    isARAutoRotateActiveRef.current = isARAutoRotateActive;
+  }, [isARAutoRotateActive]);
 
   const mindarThreeRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -259,11 +274,13 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
     // نعتمد على دالة getActiveLessonModel: إذا لم يُحدد رابط في الـ AR، يأخذ تلقائياً مجسم النوع الثاني دون تكرار!
     const targetModel = getActiveLessonModel(lesson, true);
+    // إذا لم يحدد المعلم تدوير تلقائي صراحةً للمجسم، يبقى ثابتاً تماماً في الـ AR
+    const isModelAutoRotate = Boolean(targetModel?.autoRotate);
 
     modelEntriesRef.current.set(targetIdx, {
       modelWrapper,
       mixer: null,
-      autoRotate: targetModel?.autoRotate !== false
+      autoRotate: isModelAutoRotate
     });
 
     if (targetModel?.url && targetModel.url.trim() !== '') {
@@ -290,7 +307,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           modelEntriesRef.current.set(targetIdx, {
             modelWrapper,
             mixer,
-            autoRotate: targetModel.autoRotate !== false
+            autoRotate: isModelAutoRotate
           });
           console.log(`🎯 تم تحميل وربط مجسم الـ GLB للهدف ${lesson.title} بنجاح!`);
         },
@@ -568,12 +585,18 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             const delta = clock.getDelta();
 
             // تحديث مجسمات الـ Anchors المثبتة على صور الكتاب
+            const shouldRotate = isARAutoRotateActiveRef.current;
             modelEntriesRef.current.forEach((entry) => {
               if (entry.mixer) {
                 entry.mixer.update(delta);
               }
-              if (entry.autoRotate && entry.modelWrapper) {
-                entry.modelWrapper.rotation.y += delta * 0.7;
+              if (entry.modelWrapper) {
+                if (shouldRotate && entry.autoRotate) {
+                  entry.modelWrapper.rotation.y += delta * 0.7;
+                } else if (!shouldRotate && entry.modelWrapper.rotation.y !== 0) {
+                  // إرجاع المجسم لزاويته الأصلية الثابتة فوراً ليبقى متوافقاً مع الكتاب
+                  entry.modelWrapper.rotation.y = 0;
+                }
               }
             });
 
@@ -735,6 +758,23 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* زر التبديل الفوري بين ثبات المجسم فوق الكتاب أو التدوير */}
+          <button
+            onClick={() => setIsARAutoRotateActive((prev) => !prev)}
+            className={`p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 ${
+              isARAutoRotateActive
+                ? 'bg-amber-500/80 hover:bg-amber-600 text-white border-amber-300/50'
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-white/20'
+            }`}
+            title={isARAutoRotateActive ? 'إيقاف الدوران وتثبيت المجسم فوق الكتاب' : 'تشغيل الدوران التلقائي'}
+          >
+            {isARAutoRotateActive ? (
+              <Pause className="w-4 h-4 text-amber-200" />
+            ) : (
+              <RotateCw className="w-4 h-4 text-slate-300" />
+            )}
+          </button>
+
           <button
             onClick={applyAutoFocus}
             className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
