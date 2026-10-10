@@ -1,6 +1,6 @@
 import React from 'react';
 import { Video, Image, Music, BookOpen, Box, X, Layers } from 'lucide-react';
-import { LessonData } from '../types/ar';
+import { LessonData, getActiveLessonModel } from '../types/ar';
 
 interface TransparentOverlayProps {
   lesson: LessonData;
@@ -78,7 +78,7 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
           )}
 
           {/* 1. النوع الأول: مجسم الواقع المعزز AR المثبت فوق الصورة يتبع حركة الكاميرا */}
-          {(lesson.model3d || lesson.arModel3d) && onToggleFloatingModel && (
+          {Boolean(getActiveLessonModel(lesson, true)) && onToggleFloatingModel && (
             <button
               onClick={onToggleFloatingModel}
               className={`relative p-3 rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer group flex items-center justify-center ${
@@ -100,7 +100,7 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
           )}
 
           {/* 2. النوع الثاني: المجسم التفاعلي 360° باللمس والفأرة */}
-          {(lesson.model3d || lesson.arModel3d) && (
+          {Boolean(getActiveLessonModel(lesson, false)) && (
             <button
               onClick={onOpenModel3D}
               className={`p-3 rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer group flex items-center justify-center ${
@@ -116,7 +116,7 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
         </div>
 
         {/* شارة إيضاحية سريعة للوضع النشط للمجسم ثلاثي الأبعاد */}
-        {(lesson.model3d || lesson.arModel3d) && (
+        {Boolean(getActiveLessonModel(lesson, true)) && (
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[11px] font-semibold text-slate-200">
             {isFloatingModelActive ? (
               <>

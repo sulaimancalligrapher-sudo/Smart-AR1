@@ -56,6 +56,30 @@ export interface LessonData {
   arModel3d?: LessonModel3D; // مجسم مخصص اختياري للواقع المعزز (AR) - إذا لم يُحدد يستخدم model3d تلقائياً
 }
 
+/**
+ * دالة ذكية ومرنة ترجع المجسم الفعال لأي درس:
+ * إذا لم يُحدد مجسم خاص بالـ AR (النوع الأول)، يتم استخدام مجسم الدرس المشترك (النوع الثاني) تلقائياً دون تكرار!
+ */
+export function getActiveLessonModel(lesson?: LessonData | null, preferAR: boolean = true): LessonModel3D | null {
+  if (!lesson) return null;
+
+  if (preferAR) {
+    if (lesson.arModel3d?.url && lesson.arModel3d.url.trim() !== '') {
+      return lesson.arModel3d;
+    }
+  }
+
+  if (lesson.model3d?.url && lesson.model3d.url.trim() !== '') {
+    return lesson.model3d;
+  }
+
+  if (lesson.arModel3d?.url && lesson.arModel3d.url.trim() !== '') {
+    return lesson.arModel3d;
+  }
+
+  return null;
+}
+
 export type ARActionType =
   | 'target_detected'
   | 'video_open'

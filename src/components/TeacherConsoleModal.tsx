@@ -5,7 +5,7 @@ import {
   HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
-import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage } from '../types/ar';
+import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage, getActiveLessonModel } from '../types/ar';
 import { saveStoredLessons, fetchLessons } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
 
@@ -1082,19 +1082,19 @@ function doPost(e) {
                         <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                         <span>معاينة حية للمجسم (3D Preview) - جرّب التدوير بالفأرة أو اللمس:</span>
                       </span>
-                      {currentLesson.model3d?.url && (
+                      {getActiveLessonModel(currentLesson, true)?.url && (
                         <span className="text-[10px] text-emerald-400 font-bold">
-                          ✓ جاهز للنوعين (AR و 360°)
+                          ✓ جاهز للنوعين (AR فوق الورقة و 360° باللمس)
                         </span>
                       )}
                     </div>
 
-                    {currentLesson.model3d?.url ? (
+                    {getActiveLessonModel(currentLesson, true)?.url ? (
                       <Model3DViewer
-                        src={currentLesson.model3d.url}
-                        title={currentLesson.model3d.title || currentLesson.title}
+                        src={getActiveLessonModel(currentLesson, true)!.url}
+                        title={getActiveLessonModel(currentLesson, true)!.title || currentLesson.title}
                         height="260px"
-                        autoRotate={currentLesson.model3d.autoRotate !== false}
+                        autoRotate={getActiveLessonModel(currentLesson, true)!.autoRotate !== false}
                         interactive={true}
                       />
                     ) : (

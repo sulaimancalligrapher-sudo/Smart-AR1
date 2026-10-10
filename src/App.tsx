@@ -16,7 +16,7 @@ import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
-import { LessonData } from './types/ar';
+import { LessonData, getActiveLessonModel } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
 
@@ -152,9 +152,9 @@ export default function App() {
       )}
 
       {/* 2. Real Holographic 3D AR Layer over Live Camera */}
-      {isCameraActive && activeLesson && (activeLesson.model3d || activeLesson.arModel3d) && showHologram3D && activeModal === 'none' && (
+      {isCameraActive && activeLesson && getActiveLessonModel(activeLesson, false) && showHologram3D && activeModal === 'none' && (
         <Holographic3DOverlay
-          model={(activeLesson.model3d || activeLesson.arModel3d)!}
+          model={getActiveLessonModel(activeLesson, false)!}
           lessonTitle={activeLesson.title}
           audioUrl={activeLesson.audio?.url}
           onClose={() => {
@@ -201,9 +201,9 @@ export default function App() {
       )}
 
       {/* 4. Interactive Content Modals */}
-      {activeModal === 'model3d' && activeLesson && (activeLesson.model3d || activeLesson.arModel3d) && (
+      {activeModal === 'model3d' && activeLesson && getActiveLessonModel(activeLesson, false) && (
         <Model3DModal
-          model={(activeLesson.model3d || activeLesson.arModel3d)!}
+          model={getActiveLessonModel(activeLesson, false)!}
           lessonTitle={activeLesson.title}
           audioUrl={activeLesson.audio?.url}
           onClose={() => {
