@@ -15,6 +15,7 @@ interface ARCameraViewProps {
   onOpenTargetCards: () => void;
   onOpenTeacherConsole: () => void;
   showFloatingModel?: boolean;
+  isAdmin?: boolean;
 }
 
 function playMatchChime() {
@@ -192,7 +193,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   onCloseCamera,
   onOpenTargetCards,
   onOpenTeacherConsole,
-  showFloatingModel = true
+  showFloatingModel = true,
+  isAdmin = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
@@ -791,21 +793,25 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             <RefreshCw className="w-4 h-4 text-cyan-400" />
           </button>
 
-          <button
-            onClick={onOpenTargetCards}
-            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="عرض بطاقات الدروس"
-          >
-            <Eye className="w-4 h-4 text-sky-400" />
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={onOpenTargetCards}
+                className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+                title="عرض بطاقات الدروس"
+              >
+                <Eye className="w-4 h-4 text-sky-400" />
+              </button>
 
-          <button
-            onClick={onOpenTeacherConsole}
-            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
-            title="لوحة المعلم"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-          </button>
+              <button
+                onClick={onOpenTeacherConsole}
+                className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+                title="لوحة المعلم"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -835,7 +841,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             </span>
           </div>
 
-          {lessons.length > 0 && (
+          {isAdmin && lessons.length > 0 && (
             <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
               <button
                 onClick={handleSimulateFirstLesson}

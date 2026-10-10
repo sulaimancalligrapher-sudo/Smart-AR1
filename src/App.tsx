@@ -14,11 +14,14 @@ import { ExplanationModal } from './components/ExplanationModal';
 import { TargetCardsModal } from './components/TargetCardsModal';
 import { TeacherConsoleModal } from './components/TeacherConsoleModal';
 import { MindARCompilerModal } from './components/MindARCompilerModal';
+import { StudentQRModal } from './components/StudentQRModal';
+import { AdminLoginModal } from './components/AdminLoginModal';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
 import { LessonData, getActiveLessonModel } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
+import { getIsAdminLoggedIn, setAdminLoggedIn } from './services/adminAuth';
 
 type ActiveModalType =
   | 'none'
@@ -29,7 +32,8 @@ type ActiveModalType =
   | 'model3d'
   | 'target_cards'
   | 'teacher_console'
-  | 'compiler';
+  | 'compiler'
+  | 'qr';
 
 export default function App() {
   const [lessons, setLessons] = useState<LessonData[]>(() => {
@@ -41,6 +45,10 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<ActiveModalType>('none');
   const [showHologram3D, setShowHologram3D] = useState<boolean>(false);
   
+  // صلاحيات ومستوى الإدارة والمعلم
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => getIsAdminLoggedIn());
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
+
   // ⭐ النوع الأول: المجسم مثبت على الصورة ويتابعها (AR) ⭐
   const [showFloatingModel, setShowFloatingModel] = useState<boolean>(true);
 
@@ -125,23 +133,39 @@ export default function App() {
     }
   };
 
+  const handleAdminLoginSuccess = () => {
+    setIsAdmin(true);
+    setAdminLoggedIn(true);
+    setIsAdminLoginOpen(false);
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdmin(false);
+    setAdminLoggedIn(false);
+  };
+
   return (
     <div className="relative w-full h-full min-h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* 1. Main View: Welcome Screen OR Live AR Camera View */}
       {!isCameraActive ? (
         <WelcomeScreen
           lessons={lessons}
+          isAdmin={isAdmin}
           onStartCamera={handleStartCamera}
           onOpenTargetCards={() => setActiveModal('target_cards')}
           onOpenTeacherConsole={() => setActiveModal('teacher_console')}
           onOpenCompiler={() => setActiveModal('compiler')}
+          onOpenQRModal={() => setActiveModal('qr')}
           onSimulateLesson={handleSimulateLesson}
           onPurgeAllData={handlePurgeAllData}
+          onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
+          onAdminLogout={handleAdminLogout}
         />
       ) : (
         <ARCameraView
           lessons={lessons}
           activeLesson={activeLesson}
+          isAdmin={isAdmin}
           onTargetDetected={handleTargetDetected}
           onTargetLost={handleTargetLost}
           onCloseCamera={handleCloseCamera}
@@ -289,6 +313,19 @@ export default function App() {
       {activeModal === 'compiler' && (
         <MindARCompilerModal onClose={() => setActiveModal('none')} />
       )}
+
+      {activeModal === 'qr' && (
+        <StudentQRModal
+          lessons={lessons}
+          onClose={() => setActiveModal('none')}
+        />
+      )}
+
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onSuccess={handleAdminLoginSuccess}
+      />
     </div>
   );
 }
