@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles } from 'lucide-react';
+import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData, getActiveLessonModel } from '../types/ar';
@@ -78,6 +78,24 @@ async function loadGLTFModelSafe(
   }
 }
 
+// ضمان التوافق التام لمكتبة Three.js مع MindAR وحماية استدعاء material.onBuild
+if (typeof window !== 'undefined') {
+  const patchThreeProto = (ns: any) => {
+    if (ns?.Material?.prototype) {
+      if (typeof ns.Material.prototype.onBuild !== 'function') {
+        ns.Material.prototype.onBuild = function () {};
+      }
+      if (typeof ns.Material.prototype.onBeforeCompile !== 'function') {
+        ns.Material.prototype.onBeforeCompile = function () {};
+      }
+    }
+  };
+  patchThreeProto(THREE);
+  if ((window as any).THREE) {
+    patchThreeProto((window as any).THREE);
+  }
+}
+
 /**
  * مجسم ثلاثي أبعاد هولوجرافي بديل يظهر فقط إذا تعذر تحميل الملف بالكامل لمنع أي فراغ
  */
@@ -92,6 +110,7 @@ function createARCrystalFallback(THREE_NS: any, scale = 0.3) {
     transparent: true,
     opacity: 0.9
   });
+  if (typeof (material as any).onBuild !== 'function') (material as any).onBuild = function () {};
   const crystal = new THREE_NS.Mesh(geometry, material);
   group.add(crystal);
 
@@ -101,6 +120,7 @@ function createARCrystalFallback(THREE_NS: any, scale = 0.3) {
     transparent: true,
     opacity: 0.95
   });
+  if (typeof (innerMat as any).onBuild !== 'function') (innerMat as any).onBuild = function () {};
   const inner = new THREE_NS.Mesh(innerGeo, innerMat);
   group.add(inner);
 
@@ -127,14 +147,29 @@ function setupModelForAnchor(model: any, THREE_NS: any) {
   model.position.y = -center.y * targetScale;
   model.position.z = 0.14;
 
+  const sanitizeMaterial = (mat: any) => {
+    if (!mat) return;
+    if (typeof mat.onBuild !== 'function') {
+      mat.onBuild = function () {};
+    }
+    if (typeof mat.onBeforeCompile !== 'function') {
+      mat.onBeforeCompile = function () {};
+    }
+    mat.side = THREE_NS.DoubleSide;
+    mat.needsUpdate = true;
+  };
+
   // إزالة أي ظلال أرضية معتمة لضمان بقاء المجسم نقياً وواضحاً بدون أي خلفيات تظليل
   model.traverse((child: any) => {
     if (child.isMesh) {
       child.castShadow = false;
       child.receiveShadow = false;
       if (child.material) {
-        child.material.side = THREE_NS.DoubleSide;
-        child.material.needsUpdate = true;
+        if (Array.isArray(child.material)) {
+          child.material.forEach(sanitizeMaterial);
+        } else {
+          sanitizeMaterial(child.material);
+        }
       }
       child.frustumCulled = false;
     }
@@ -394,7 +429,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             containerRef.current.removeChild(containerRef.current.firstChild);
           }
 
-          const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+          const mindarThree = new (window.MINDAR.IMAGE.MindARThree as any)({
             container: containerRef.current,
             imageTargetSrc: targetCompiler.getActiveMindUrl(),
             filterMinCF: 0.0005,

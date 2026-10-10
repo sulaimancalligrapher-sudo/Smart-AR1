@@ -27,6 +27,14 @@
     <script type="module">
       import * as THREE from 'three';
       import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      if (THREE.Material) {
+        if (typeof THREE.Material.prototype.onBuild !== 'function') {
+          THREE.Material.prototype.onBuild = function() {};
+        }
+        if (typeof THREE.Material.prototype.onBeforeCompile !== 'function') {
+          THREE.Material.prototype.onBeforeCompile = function() {};
+        }
+      }
       window.THREE = THREE;
       window.GLTFLoader = GLTFLoader;
     </script>
