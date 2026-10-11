@@ -219,6 +219,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   // مراجع لتتبع مجموعات الـ Anchors والمجسمات ثلاثية الأبعاد
   const anchorsRef = useRef<Map<number, any>>(new Map());
   const anchorContentGroupsRef = useRef<Map<number, any>>(new Map());
+  const lessonsRef = useRef<LessonData[]>(lessons);
+  useEffect(() => {
+    lessonsRef.current = lessons;
+  }, [lessons]);
   const modelEntriesRef = useRef<
     Map<
       number,
@@ -526,8 +530,11 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 } catch (_) {}
               }
 
-              console.log('🎯 تم التعرف على صورة الدرس وتثبيت المجسم:', lesson.title);
-              onTargetDetected(lesson);
+              const latestLesson =
+                lessonsRef.current.find((l, idx) => (typeof l.targetIndex === 'number' ? l.targetIndex : idx) === targetIdx) ||
+                lesson;
+              console.log('🎯 تم التعرف على صورة الدرس وتثبيت المجسم:', latestLesson.title);
+              onTargetDetected(latestLesson);
             };
 
             anchor.onTargetLost = () => {
@@ -536,7 +543,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               targetLostTimer = setTimeout(() => {
                 if (!isCancelled) {
                   setIsPhysicalTargetTracked(false);
-                  onTargetLost(lesson);
+                  const latestLesson =
+                    lessonsRef.current.find((l, idx) => (typeof l.targetIndex === 'number' ? l.targetIndex : idx) === targetIdx) ||
+                    lesson;
+                  onTargetLost(latestLesson);
                 }
               }, 800);
             };
@@ -763,10 +773,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           {/* زر التبديل الفوري بين ثبات المجسم فوق الكتاب أو التدوير */}
           <button
             onClick={() => setIsARAutoRotateActive((prev) => !prev)}
-            className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 ${
+            className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
               isARAutoRotateActive
-                ? 'bg-amber-500/80 hover:bg-amber-600 text-white border-amber-300/50'
-                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-white/20'
+                ? 'bg-amber-500/40 hover:bg-amber-500/60 text-white border-amber-300/50'
+                : 'bg-white/10 hover:bg-white/25 text-slate-200 border-white/20'
             }`}
             title={isARAutoRotateActive ? 'إيقاف الدوران وتثبيت المجسم فوق الكتاب' : 'تشغيل الدوران التلقائي'}
           >
@@ -779,7 +789,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           <button
             onClick={applyAutoFocus}
-            className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
             title="ضبط الفوكس"
           >
             <Focus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
@@ -787,7 +797,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           <button
             onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
-            className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
             title="تبديل الكاميرا"
           >
             <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
@@ -797,7 +807,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             <>
               <button
                 onClick={onOpenTargetCards}
-                className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+                className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
                 title="عرض بطاقات الدروس"
               >
                 <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
@@ -805,7 +815,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
               <button
                 onClick={onOpenTeacherConsole}
-                className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+                className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
                 title="لوحة المعلم"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />

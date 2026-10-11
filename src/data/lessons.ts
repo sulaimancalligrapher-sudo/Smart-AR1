@@ -3,7 +3,7 @@ import { LessonData } from '../types/ar';
 // Storage version key to automatically discard stale data from older testing sessions
 const STORAGE_KEY = 'ar_school_lessons_v3';
 const STORAGE_VERSION_KEY = 'ar_data_build_version';
-const CURRENT_BUILD_VERSION = '3.1.0';
+const CURRENT_BUILD_VERSION = '3.2.0';
 
 export const DEFAULT_LESSONS: LessonData[] = [
   {
@@ -13,14 +13,20 @@ export const DEFAULT_LESSONS: LessonData[] = [
     subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
     subject: 'الخط واللغة العربية',
     grade: 'الصف الابتدائي',
-    targetImage: '',
+    targetImage: '/targets/target_lesson_001.jpg',
     video: {
       type: 'mp4',
       url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       title: 'فيديو تعليمي تفاعلي'
     },
-    images: [],
+    images: [
+      {
+        url: '/images/lesson_1_img_1.png',
+        title: 'كتاب الرقعة',
+        caption: 'لوحة تفاعلية لشرح أصول خط الرقعة'
+      }
+    ],
     audio: {
       url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
       title: 'تسجيل صوتي تعليمي'
@@ -33,7 +39,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
     description: {
       summary: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
       keyPoints: [
-        'التعرف على خصائص ومكونات الدرس',
+        'التعرف على خصائص ومكونات خط الرقعة',
         'فحص المجسم التفاعلي بزوايا 360 درجة'
       ],
       fullText: 'شرح مفصل للدرس يظهر للطالب عند فتح أيقونة الشرح والاستكشاف...',
@@ -52,14 +58,20 @@ export const DEFAULT_LESSONS: LessonData[] = [
     subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
     subject: 'الخط واللغة العربية',
     grade: 'الصف الابتدائي',
-    targetImage: '',
+    targetImage: '/targets/target_lesson_002.jpg',
     video: {
       type: 'mp4',
       url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
       embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
       title: 'فيديو تعليمي تفاعلي'
     },
-    images: [],
+    images: [
+      {
+        url: '/images/lesson_2_img_1.png',
+        title: 'كتاب الديواني',
+        caption: 'لوحة تفاعلية لجماليات الخط الديواني'
+      }
+    ],
     audio: {
       url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
       title: 'تسجيل صوتي تعليمي'
@@ -72,7 +84,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
     description: {
       summary: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
       keyPoints: [
-        'فهم الخطوات التطبيقية',
+        'فهم الخطوات التطبيقية للخط الديواني',
         'المعاينة ثلاثية الأبعاد'
       ],
       fullText: 'شرح مفصل للدرس الثاني يظهر للطالب في المنصة...',
@@ -81,6 +93,56 @@ export const DEFAULT_LESSONS: LessonData[] = [
         options: ['بالسحب بالإصبع في أي اتجاه', 'بالهز', 'بالصوت', 'تلقائياً فقط'],
         correctIndex: 0,
         explanation: 'يمكنك تحريك إصبعك في أي اتجاه لمعاينة المجسم بدقة.'
+      }
+    }
+  },
+  {
+    targetIndex: 2,
+    targetId: 'lesson_003',
+    title: 'كتاب النسخ',
+    subtitle: 'درس استكشافي تفاعلي مدعوم بمجسم كلمة الخط العربي والواقع المعزز',
+    subject: 'الخط العربي والقرآن الكريم',
+    grade: 'الصف الابتدائي',
+    targetImage: '/targets/target_lesson_003.jpg',
+    video: {
+      type: 'mp4',
+      url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      title: 'فيديو تعليمي لخط النسخ'
+    },
+    images: [
+      {
+        url: '/images/lesson_3_img_1.png',
+        title: 'قواعد خط النسخ',
+        caption: 'مخطط لقواعد وحروف خط النسخ'
+      },
+      {
+        url: '/images/lesson_3_img_2.jpg',
+        title: 'نماذج خط النسخ',
+        caption: 'نماذج تطبيقية لكتابة الكلمات والحروف'
+      }
+    ],
+    audio: {
+      url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
+      title: 'تسجيل صوتي لخط النسخ'
+    },
+    model3d: {
+      url: '/models/calligraphy_word.glb',
+      title: 'مجسم كلمة الخط العربي ثلاثي الأبعاد',
+      autoRotate: false
+    },
+    description: {
+      summary: 'درس استكشافي تفاعلي مدعوم بمجسم كلمة الخط العربي ثلاثي الأبعاد والواقع المعزز',
+      keyPoints: [
+        'أصول وضوابط خط النسخ ووضوح الحروف',
+        'فحص مجسم الكلمة ثلاثي الأبعاد وتثبيته فوق صفحة الكتاب'
+      ],
+      fullText: 'شرح مفصل لقواعد خط النسخ وجمالياته وكيفية ممارسته...',
+      quiz: {
+        question: 'ما هو المجسم المعروض في هذا الدرس؟',
+        options: ['مجسم كلمة الخط العربي', 'رائد فضاء', 'سيارة', 'شجرة'],
+        correctIndex: 0,
+        explanation: 'مجسم كلمة الخط العربي ثلاثي الأبعاد مصمم خصيصاً للدرس.'
       }
     }
   }
@@ -227,6 +289,13 @@ export async function purgeAllLocalDataAndCache(): Promise<void> {
 }
 
 export async function fetchLessons(forceRefreshServer = false): Promise<LessonData[]> {
+  const local = getStoredLessons();
+
+  // If local already has stored user lessons and not a forced server refresh, preserve user data
+  if (!forceRefreshServer && local && local.length > 0) {
+    return local;
+  }
+
   try {
     // Fetch deployed /data/content.json with timeout guard (3.5s max to prevent mobile hang)
     const controller = new AbortController();
@@ -241,31 +310,34 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.lessons) && data.lessons.length > 0) {
-        if (forceRefreshServer) {
+        if (forceRefreshServer || !local || local.length === 0) {
           saveStoredLessons(data.lessons);
           return data.lessons;
         }
 
-        const local = getStoredLessons();
-        if (local.length === 0) {
-          saveStoredLessons(data.lessons);
-          return data.lessons;
-        }
-
-        // Merge carefully: only preserve user modifications if the server doesn't provide them
-        const merged = data.lessons.map((serverLesson: LessonData, idx: number) => {
-          const localLesson = local[idx] || local.find(l => l.targetId === serverLesson.targetId);
-          if (localLesson) {
-            return {
-              ...serverLesson,
-              // Keep local user-uploaded media only if server did not specify it
-              model3d: serverLesson.model3d || localLesson.model3d,
-              targetImage: serverLesson.targetImage || localLesson.targetImage,
-              video: serverLesson.video || localLesson.video
-            };
-          }
-          return serverLesson;
+        // Merge: local user edits ALWAYS take top priority over static server defaults
+        const merged = local.map((locLesson: LessonData, idx: number) => {
+          const serverLesson = data.lessons[idx] || data.lessons.find((s: LessonData) => s.targetId === locLesson.targetId);
+          if (!serverLesson) return locLesson;
+          return {
+            ...serverLesson,
+            ...locLesson, // Local modifications ALWAYS win
+            video: locLesson.video || serverLesson.video,
+            audio: locLesson.audio || serverLesson.audio,
+            description: locLesson.description || serverLesson.description,
+            images: (locLesson.images && locLesson.images.length > 0) ? locLesson.images : (serverLesson.images || []),
+            model3d: locLesson.model3d || serverLesson.model3d,
+            arModel3d: locLesson.arModel3d || serverLesson.arModel3d,
+            targetImage: locLesson.targetImage || serverLesson.targetImage
+          };
         });
+
+        // If server has newer lessons beyond local length, append them
+        if (data.lessons.length > local.length) {
+          for (let i = local.length; i < data.lessons.length; i++) {
+            merged.push(data.lessons[i]);
+          }
+        }
 
         saveStoredLessons(merged);
         return merged;
@@ -275,9 +347,8 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
     console.warn('Could not fetch /data/content.json from server:', err);
   }
 
-  const stored = getStoredLessons();
-  if (stored.length > 0) {
-    return stored;
+  if (local && local.length > 0) {
+    return local;
   }
 
   return DEFAULT_LESSONS;

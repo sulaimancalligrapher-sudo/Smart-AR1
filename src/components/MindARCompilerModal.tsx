@@ -123,12 +123,43 @@ export const MindARCompilerModal: React.FC<MindARCompilerModalProps> = ({ onClos
               <pre>{`{
   "targetIndex": 0,          // مطابق للصورة الأولى في targets.mind
   "targetId": "lesson_001",  // معرّف الدرس
-  "title": "دورة الماء",
+  "title": "كتاب الرقعة",
+  "targetImage": "/targets/target_lesson_001.jpg",
+  "model3d": { "url": "/models/word.glb" },
+  "images": [ { "url": "https://drive.google.com/file/d/.../view" } ],
   "video": { ... },
-  "images": [ ... ],
-  "audio": { ... },
-  "description": { ... }
+  "audio": { ... }
 }`}</pre>
+            </div>
+          </div>
+
+          {/* New: Best Practices for Media Storage & Mobile Performance */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <h5 className="font-bold text-white text-xs sm:text-sm flex items-center gap-2 text-cyan-300">
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              <span>إرشادات إدارية لتخزين الصور والمجسمات وضمان سرعة الجوالات:</span>
+            </h5>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Google Drive for Images */}
+              <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+                <span className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
+                  🖼️ صور المعرض (Google Drive):
+                </span>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  يمكنك حفظ جميع صور الدروس في مجلد <strong>Google Drive</strong> عام. انسخ رابط المشاركة العادي وضعه في بيانات الدرس، وسيقوم النظام تلقائياً بتحويله إلى رابط مباشر فائق السرعة وبأعلى دقة دون أن يثقل ذاكرة الهاتف.
+                </p>
+              </div>
+
+              {/* GitHub Repo for 3D Models */}
+              <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+                <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
+                  🪐 المجسمات ثلاثية الأبعاد (GitHub Models):
+                </span>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  احفظ ملفات <code className="text-purple-300">.glb</code> في مجلد المشروع <code className="text-purple-300">public/models/</code>. مستودع GitHub المجاني يوفر <strong>1 جيجابايت كاملة (1000 ميجابايت)</strong>، وتتسع لـ <strong>500 إلى 800 مجسم ثلاثي أبعاد</strong> مجاناً مع أقصى سرعة تحميل وتفادي قيود حظر النطاقات.
+                </p>
+              </div>
             </div>
           </div>
         </div>

@@ -8,6 +8,7 @@ import { analytics } from '../services/analytics';
 import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage, getActiveLessonModel } from '../types/ar';
 import { saveStoredLessons, fetchLessons } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
+import { normalizeImageUrl } from '../services/urlHelpers';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -37,12 +38,17 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [uploadedARModelFileName, setUploadedARModelFileName] = useState<string | null>(null);
   const [showCustomARModelOverride, setShowCustomARModelOverride] = useState(false);
 
+  // External Image Link addition state
+  const [newImageUrl, setNewImageUrl] = useState<string>('');
+  const [newImageTitle, setNewImageTitle] = useState<string>('');
+  const [imageNotice, setImageNotice] = useState<string | null>(null);
+
   useEffect(() => {
-    setEditableLessons(lessons);
-    if (selectedLessonIndex >= lessons.length && lessons.length > 0) {
-      setSelectedLessonIndex(lessons.length - 1);
+    // Only update if incoming lessons changed significantly and not during active editing
+    if (lessons && lessons.length > 0 && editableLessons.length === 0) {
+      setEditableLessons(lessons);
     }
-  }, [lessons]);
+  }, [lessons, editableLessons.length]);
 
   useEffect(() => {
     const unsubscribe = analytics.subscribe((updatedLogs) => {
@@ -83,7 +89,16 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     }
     saveStoredLessons(normalized);
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    setTimeout(() => setSaveSuccess(false), 4000);
+  };
+
+  const handleCloseModal = () => {
+    const normalized = editableLessons.map((l, idx) => ({ ...l, targetIndex: idx }));
+    if (onUpdateLessons) {
+      onUpdateLessons(normalized);
+    }
+    saveStoredLessons(normalized);
+    onClose();
   };
 
   const handleFieldChange = (field: string, value: any) => {
@@ -115,14 +130,38 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       }
       updated[selectedLessonIndex] = cur;
 
-      // Auto-persist immediately so no lesson data or uploaded images are lost
-      if (onUpdateLessons) {
-        onUpdateLessons(updated);
-      }
-      saveStoredLessons(updated);
+      // Auto-save to storage immediately
+      try {
+        saveStoredLessons(updated);
+        if (onUpdateLessons) {
+          onUpdateLessons(updated);
+        }
+      } catch (_) {}
 
       return updated;
     });
+  };
+
+  const handleAddImageLink = () => {
+    if (!newImageUrl.trim()) return;
+    const normalized = normalizeImageUrl(newImageUrl.trim());
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+
+    const existingImages = curLesson.images || [];
+    const title = newImageTitle.trim() || `لوحة توضيحية (${existingImages.length + 1}): ${curLesson.title}`;
+    const newImg: LessonImage = {
+      url: normalized,
+      title: title,
+      caption: `رسم توضيحي وعناصر شرح لدرس ${curLesson.title}.`
+    };
+
+    const updatedImages = [...existingImages, newImg];
+    handleFieldChange('images', updatedImages);
+    setNewImageUrl('');
+    setNewImageTitle('');
+    setImageNotice('✓ تمت إضافة رابط الصورة إلى معرض الدرس بنجاح!');
+    setTimeout(() => setImageNotice(null), 3500);
   };
 
   const handleAddNewLesson = () => {
@@ -260,13 +299,36 @@ function doPost(e) {
               <p className="text-xs text-slate-400">إضافة وحذف الدروس، رفع صور كتابك المدرسي، وتوليد ملف targets.mind</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveLessonChanges}
+              className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+              title="حفظ كافة تعديلات الدروس فوراً"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>حفظ التعديلات</span>
+            </button>
+            <button
+              onClick={handleCloseModal}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors cursor-pointer"
+              title="إغلاق لوحة التحكم"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Save success banner */}
+        {saveSuccess && (
+          <div className="bg-emerald-950/90 border-b border-emerald-500/50 px-4 py-2 flex items-center justify-between gap-2 text-emerald-200 text-xs font-semibold animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span>✓ تم حفظ كافة تعديلات الدروس محلياً وفي الذاكرة بنجاح! ستبقى محفوظة دائماً عند إعادة فتح التطبيق.</span>
+            </div>
+            <span className="text-[10px] text-emerald-300/80 bg-emerald-900/60 px-2 py-0.5 rounded-full">محفوظ</span>
+          </div>
+        )}
 
         {/* Tab Navigation */}
         <div className="flex items-center justify-between px-4 pt-3 bg-slate-800/40 border-b border-slate-700/40">
@@ -587,42 +649,46 @@ function doPost(e) {
                   </div>
                 </div>
 
-                {/* 🖼️ Card 2: Educational Explanation / Diagram Image */}
-                <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 space-y-2.5">
-                  <div className="flex items-center justify-between">
+                {/* 🖼️ Card 2: Educational Explanation / Diagram Images */}
+                <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400">
-                        <BookOpen className="w-4 h-4" />
+                      <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                        <Image className="w-4 h-4" />
                       </span>
                       <div>
                         <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>٢. صورة الشرح والمعرض التوضيحي (التي يراها الطالب في التطبيق)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
-                            اختياري
+                          <span>٢. معرض صور الشرح واللوحات (التي يراها الطالب في التطبيق)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
+                            {currentLesson.images?.length || 0} صور مضافة
                           </span>
                         </h5>
                         <p className="text-[11px] text-slate-300">
-                          المخطط أو الرسم الذي يظهر للطالب عند النقر على زر 🖼️ "الصور" (يدعم صور PNG الشفافة بدون خلفية، وصور متحركة GIF و WebP). إذا تركتها فارغة سيُعرض كتاب الدرس تلقائياً.
+                          اللوحات والرسوم التي تظهر للطالب عند النقر على زر 🖼️ "الصور". يمكنك إضافة أي عدد من روابط Google Drive، أو روابط مباشرة، أو رفع صور من جهازك!
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {currentLesson.images && currentLesson.images[0]?.url && (
+                    <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
+                      {currentLesson.images && currentLesson.images.length > 0 && (
                         <button
                           type="button"
-                          onClick={() => handleFieldChange('images', [])}
+                          onClick={() => {
+                            if (window.confirm('هل أنت متأكد من رغبتك في حذف كافة صور هذا الدرس؟')) {
+                              handleFieldChange('images', []);
+                            }
+                          }}
                           className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
-                          title="حذف صورة الشرح والاعتماد على صورة الكتاب تلقائياً"
+                          title="حذف كافة صور الشرح والاعتماد على صورة الكتاب تلقائياً"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          <span>إلغاء واستخدام صورة الكتاب</span>
+                          <span>مسح كافة الصور</span>
                         </button>
                       )}
 
                       <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all flex-shrink-0">
                         <Upload className="w-3.5 h-3.5" />
-                        <span>📁 رفع صور المعرض (يمكن اختيار عدة صور)</span>
+                        <span>📁 رفع صور من جهازك (اختيار عدة صور)</span>
                         <input
                           key={`explanation_img_${currentLesson.targetId}`}
                           type="file"
@@ -646,6 +712,8 @@ function doPost(e) {
                               }))).then((newUploadedImages) => {
                                 const existing = currentLesson.images || [];
                                 handleFieldChange('images', [...existing, ...newUploadedImages]);
+                                setImageNotice(`✓ تم رفع وإضافة ${newUploadedImages.length} صور من جهازك بنجاح!`);
+                                setTimeout(() => setImageNotice(null), 4000);
                               });
                             }
                             e.target.value = '';
@@ -655,96 +723,144 @@ function doPost(e) {
                     </div>
                   </div>
 
-                  {/* Multi-Image Thumbnails Gallery in Console */}
-                  {currentLesson.images && currentLesson.images.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-[11px] font-bold text-emerald-300">
-                        الصور المرفوعة لهذا الدرس ({currentLesson.images.length} صور):
-                      </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {currentLesson.images.map((img, imgIdx) => (
-                          <div key={imgIdx} className="relative rounded-lg bg-black border border-slate-700 overflow-hidden group p-1">
-                            <img src={img.url} alt={img.title} className="w-full h-16 object-contain rounded" />
-                            <span className="text-[9px] text-slate-300 block truncate mt-0.5 text-center font-medium">
-                              {img.title || `صورة ${imgIdx + 1}`}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const filtered = currentLesson.images.filter((_, idx) => idx !== imgIdx);
-                                handleFieldChange('images', filtered);
-                              }}
-                              className="absolute top-1 left-1 w-5 h-5 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white flex items-center justify-center text-[10px] cursor-pointer shadow"
-                              title="حذف هذه الصورة"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
+                  {/* صندوق إضافة رابط صورة خارجي (Google Drive أو أي رابط ويب) */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Plus className="w-3.5 h-3.5 text-sky-400" />
+                        <span>إضافة رابط صورة جديد (Google Drive أو رابط مباشر):</span>
+                      </label>
+                      <span className="text-[10px] text-sky-400 font-medium">✨ تحويل روابط Google Drive تلقائياً</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                      <div className="sm:col-span-6">
+                        <input
+                          type="url"
+                          value={newImageUrl}
+                          onChange={(e) => setNewImageUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddImageLink();
+                            }
+                          }}
+                          placeholder="الصق رابط صورة Google Drive أو أي رابط مباشر هنا..."
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
+                        />
                       </div>
+                      <div className="sm:col-span-4">
+                        <input
+                          type="text"
+                          value={newImageTitle}
+                          onChange={(e) => setNewImageTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddImageLink();
+                            }
+                          }}
+                          placeholder="عنوان الصورة (مثال: دورة الماء / مخطط الدرس)..."
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <button
+                          type="button"
+                          onClick={handleAddImageLink}
+                          disabled={!newImageUrl.trim()}
+                          className="w-full h-full py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-xs transition-colors cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1 shadow-sm active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>إضافة الرابط</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {imageNotice && (
+                      <p className="text-[11px] text-emerald-400 font-medium bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
+                        {imageNotice}
+                      </p>
+                    )}
+
+                    <p className="text-[10px] text-slate-400">
+                      💡 <strong>ملاحظة:</strong> يمكنك لصق رابط المشاركة العادي من قوقل درايف (<code className="text-slate-300">drive.google.com/file/d/.../view?usp=sharing</code>) وسيقوم النظام فوراً بتحويله وعرض الصورة بأعلى دقة دون قيود!
+                    </p>
+                  </div>
+
+                  {/* قائمة الصور المضافة لهذا الدرس */}
+                  {currentLesson.images && currentLesson.images.length > 0 ? (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-emerald-300">
+                          الصور المعتمدة لهذا الدرس في المعرض ({currentLesson.images.length} صورة):
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          يمكنك تعديل عنوان أي صورة أو حذفها بنقرة واحدة
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto p-1">
+                        {currentLesson.images.map((img, imgIdx) => {
+                          const isDrive = img.url.includes('drive.google.com');
+                          const isData = img.url.startsWith('data:');
+                          return (
+                            <div
+                              key={imgIdx}
+                              className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors"
+                            >
+                              <div className="w-14 h-14 rounded-lg bg-black border border-slate-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                <img
+                                  src={img.url}
+                                  alt={img.title || `صورة ${imgIdx + 1}`}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-contain"
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <input
+                                  type="text"
+                                  value={img.title || ''}
+                                  onChange={(e) => {
+                                    const updatedTitle = e.target.value;
+                                    const updatedImages = (currentLesson.images || []).map((im, i) =>
+                                      i === imgIdx ? { ...im, title: updatedTitle } : im
+                                    );
+                                    handleFieldChange('images', updatedImages);
+                                  }}
+                                  placeholder={`عنوان صورة ${imgIdx + 1}`}
+                                  className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-[11px] text-white focus:outline-none focus:border-sky-500"
+                                />
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 truncate max-w-[100px]">
+                                    {isDrive ? '☁️ قوقل درايف' : isData ? '💾 ملف جهاز' : '🔗 رابط ويب'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const filtered = (currentLesson.images || []).filter((_, idx) => idx !== imgIdx);
+                                      handleFieldChange('images', filtered);
+                                    }}
+                                    className="text-[10px] text-rose-400 hover:text-rose-300 font-medium px-1.5 py-0.5 rounded hover:bg-rose-950/40 cursor-pointer"
+                                  >
+                                    ✕ حذف
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-1">
+                      <p className="text-xs text-slate-400">
+                        لم يتم إضافة صور توضيحية لهذا الدرس بعد.
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        إذا لم تضف صوراً هنا، سيُعرض كتاب الدرس تلقائياً عند فتح زر 🖼️ "الصور"، أو يمكنك إضافة روابط من قوقل درايف أو رفع صور من جهازك أعلاه.
+                      </p>
                     </div>
                   )}
-
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                    <div className="w-20 h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0 self-center sm:self-auto">
-                      {currentLesson.images && currentLesson.images[0]?.url ? (
-                        <img
-                          src={currentLesson.images[0].url}
-                          alt={currentLesson.images[0].title || 'صورة الشرح'}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <div className="text-center p-1">
-                          <span className="text-[10px] text-emerald-400 block font-bold">تلقائي</span>
-                          <span className="text-[9px] text-slate-500 block">صورة الكتاب</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 space-y-2">
-                      <div className="space-y-0.5">
-                        <label className="text-[11px] font-bold text-slate-300">رابط صورة الشرح (أو ارفع من جهازك أعلاه):</label>
-                        <input
-                          type="text"
-                          value={currentLesson.images?.[0]?.url || ''}
-                          onChange={(e) => {
-                            const newUrl = e.target.value;
-                            const newImages = newUrl.trim() === '' ? [] : [
-                              {
-                                url: newUrl,
-                                title: currentLesson.images?.[0]?.title || `مخطط شرح: ${currentLesson.title}`,
-                                caption: currentLesson.images?.[0]?.caption || 'رسم توضيحي وعناصر شرح لهذا الدرس.'
-                              }
-                            ];
-                            handleFieldChange('images', newImages);
-                          }}
-                          placeholder="الصق رابط صورة الشرح (JPG/PNG/GIF) أو اضغط رفع صورة أعلاه"
-                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <label className="text-[11px] font-bold text-slate-300">عنوان وتعليق صورة الشرح المعروض للطالب:</label>
-                        <input
-                          type="text"
-                          value={currentLesson.images?.[0]?.title || ''}
-                          onChange={(e) => {
-                            const newTitle = e.target.value;
-                            const newImages = [
-                              {
-                                url: currentLesson.images?.[0]?.url || '',
-                                title: newTitle,
-                                caption: currentLesson.images?.[0]?.caption || 'رسم توضيحي وعناصر شرح لهذا الدرس.'
-                              }
-                            ];
-                            handleFieldChange('images', newImages);
-                          }}
-                          placeholder="مثال: مخطط دورة الماء / تجربة تفاعلية متحركة"
-                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* 🧊 Card 3: 3D Model (GLB from Blender) */}
@@ -899,9 +1015,12 @@ function doPost(e) {
                   {/* Input Fields */}
                   <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
                     <div className="space-y-0.5">
-                      <label className="text-[11px] font-bold text-slate-300">
-                        رابط أو مسار ملف المجسم المشترك (3D Model URL .glb):
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-slate-300">
+                          رابط أو مسار ملف المجسم المشترك (3D Model URL .glb):
+                        </label>
+                        <span className="text-[10px] text-cyan-400 font-medium">📁 الأفضل حفظه في public/models/</span>
+                      </div>
                       <input
                         type="text"
                         value={currentLesson.model3d?.url || ''}
@@ -917,9 +1036,12 @@ function doPost(e) {
                             });
                           }
                         }}
-                        placeholder="مثال: /models/letter_ruqaa.glb أو رابط مباشر ينتهي بـ .glb"
+                        placeholder="مثال: /models/calligraphy_word.glb أو رابط مباشر ينتهي بـ .glb"
                         className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
                       />
+                      <p className="text-[10px] text-slate-400">
+                        مستودع GitHub يوفر 1 جيجابايت مجاناً تتسع لـ 500-800 مجسم خفيف. ضع الملف في مجلد <code className="text-cyan-300">public/models/</code> واكتب مساره هنا.
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react';
 import { LessonImage } from '../types/ar';
 import { analytics } from '../services/analytics';
+import { normalizeImageUrl } from '../services/urlHelpers';
 
 interface GalleryModalProps {
   images?: LessonImage[];
@@ -20,14 +21,14 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Collect all available images for this lesson
+  // Collect all available images for this lesson with URL normalization (Google Drive auto-conversion)
   const hasValidCustomImages = Boolean(
     images && 
     images.length > 0 && 
     images.some((img) => img && typeof img.url === 'string' && img.url.trim() !== '')
   );
 
-  const effectiveImages: LessonImage[] = hasValidCustomImages
+  const rawImages: LessonImage[] = hasValidCustomImages
     ? images.filter((img) => img && typeof img.url === 'string' && img.url.trim() !== '')
     : targetImage && targetImage.trim() !== ''
       ? [
@@ -38,6 +39,11 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
           }
         ]
       : [];
+
+  const effectiveImages: LessonImage[] = rawImages.map((img) => ({
+    ...img,
+    url: normalizeImageUrl(img.url)
+  }));
 
   useEffect(() => {
     analytics.trackEvent({

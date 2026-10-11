@@ -91,6 +91,14 @@ export default function App() {
   const handleUpdateLessons = (updated: LessonData[]) => {
     setLessons(updated);
     saveStoredLessons(updated);
+    if (activeLesson) {
+      const refreshed = updated.find(
+        (l, idx) => l.targetId === activeLesson.targetId || (l.targetIndex ?? idx) === (activeLesson.targetIndex ?? -1)
+      );
+      if (refreshed) {
+        setActiveLesson(refreshed);
+      }
+    }
   };
 
   const handleTargetDetected = (lesson: LessonData) => {
