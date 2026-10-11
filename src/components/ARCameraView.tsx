@@ -732,38 +732,38 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       )}
 
       {/* 4. شريط التحكم العلوي وشارة الحالة */}
-      <div className="absolute top-0 inset-x-0 z-40 p-3 sm:p-4 flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+      <div className="absolute top-0 inset-x-0 z-40 p-2 sm:p-4 flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/85 via-black/40 to-transparent">
         <button
           onClick={onCloseCamera}
-          className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+          className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer flex-shrink-0"
           title="الخروج من الكاميرا"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
 
-        <div className="px-3.5 py-1.5 rounded-full ar-glass-panel border border-white/20 text-xs font-bold flex items-center gap-2 text-white shadow-lg max-w-[65%] truncate">
+        <div className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full ar-glass-panel border border-white/20 text-[10px] sm:text-xs font-bold flex items-center gap-1.5 text-white shadow-lg max-w-[42%] sm:max-w-[58%] truncate mx-1">
           {activeLesson ? (
             <>
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping flex-shrink-0"></span>
               <span className="truncate">
-                {isPhysicalTargetTracked ? '🎯 مثبت على صفحة الكتاب' : `✓ ${activeLesson.title} (مجسم AR نشط)`}
+                {isPhysicalTargetTracked ? '🎯 مثبت على الكتاب' : `✓ ${activeLesson.title}`}
               </span>
             </>
           ) : (
             <>
-              <span className={`w-2.5 h-2.5 rounded-full ${isMindArActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isMindArActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
               <span className="truncate">
-                {isMindArActive ? '🟢 وجّه الكاميرا إلى صورة الدرس في الكتاب...' : '📖 جارٍ تشغيل الماسح البصري...'}
+                {isMindArActive ? '🟢 وجّه الكاميرا للصورة...' : '📖 تشغيل الماسح...'}
               </span>
             </>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           {/* زر التبديل الفوري بين ثبات المجسم فوق الكتاب أو التدوير */}
           <button
             onClick={() => setIsARAutoRotateActive((prev) => !prev)}
-            className={`p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 ${
+            className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 ${
               isARAutoRotateActive
                 ? 'bg-amber-500/80 hover:bg-amber-600 text-white border-amber-300/50'
                 : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-white/20'
@@ -771,44 +771,44 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             title={isARAutoRotateActive ? 'إيقاف الدوران وتثبيت المجسم فوق الكتاب' : 'تشغيل الدوران التلقائي'}
           >
             {isARAutoRotateActive ? (
-              <Pause className="w-4 h-4 text-amber-200" />
+              <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-200" />
             ) : (
-              <RotateCw className="w-4 h-4 text-slate-300" />
+              <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
             )}
           </button>
 
           <button
             onClick={applyAutoFocus}
-            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
             title="ضبط الفوكس"
           >
-            <Focus className="w-4 h-4 text-amber-400" />
+            <Focus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
           </button>
 
           <button
             onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
-            className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+            className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
             title="تبديل الكاميرا"
           >
-            <RefreshCw className="w-4 h-4 text-cyan-400" />
+            <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
           </button>
 
           {isAdmin && (
             <>
               <button
                 onClick={onOpenTargetCards}
-                className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+                className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
                 title="عرض بطاقات الدروس"
               >
-                <Eye className="w-4 h-4 text-sky-400" />
+                <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
               </button>
 
               <button
                 onClick={onOpenTeacherConsole}
-                className="p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
+                className="p-2 sm:p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer"
                 title="لوحة المعلم"
               >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
               </button>
             </>
           )}
