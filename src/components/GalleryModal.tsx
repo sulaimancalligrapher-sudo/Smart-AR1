@@ -119,7 +119,6 @@ export const GalleryModal: React.FC<GalleryModalProps> = ({
                   src={activeUrl}
                   alt={currentImage.title}
                   referrerPolicy="no-referrer"
-                  crossOrigin="anonymous"
                   onError={handleImageError}
                   className="max-h-[58vh] w-auto max-w-full object-contain select-none transition-transform duration-300 pointer-events-auto"
                   style={{ filter: 'none', background: 'transparent' }}

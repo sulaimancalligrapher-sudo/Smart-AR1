@@ -17,6 +17,105 @@ interface TeacherConsoleModalProps {
   onClose: () => void;
 }
 
+interface LessonImageCardProps {
+  img: LessonImage;
+  imgIdx: number;
+  lessonId: string;
+  onUpdateTitle: (title: string) => void;
+  onDelete: () => void;
+}
+
+const LessonImageCard: React.FC<LessonImageCardProps> = ({
+  img,
+  imgIdx,
+  lessonId,
+  onUpdateTitle,
+  onDelete
+}) => {
+  const alts = React.useMemo(() => getAlternativeImageUrls(img.url), [img.url]);
+  const [altIndex, setAltIndex] = useState(0);
+  const [hasError, setHasError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    setAltIndex(0);
+    setHasError(false);
+    setIsLoaded(false);
+  }, [img.url, lessonId]);
+
+  const currentSrc = alts[altIndex] || img.url;
+  const isDrive = img.url.includes('drive.google.com') || img.url.includes('googleusercontent.com');
+  const isData = img.url.startsWith('data:');
+
+  const handleImageError = () => {
+    if (altIndex + 1 < alts.length) {
+      setAltIndex((prev) => prev + 1);
+    } else {
+      setHasError(true);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors">
+      <div className="w-14 h-14 rounded-lg bg-black border border-slate-800 overflow-hidden flex items-center justify-center flex-shrink-0 relative">
+        {!hasError ? (
+          <img
+            key={`${lessonId}_${imgIdx}_${altIndex}`}
+            src={currentSrc}
+            alt={img.title || `صورة ${imgIdx + 1}`}
+            referrerPolicy="no-referrer"
+            onLoad={() => setIsLoaded(true)}
+            onError={handleImageError}
+            className={`w-full h-full object-contain transition-opacity duration-200 ${
+              isLoaded ? 'opacity-100' : 'opacity-30'
+            }`}
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-rose-950/80 p-1 text-center select-none">
+            <span className="text-[10px] text-amber-300 font-bold leading-tight">⚠️ غير متاح</span>
+            <span className="text-[8px] text-rose-200/80 mt-0.5">تحقق من الرابط</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 space-y-1">
+        <input
+          type="text"
+          value={img.title || ''}
+          onChange={(e) => onUpdateTitle(e.target.value)}
+          placeholder={`عنوان صورة ${imgIdx + 1}`}
+          className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-[11px] text-white focus:outline-none focus:border-sky-500"
+        />
+        <div className="flex items-center justify-between gap-1">
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 truncate max-w-[100px]">
+            {isDrive ? '☁️ قوقل درايف' : isData ? '💾 ملف جهاز' : '🔗 رابط ويب'}
+          </span>
+          <div className="flex items-center gap-1">
+            {isDrive && (
+              <a
+                href={img.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1 text-slate-400 hover:text-sky-300 transition-colors"
+                title="فتح الرابط في Google Drive للتحقق من صلاحية المشاركة"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={onDelete}
+              className="text-[10px] text-rose-400 hover:text-rose-300 font-medium px-1.5 py-0.5 rounded hover:bg-rose-950/40 cursor-pointer"
+            >
+              ✕ حذف
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   lessons = [],
   onUpdateLessons,
@@ -934,74 +1033,24 @@ function doPost(e) {
                         </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto p-1">
-                        {currentLesson.images.map((img, imgIdx) => {
-                          const isDrive = img.url.includes('drive.google.com') || img.url.includes('googleusercontent.com');
-                          const isData = img.url.startsWith('data:');
-                          return (
-                            <div
-                              key={imgIdx}
-                              className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors"
-                            >
-                              <div className="w-14 h-14 rounded-lg bg-black border border-slate-800 overflow-hidden flex items-center justify-center flex-shrink-0 relative">
-                                <img
-                                  src={img.url}
-                                  alt={img.title || `صورة ${imgIdx + 1}`}
-                                  referrerPolicy="no-referrer"
-                                  crossOrigin="anonymous"
-                                  onError={(e) => {
-                                    const alts = getAlternativeImageUrls(img.url);
-                                    const target = e.currentTarget;
-                                    const nextAlt = alts.find((a) => a !== target.src);
-                                    if (nextAlt && !target.dataset.tried) {
-                                      target.dataset.tried = 'true';
-                                      target.src = nextAlt;
-                                    } else {
-                                      target.style.opacity = '0.3';
-                                      const parent = target.parentElement;
-                                      if (parent && !parent.querySelector('.broken-badge')) {
-                                        const badge = document.createElement('div');
-                                        badge.className = 'broken-badge absolute inset-0 flex items-center justify-center bg-black/70 text-[9px] text-amber-400 font-bold p-1 text-center';
-                                        badge.innerText = '⚠️ غير متاح';
-                                        parent.appendChild(badge);
-                                      }
-                                    }
-                                  }}
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                              <div className="flex-1 min-w-0 space-y-1">
-                                <input
-                                  type="text"
-                                  value={img.title || ''}
-                                  onChange={(e) => {
-                                    const updatedTitle = e.target.value;
-                                    const updatedImages = (currentLesson.images || []).map((im, i) =>
-                                      i === imgIdx ? { ...im, title: updatedTitle } : im
-                                    );
-                                    handleFieldChange('images', updatedImages);
-                                  }}
-                                  placeholder={`عنوان صورة ${imgIdx + 1}`}
-                                  className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-[11px] text-white focus:outline-none focus:border-sky-500"
-                                />
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 truncate max-w-[100px]">
-                                    {isDrive ? '☁️ قوقل درايف' : isData ? '💾 ملف جهاز' : '🔗 رابط ويب'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const filtered = (currentLesson.images || []).filter((_, idx) => idx !== imgIdx);
-                                      handleFieldChange('images', filtered);
-                                    }}
-                                    className="text-[10px] text-rose-400 hover:text-rose-300 font-medium px-1.5 py-0.5 rounded hover:bg-rose-950/40 cursor-pointer"
-                                  >
-                                    ✕ حذف
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        {currentLesson.images.map((img, imgIdx) => (
+                          <LessonImageCard
+                            key={`${currentLesson.targetId}_${imgIdx}_${img.url}`}
+                            img={img}
+                            imgIdx={imgIdx}
+                            lessonId={currentLesson.targetId}
+                            onUpdateTitle={(newTitle) => {
+                              const updatedImages = (currentLesson.images || []).map((im, i) =>
+                                i === imgIdx ? { ...im, title: newTitle } : im
+                              );
+                              handleFieldChange('images', updatedImages);
+                            }}
+                            onDelete={() => {
+                              const filtered = (currentLesson.images || []).filter((_, idx) => idx !== imgIdx);
+                              handleFieldChange('images', filtered);
+                            }}
+                          />
+                        ))}
                       </div>
                     </div>
                   ) : (

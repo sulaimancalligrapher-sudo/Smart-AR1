@@ -63,10 +63,12 @@ export function getAlternativeImageUrls(url: string): string[] {
   const driveId = extractGoogleDriveFileId(trimmed);
   if (driveId) {
     return [
-      `https://drive.google.com/thumbnail?id=${driveId}&sz=w1600`,
-      `https://lh3.googleusercontent.com/d/${driveId}=s1600`,
+      `https://drive.google.com/thumbnail?id=${driveId}&sz=w1200`,
+      `https://lh3.googleusercontent.com/d/${driveId}`,
+      `https://drive.google.com/thumbnail?id=${driveId}=w1200`,
+      `https://drive.google.com/thumbnail?id=${driveId}`,
       `https://drive.google.com/uc?export=view&id=${driveId}`,
-      `https://drive.usercontent.google.com/download?id=${driveId}&authuser=0`
+      `https://drive.usercontent.google.com/download?id=${driveId}`
     ];
   }
 
@@ -84,7 +86,7 @@ export function convertGoogleDriveImageUrl(url: string): string {
 
   const driveId = extractGoogleDriveFileId(trimmed);
   if (driveId) {
-    return `https://drive.google.com/thumbnail?id=${driveId}&sz=w1600`;
+    return `https://drive.google.com/thumbnail?id=${driveId}&sz=w1200`;
   }
 
   return trimmed;
