@@ -16,6 +16,7 @@ interface ARCameraViewProps {
   onOpenTeacherConsole: () => void;
   showFloatingModel?: boolean;
   isAdmin?: boolean;
+  hideScanReticle?: boolean;
 }
 
 function playMatchChime() {
@@ -194,7 +195,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   onOpenTargetCards,
   onOpenTeacherConsole,
   showFloatingModel = true,
-  isAdmin = false
+  isAdmin = false,
+  hideScanReticle = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
@@ -826,7 +828,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       </div>
 
       {/* 5. ⭐ مؤشر مسح بصري نقي وشفاف تماماً بدون أي تظليل أو خلفية عند توجيه الكاميرا للكتاب ⭐ */}
-      {!isPhysicalTargetTracked && !cameraLoading && !cameraError && (
+      {!isPhysicalTargetTracked && !cameraLoading && !cameraError && !hideScanReticle && (
         <div className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center p-4">
           <div className="relative w-64 h-64 sm:w-80 sm:h-80 border-2 border-dashed border-cyan-400/40 rounded-3xl animate-scan-glow flex flex-col items-center justify-between p-4 shadow-2xl">
             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-cyan-400 rounded-tr-2xl" />

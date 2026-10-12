@@ -253,6 +253,7 @@ export default function App() {
           onOpenTargetCards={() => setActiveModal('target_cards')}
           onOpenTeacherConsole={() => setActiveModal('teacher_console')}
           showFloatingModel={showFloatingModel} // ⭐ تمرير الحالة ⭐
+          hideScanReticle={activeModal !== 'none' || showHologram3D}
         />
       )}
 
