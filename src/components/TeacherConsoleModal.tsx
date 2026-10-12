@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
 import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage, getActiveLessonModel } from '../types/ar';
-import { saveStoredLessons, fetchLessons } from '../data/lessons';
+import { saveStoredLessons, fetchLessons, setHasLocalDrafts } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
 import { normalizeImageUrl, getAlternativeImageUrls } from '../services/urlHelpers';
 
@@ -34,6 +34,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
   const [editableLessons, setEditableLessons] = useState<LessonData[]>(lessons);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [uploadedModelFileName, setUploadedModelFileName] = useState<string | null>(null);
   const [uploadedARModelFileName, setUploadedARModelFileName] = useState<string | null>(null);
   const [showCustomARModelOverride, setShowCustomARModelOverride] = useState(false);
@@ -88,8 +89,16 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       onUpdateLessons(normalized);
     }
     saveStoredLessons(normalized);
+    setHasLocalDrafts(true);
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 4000);
+    setStatusNotice({
+      type: 'success',
+      text: '✓ تم حفظ التعديلات محلياً في هذا المتصفح! لتفعيلها للطلاب في الجوال والتابلت، اضغط على زر (💾 تنزيل content.json لـ GitHub) ثم ارفعه لمستودعك على GitHub.'
+    });
+    setTimeout(() => {
+      setSaveSuccess(false);
+      setStatusNotice(null);
+    }, 7000);
   };
 
   const handleCloseModal = () => {
@@ -102,6 +111,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   };
 
   const handleFieldChange = (field: string, value: any) => {
+    setHasLocalDrafts(true);
     setEditableLessons((prev) => {
       const updated = [...prev];
       if (!updated[selectedLessonIndex]) return prev;
@@ -236,13 +246,53 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   };
 
   const handleDownloadContentJson = () => {
-    const normalized = editableLessons.map((l, idx) => ({ ...l, targetIndex: idx }));
-    const jsonStr = JSON.stringify({ lessons: normalized }, null, 2);
+    const normalized = editableLessons.map((l, idx) => {
+      // Ensure model URLs are permanent paths rather than temporary blob URLs
+      let cleanModel = l.model3d;
+      if (cleanModel?.url?.startsWith('blob:')) {
+        cleanModel = {
+          ...cleanModel,
+          url: `/models/lesson_${idx + 1}_model.glb`
+        };
+      }
+      let cleanAR = l.arModel3d;
+      if (cleanAR?.url?.startsWith('blob:')) {
+        cleanAR = {
+          ...cleanAR,
+          url: `/models/lesson_${idx + 1}_ar.glb`
+        };
+      }
+      return {
+        ...l,
+        targetIndex: idx,
+        model3d: cleanModel,
+        arModel3d: cleanAR
+      };
+    });
+
+    const exportPayload = {
+      version: '3.3.0',
+      exportedAt: new Date().toISOString(),
+      lessonsCount: normalized.length,
+      lessons: normalized
+    };
+
+    const jsonStr = JSON.stringify(exportPayload, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'content.json';
     a.click();
+
+    setHasLocalDrafts(false);
+    setStatusNotice({
+      type: 'success',
+      text: `✓ تم تنزيل ملف content.json بنجاح (${normalized.length} دروس)! الخطوة التالية: ضعه في مجلد public/data/content.json في مشروعك وارفعه إلى GitHub و Vercel ليظهر فوراً لجميع الطلاب.`
+    });
+    setSaveSuccess(true);
+    setTimeout(() => {
+      setSaveSuccess(false);
+    }, 7000);
   };
 
   const handleImportContentJson = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -251,21 +301,42 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const parsed = JSON.parse(ev.target?.result as string);
-        const loadedLessons = Array.isArray(parsed) ? parsed : parsed?.lessons;
+        const rawText = ev.target?.result as string;
+        const parsed = JSON.parse(rawText);
+        const loadedLessons = Array.isArray(parsed) ? parsed : (parsed?.lessons || parsed?.data?.lessons);
         if (Array.isArray(loadedLessons) && loadedLessons.length > 0) {
-          const normalized = loadedLessons.map((l: any, idx: number) => ({
+          const normalized: LessonData[] = loadedLessons.map((l: any, idx: number) => ({
             ...l,
-            targetIndex: typeof l.targetIndex === 'number' ? l.targetIndex : idx
+            targetIndex: typeof l.targetIndex === 'number' ? l.targetIndex : idx,
+            targetId: l.targetId || `lesson_${String(idx + 1).padStart(3, '0')}`,
+            title: l.title || `درس رقم ${idx + 1}`,
+            images: Array.isArray(l.images) ? l.images : []
           }));
           setEditableLessons(normalized);
           saveStoredLessons(normalized);
+          setHasLocalDrafts(false);
           if (onUpdateLessons) onUpdateLessons(normalized);
+          setSelectedLessonIndex(0); // Switch to lesson 1 to immediately see the data in form
+          setStatusNotice({
+            type: 'success',
+            text: `✓ تم بنجاح استيراد ${normalized.length} دروس من ملف content.json! تظهر الآن كافة العناوين، الروابط، الصور، والمجسمات في واجهة التحكم.`
+          });
           setSaveSuccess(true);
-          setTimeout(() => setSaveSuccess(false), 4500);
+          setTimeout(() => {
+            setSaveSuccess(false);
+          }, 7000);
+        } else {
+          setStatusNotice({
+            type: 'error',
+            text: '⚠️ الملف المختار لا يحتوي على مصفوفة دروس (lessons) صالحة. يرجى التأكد من اختيار ملف content.json الصحيح.'
+          });
         }
       } catch (err: any) {
         console.warn('فشل قراءة ملف content.json:', err);
+        setStatusNotice({
+          type: 'error',
+          text: `⚠️ تعذر قراءة الملف: ${err?.message || 'الملف ليس بصيغة JSON صحيحة'}`
+        });
       }
     };
     reader.readAsText(file);
@@ -346,14 +417,32 @@ function doPost(e) {
           </div>
         </div>
 
-        {/* Save success banner */}
-        {saveSuccess && (
-          <div className="bg-emerald-950/90 border-b border-emerald-500/50 px-4 py-2 flex items-center justify-between gap-2 text-emerald-200 text-xs font-semibold animate-fadeIn">
+        {/* Status notice banner for Save / Download / Import / Sync */}
+        {statusNotice && (
+          <div className={`border-b px-4 py-2.5 flex items-center justify-between gap-3 text-xs font-semibold animate-fadeIn ${
+            statusNotice.type === 'error'
+              ? 'bg-rose-950/95 border-rose-500/50 text-rose-200'
+              : statusNotice.type === 'info'
+              ? 'bg-sky-950/95 border-sky-500/50 text-sky-200'
+              : 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200'
+          }`}>
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>✓ تم حفظ كافة تعديلات الدروس محلياً وفي الذاكرة بنجاح! ستبقى محفوظة دائماً عند إعادة فتح التطبيق.</span>
+              {statusNotice.type === 'error' ? (
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              ) : statusNotice.type === 'info' ? (
+                <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              )}
+              <span className="leading-relaxed">{statusNotice.text}</span>
             </div>
-            <span className="text-[10px] text-emerald-300/80 bg-emerald-900/60 px-2 py-0.5 rounded-full">محفوظ</span>
+            <button
+              onClick={() => setStatusNotice(null)}
+              className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer flex-shrink-0"
+              title="إغلاق التنبيه"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
@@ -1362,20 +1451,36 @@ function doPost(e) {
                       type="button"
                       onClick={async () => {
                         try {
+                          setStatusNotice({ type: 'info', text: 'جاري الاتصال بسيرفر Vercel وجلب أحدث ملف content.json...' });
                           const fresh = await fetchLessons(true);
                           if (fresh && fresh.length > 0) {
                             setEditableLessons(fresh);
                             if (onUpdateLessons) onUpdateLessons(fresh);
                             saveStoredLessons(fresh);
+                            setHasLocalDrafts(false);
+                            setSelectedLessonIndex(0);
+                            setStatusNotice({
+                              type: 'success',
+                              text: `✓ تم جلب الدروس بنجاح من سيرفر Vercel (${fresh.length} دروس)! تظهر الآن أحدث نسخة منشورة على GitHub.`
+                            });
                             setSaveSuccess(true);
-                            setTimeout(() => setSaveSuccess(false), 4000);
+                            setTimeout(() => setSaveSuccess(false), 6000);
+                          } else {
+                            setStatusNotice({
+                              type: 'error',
+                              text: '⚠️ لم يتم العثور على دروس في السيرفر أو أن الملف فارغ. تأكد من نشر الملف على GitHub و Vercel.'
+                            });
                           }
                         } catch (err: any) {
                           console.warn('خطأ أثناء جلب الملف:', err);
+                          setStatusNotice({
+                            type: 'error',
+                            text: `⚠️ خطأ في الاتصال بسيرفر Vercel: ${err?.message || 'تأكد من الاتصال بالإنترنت'}`
+                          });
                         }
                       }}
-                      className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-xs transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-500/30"
-                      title="جلب وتحديث الدروس من ملف content.json المرفوع على سيرفر Vercel"
+                      className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-xs transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-500/30 active:scale-95"
+                      title="جلب وتحديث الدروس من ملف content.json المرفوع على سيرفر Vercel ومسح الكاش"
                     >
                       <BookOpen className="w-4 h-4" />
                       <span>🔄 مزامنة من سيرفر Vercel</span>
@@ -1467,17 +1572,17 @@ function doPost(e) {
                 <div className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/30 flex flex-col justify-between space-y-3">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-emerald-400">الخطوة الأولى</span>
+                      <span className="text-xs font-black text-emerald-400">الملف الأساسي (محتوى الدروس)</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
                         content.json
                       </span>
                     </div>
                     <h5 className="text-sm font-bold text-white">تصدير ملف بيانات ومحتوى الدروس</h5>
                     <p className="text-xs text-slate-300 leading-relaxed">
-                      يحفظ عناوين كل الدروس، وروابط فيديوهات اليوتيوب، والتسجيل الصوتي، وصور الشرح، وأسئلة الاختبار.
+                      يحفظ عناوين كل الدروس، وروابط فيديوهات اليوتيوب، والتسجيل الصوتي، وروابط صور الشرح ومعرض الدرس، وأسماء المجسمات وأسئلة الاختبار.
                     </p>
-                    <div className="p-2 rounded-lg bg-black/40 border border-slate-800 text-[11px] font-mono text-emerald-300">
-                      المسار: public/data/content.json
+                    <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-[11px] text-emerald-200 leading-relaxed">
+                      💡 <strong>لتحديث الجوال والتابلت:</strong> نزّل هذا الملف وضعه في <code className="text-emerald-300 font-bold font-mono">public/data/content.json</code> ثم ارفعه لمستودعك على GitHub لينشر تلقائياً لـ Vercel.
                     </div>
                   </div>
 
@@ -1495,17 +1600,17 @@ function doPost(e) {
                 <div className="p-4 rounded-xl bg-slate-900/90 border border-sky-500/30 flex flex-col justify-between space-y-3">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-sky-400">الخطوة الثانية</span>
+                      <span className="text-xs font-black text-sky-400">ملف الكاميرا فقط (اختياري)</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
                         targets.mind
                       </span>
                     </div>
-                    <h5 className="text-sm font-bold text-white">تجميع بصمات الكاميرا الرسمية</h5>
+                    <h5 className="text-sm font-bold text-white">بصمات تعرّف الكاميرا البصرية</h5>
                     <p className="text-xs text-slate-300 leading-relaxed">
-                      افتح الأداة الرسمية، اسحب صور صفحات الكتاب دفعة واحدة (Ctrl+A)، ثم نزل ملف البصمات الثنائي المعتمد.
+                      هذا الملف خاص بكاميرا الهاتف للتعرف على الورقة المطبوعة. <strong>لا تحتاجه</strong> إذا كنت فقط تعدل الروابط أو الصور الإضافية أو المجسمات؛ تحتاجه فقط إذا غيرت صورة صفحة الكتاب المطبوعة ذاتها.
                     </p>
-                    <div className="p-2 rounded-lg bg-black/40 border border-slate-800 text-[11px] font-mono text-sky-300">
-                      المسار: public/targets/targets.mind
+                    <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-500/30 text-[11px] text-sky-200 leading-relaxed">
+                      📁 مسار الحفظ إذا استخرجته: <code className="text-sky-300 font-bold font-mono">public/targets/targets.mind</code>
                     </div>
                   </div>
 
@@ -1513,16 +1618,16 @@ function doPost(e) {
                     <button
                       type="button"
                       onClick={handleDownloadFixedTargetsMind}
-                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 text-center"
+                      className="w-full py-2.5 px-4 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-bold text-xs shadow-lg shadow-sky-700/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 text-center"
                     >
                       <Download className="w-4 h-4" />
-                      <span>⚡ تنزيل ملف targets.mind المصحح (3 دروس مباشرة)</span>
+                      <span>⚡ تنزيل ملف targets.mind للكاميرا</span>
                     </button>
                     <a
                       href="https://hiukim.github.io/mind-ar-js-doc/tools/compile"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-2 px-4 rounded-xl bg-sky-600/80 hover:bg-sky-500 text-white font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-all text-center"
+                      className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-all text-center border border-slate-700"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>أداة MindAR الرسمية (لإعادة التجميع يدوياً) ↗</span>

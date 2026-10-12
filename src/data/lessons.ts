@@ -3,7 +3,8 @@ import { LessonData } from '../types/ar';
 // Storage version key to automatically discard stale data from older testing sessions
 const STORAGE_KEY = 'ar_school_lessons_v3';
 const STORAGE_VERSION_KEY = 'ar_data_build_version';
-const CURRENT_BUILD_VERSION = '3.2.0';
+const DRAFT_FLAG_KEY = 'ar_has_unsaved_drafts';
+const CURRENT_BUILD_VERSION = '3.3.0';
 
 export const DEFAULT_LESSONS: LessonData[] = [
   {
@@ -161,7 +162,7 @@ try {
   // Ignore storage access errors
 }
 
-export function getStoredLessons(): LessonData[] {
+export function getRawStoredLessons(): LessonData[] | null {
   try {
     const local = localStorage.getItem(STORAGE_KEY);
     if (local) {
@@ -173,7 +174,29 @@ export function getStoredLessons(): LessonData[] {
   } catch (err) {
     console.warn('Error reading stored lessons:', err);
   }
-  return DEFAULT_LESSONS;
+  return null;
+}
+
+export function setHasLocalDrafts(hasDrafts: boolean): void {
+  try {
+    if (hasDrafts) {
+      localStorage.setItem(DRAFT_FLAG_KEY, 'true');
+    } else {
+      localStorage.removeItem(DRAFT_FLAG_KEY);
+    }
+  } catch (_) {}
+}
+
+export function getHasLocalDrafts(): boolean {
+  try {
+    return localStorage.getItem(DRAFT_FLAG_KEY) === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+export function getStoredLessons(): LessonData[] {
+  return getRawStoredLessons() || DEFAULT_LESSONS;
 }
 
 export function saveStoredLessons(lessons: LessonData[]): void {
@@ -289,66 +312,52 @@ export async function purgeAllLocalDataAndCache(): Promise<void> {
 }
 
 export async function fetchLessons(forceRefreshServer = false): Promise<LessonData[]> {
-  const local = getStoredLessons();
+  const hasDrafts = getHasLocalDrafts();
+  const rawLocal = getRawStoredLessons();
 
-  // If local already has stored user lessons and not a forced server refresh, preserve user data
-  if (!forceRefreshServer && local && local.length > 0) {
-    return local;
+  // If user on this browser explicitly has local unsaved drafts, and not forced to refresh server
+  if (!forceRefreshServer && hasDrafts && rawLocal && rawLocal.length > 0) {
+    return rawLocal;
   }
 
   try {
-    // Fetch deployed /data/content.json with timeout guard (3.5s max to prevent mobile hang)
+    // Fetch deployed /data/content.json with cache buster and no-cache headers
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 4500);
 
     const res = await fetch(`/data/content.json?t=${Date.now()}`, {
-      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      },
       signal: controller.signal
     });
     clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.lessons) && data.lessons.length > 0) {
-        if (forceRefreshServer || !local || local.length === 0) {
-          saveStoredLessons(data.lessons);
-          return data.lessons;
+      const serverLessons = Array.isArray(data) ? data : data?.lessons;
+      if (Array.isArray(serverLessons) && serverLessons.length > 0) {
+        const normalized: LessonData[] = serverLessons.map((l: any, idx: number) => ({
+          ...l,
+          targetIndex: typeof l.targetIndex === 'number' ? l.targetIndex : idx
+        }));
+
+        saveStoredLessons(normalized);
+        if (forceRefreshServer) {
+          setHasLocalDrafts(false);
         }
-
-        // Merge: local user edits ALWAYS take top priority over static server defaults
-        const merged = local.map((locLesson: LessonData, idx: number) => {
-          const serverLesson = data.lessons[idx] || data.lessons.find((s: LessonData) => s.targetId === locLesson.targetId);
-          if (!serverLesson) return locLesson;
-          return {
-            ...serverLesson,
-            ...locLesson, // Local modifications ALWAYS win
-            video: locLesson.video || serverLesson.video,
-            audio: locLesson.audio || serverLesson.audio,
-            description: locLesson.description || serverLesson.description,
-            images: (locLesson.images && locLesson.images.length > 0) ? locLesson.images : (serverLesson.images || []),
-            model3d: locLesson.model3d || serverLesson.model3d,
-            arModel3d: locLesson.arModel3d || serverLesson.arModel3d,
-            targetImage: locLesson.targetImage || serverLesson.targetImage
-          };
-        });
-
-        // If server has newer lessons beyond local length, append them
-        if (data.lessons.length > local.length) {
-          for (let i = local.length; i < data.lessons.length; i++) {
-            merged.push(data.lessons[i]);
-          }
-        }
-
-        saveStoredLessons(merged);
-        return merged;
+        return normalized;
       }
     }
   } catch (err) {
     console.warn('Could not fetch /data/content.json from server:', err);
   }
 
-  if (local && local.length > 0) {
-    return local;
+  // Fallback to local storage if available
+  if (rawLocal && rawLocal.length > 0) {
+    return rawLocal;
   }
 
   return DEFAULT_LESSONS;

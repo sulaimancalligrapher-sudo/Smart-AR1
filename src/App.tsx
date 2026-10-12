@@ -102,17 +102,24 @@ export default function App() {
   };
 
   const handleTargetDetected = (lesson: LessonData) => {
-    setActiveLesson(lesson);
+    setLessons((currentLessons) => {
+      const fresh = currentLessons.find(
+        (l, idx) => (typeof l.targetIndex === 'number' ? l.targetIndex : idx) === (typeof lesson.targetIndex === 'number' ? lesson.targetIndex : -1) ||
+                    l.targetId === lesson.targetId
+      ) || lesson;
+      setActiveLesson(fresh);
+      analytics.trackEvent({
+        targetId: fresh.targetId,
+        lessonTitle: fresh.title,
+        action: 'target_detected'
+      });
+      return currentLessons;
+    });
     setShowHologram3D(false);
     setShowFloatingModel(true); // تفعيل مجسم الواقع المعزز على الصورة تلقائياً
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
     }
-    analytics.trackEvent({
-      targetId: lesson.targetId,
-      lessonTitle: lesson.title,
-      action: 'target_detected'
-    });
   };
 
   const handleTargetLost = (lesson: LessonData) => {
