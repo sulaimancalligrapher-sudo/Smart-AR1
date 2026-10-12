@@ -3,35 +3,88 @@
  */
 
 /**
+ * Extracts Google Drive file ID from virtually any Google Drive URL format or raw ID.
+ * Handles:
+ *  - https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+ *  - https://drive.google.com/file/d/FILE_ID/view?usp=drivesdk
+ *  - https://drive.google.com/file/u/0/d/FILE_ID/view
+ *  - https://drive.google.com/open?id=FILE_ID
+ *  - https://drive.google.com/uc?id=FILE_ID
+ *  - https://docs.google.com/uc?id=FILE_ID
+ *  - https://drive.google.com/thumbnail?id=FILE_ID=w1200
+ *  - https://drive.google.com/thumbnail?id=FILE_ID&sz=w1200
+ *  - https://lh3.googleusercontent.com/d/FILE_ID
+ *  - https://drive.usercontent.google.com/download?id=FILE_ID
+ *  - Raw 25-50 char Google Drive ID
+ */
+export function extractGoogleDriveFileId(url: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+
+  // If user pasted just the ID directly (typically 25-50 alphanum chars + '-' or '_')
+  if (/^[a-zA-Z0-9_-]{25,55}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // /file/d/FILE_ID or /d/FILE_ID
+  const fileDMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]{20,})/i);
+  if (fileDMatch && fileDMatch[1]) {
+    // Strip trailing =w1200 or similar if accidentally present
+    return fileDMatch[1].split('=')[0];
+  }
+
+  // ?id=FILE_ID or &id=FILE_ID
+  const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]{20,})/i);
+  if (idParamMatch && idParamMatch[1]) {
+    return idParamMatch[1].split('=')[0];
+  }
+
+  // lh3.googleusercontent.com/d/FILE_ID
+  const lh3Match = trimmed.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]{20,})/i);
+  if (lh3Match && lh3Match[1]) {
+    return lh3Match[1].split('=')[0];
+  }
+
+  return null;
+}
+
+/**
+ * Returns alternative candidate URLs for a given image link (useful for fallback on loading error).
+ */
+export function getAlternativeImageUrls(url: string): string[] {
+  if (!url || typeof url !== 'string') return [];
+  const trimmed = url.trim();
+
+  // Data URIs have no alternatives
+  if (trimmed.startsWith('data:')) {
+    return [trimmed];
+  }
+
+  const driveId = extractGoogleDriveFileId(trimmed);
+  if (driveId) {
+    return [
+      `https://drive.google.com/thumbnail?id=${driveId}&sz=w1600`,
+      `https://lh3.googleusercontent.com/d/${driveId}=s1600`,
+      `https://drive.google.com/uc?export=view&id=${driveId}`,
+      `https://drive.usercontent.google.com/download?id=${driveId}&authuser=0`
+    ];
+  }
+
+  return [trimmed];
+}
+
+/**
  * Automatically converts Google Drive share/view links into high-res direct thumbnail image URLs.
- * Example input:
- *   https://drive.google.com/file/d/1a2b3c4d5e/view?usp=sharing
- *   https://drive.google.com/open?id=1a2b3c4d5e
- * Example output:
- *   https://drive.google.com/thumbnail?id=1a2b3c4d5e&sz=w1200
  */
 export function convertGoogleDriveImageUrl(url: string): string {
   if (!url || typeof url !== 'string') return '';
   const trimmed = url.trim();
 
-  // If already a direct thumbnail URL, ensure it has good resolution (w1200)
-  if (trimmed.includes('drive.google.com/thumbnail')) {
-    if (!trimmed.includes('&sz=')) {
-      return `${trimmed}&sz=w1200`;
-    }
-    return trimmed;
-  }
+  if (trimmed.startsWith('data:')) return trimmed;
 
-  // Match /file/d/FILE_ID or /u/0/d/FILE_ID or /d/FILE_ID
-  const fileDMatch = trimmed.match(/drive\.google\.com\/(?:file\/)?(?:u\/\d+\/)?(?:d|file\/d)\/([a-zA-Z0-9_-]+)/i);
-  if (fileDMatch && fileDMatch[1]) {
-    return `https://drive.google.com/thumbnail?id=${fileDMatch[1]}&sz=w1200`;
-  }
-
-  // Match open?id=FILE_ID or uc?id=FILE_ID
-  const idParamMatch = trimmed.match(/drive\.google\.com\/(?:open|uc)\?(?:[^&]*&)*id=([a-zA-Z0-9_-]+)/i);
-  if (idParamMatch && idParamMatch[1]) {
-    return `https://drive.google.com/thumbnail?id=${idParamMatch[1]}&sz=w1200`;
+  const driveId = extractGoogleDriveFileId(trimmed);
+  if (driveId) {
+    return `https://drive.google.com/thumbnail?id=${driveId}&sz=w1600`;
   }
 
   return trimmed;
@@ -43,4 +96,13 @@ export function convertGoogleDriveImageUrl(url: string): string {
 export function normalizeImageUrl(url: string): string {
   if (!url || typeof url !== 'string') return '';
   return convertGoogleDriveImageUrl(url);
+}
+
+/**
+ * Checks if a URL points to an animated image (e.g. GIF or animated WebP)
+ */
+export function isAnimatedImage(url: string): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return lower.includes('.gif') || lower.includes('image/gif');
 }

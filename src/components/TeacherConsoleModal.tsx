@@ -8,7 +8,7 @@ import { analytics } from '../services/analytics';
 import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage, getActiveLessonModel } from '../types/ar';
 import { saveStoredLessons, fetchLessons } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
-import { normalizeImageUrl } from '../services/urlHelpers';
+import { normalizeImageUrl, getAlternativeImageUrls } from '../services/urlHelpers';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -693,7 +693,7 @@ function doPost(e) {
                           key={`explanation_img_${currentLesson.targetId}`}
                           type="file"
                           multiple
-                          accept="image/png, image/jpeg, image/gif, image/webp"
+                          accept="image/*"
                           className="hidden"
                           onChange={(e) => {
                             if (e.target.files && e.target.files.length > 0) {
@@ -724,13 +724,15 @@ function doPost(e) {
                   </div>
 
                   {/* صندوق إضافة رابط صورة خارجي (Google Drive أو أي رابط ويب) */}
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-white flex items-center gap-1.5">
                         <Plus className="w-3.5 h-3.5 text-sky-400" />
-                        <span>إضافة رابط صورة جديد (Google Drive أو رابط مباشر):</span>
+                        <span>إضافة رابط صورة جديد (Google Drive أو أي رابط مباشر):</span>
                       </label>
-                      <span className="text-[10px] text-sky-400 font-medium">✨ تحويل روابط Google Drive تلقائياً</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 font-semibold border border-sky-500/30">
+                        ✨ تحويل ذكي لروابط Google Drive
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
@@ -745,7 +747,7 @@ function doPost(e) {
                               handleAddImageLink();
                             }
                           }}
-                          placeholder="الصق رابط صورة Google Drive أو أي رابط مباشر هنا..."
+                          placeholder="الصق رابط صورة Google Drive أو رابط صورة مباشر هنا..."
                           className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
                         />
                       </div>
@@ -783,9 +785,25 @@ function doPost(e) {
                       </p>
                     )}
 
-                    <p className="text-[10px] text-slate-400">
-                      💡 <strong>ملاحظة:</strong> يمكنك لصق رابط المشاركة العادي من قوقل درايف (<code className="text-slate-300">drive.google.com/file/d/.../view?usp=sharing</code>) وسيقوم النظام فوراً بتحويله وعرض الصورة بأعلى دقة دون قيود!
-                    </p>
+                    {/* صندوق إرشادات وشروط قبول الروابط */}
+                    <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+                      <div className="font-bold text-sky-400 flex items-center gap-1.5">
+                        <span>💡 شروط وضمان عمل روابط الصور بنجاح:</span>
+                      </div>
+                      <ul className="space-y-1 text-slate-300 pr-3 list-disc">
+                        <li>
+                          <strong className="text-amber-300">لروابط Google Drive:</strong> يجب أن تكون صلاحية الملف مضبوطة على{' '}
+                          <span className="text-white underline font-semibold">«أي شخص لديه الرابط» (عارض)</span>. إذا كان الملف مضبوطاً على «حصري/خاص» تمنع قوقل ظهوره خارج حسابك.
+                        </li>
+                        <li>
+                          <strong className="text-emerald-300">الصيغ المدعومة:</strong> يقبل النظام كافة أنواع الصور بدون استثناء:{' '}
+                          <span className="text-white font-mono">PNG, JPG, JPEG, GIF (المتحركة بالكامل), WebP, SVG</span>.
+                        </li>
+                        <li>
+                          <strong className="text-sky-300">طريقة التحويل التلقائي:</strong> انسخ رابط المشاركة العادي من درايف وسيقوم النظام فوراً بتهيئته وعرضه بجودة فائقة.
+                        </li>
+                      </ul>
+                    </div>
                   </div>
 
                   {/* قائمة الصور المضافة لهذا الدرس */}
@@ -801,18 +819,37 @@ function doPost(e) {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto p-1">
                         {currentLesson.images.map((img, imgIdx) => {
-                          const isDrive = img.url.includes('drive.google.com');
+                          const isDrive = img.url.includes('drive.google.com') || img.url.includes('googleusercontent.com');
                           const isData = img.url.startsWith('data:');
                           return (
                             <div
                               key={imgIdx}
                               className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors"
                             >
-                              <div className="w-14 h-14 rounded-lg bg-black border border-slate-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                              <div className="w-14 h-14 rounded-lg bg-black border border-slate-800 overflow-hidden flex items-center justify-center flex-shrink-0 relative">
                                 <img
                                   src={img.url}
                                   alt={img.title || `صورة ${imgIdx + 1}`}
                                   referrerPolicy="no-referrer"
+                                  crossOrigin="anonymous"
+                                  onError={(e) => {
+                                    const alts = getAlternativeImageUrls(img.url);
+                                    const target = e.currentTarget;
+                                    const nextAlt = alts.find((a) => a !== target.src);
+                                    if (nextAlt && !target.dataset.tried) {
+                                      target.dataset.tried = 'true';
+                                      target.src = nextAlt;
+                                    } else {
+                                      target.style.opacity = '0.3';
+                                      const parent = target.parentElement;
+                                      if (parent && !parent.querySelector('.broken-badge')) {
+                                        const badge = document.createElement('div');
+                                        badge.className = 'broken-badge absolute inset-0 flex items-center justify-center bg-black/70 text-[9px] text-amber-400 font-bold p-1 text-center';
+                                        badge.innerText = '⚠️ غير متاح';
+                                        parent.appendChild(badge);
+                                      }
+                                    }
+                                  }}
                                   className="w-full h-full object-contain"
                                 />
                               </div>
