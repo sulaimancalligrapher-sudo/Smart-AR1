@@ -245,6 +245,33 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     a.click();
   };
 
+  const handleImportContentJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        const loadedLessons = Array.isArray(parsed) ? parsed : parsed?.lessons;
+        if (Array.isArray(loadedLessons) && loadedLessons.length > 0) {
+          const normalized = loadedLessons.map((l: any, idx: number) => ({
+            ...l,
+            targetIndex: typeof l.targetIndex === 'number' ? l.targetIndex : idx
+          }));
+          setEditableLessons(normalized);
+          saveStoredLessons(normalized);
+          if (onUpdateLessons) onUpdateLessons(normalized);
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 4500);
+        }
+      } catch (err: any) {
+        console.warn('فشل قراءة ملف content.json:', err);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const handleDownloadFixedTargetsMind = () => {
     const a = document.createElement('a');
     a.href = '/targets/targets.mind';
@@ -1294,31 +1321,48 @@ function doPost(e) {
                 </div>
 
                 {/* Action Buttons for Lessons */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 border border-slate-800">
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* 1. حفظ في المتصفح */}
                     <button
                       type="button"
                       onClick={handleSaveLessonChanges}
-                      className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-md shadow-sky-600/20 active:scale-95"
+                      title="حفظ التعديلات في ذاكرة هذا المتصفح للمعاينة الفورية على هذا الجهاز"
                     >
                       <Save className="w-4 h-4" />
-                      <span>حفظ تعديلات الدروس في الجلسة</span>
+                      <span>حفظ التعديلات (لهذا الجهاز)</span>
                     </button>
 
+                    {/* 2. تنزيل content.json للنشر على Vercel و GitHub */}
                     <button
                       type="button"
                       onClick={handleDownloadContentJson}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95"
+                      title="تنزيل ملف content.json لوضعه في public/data/content.json في GitHub ليظهر على هواتف جميع الطلاب"
                     >
                       <Download className="w-4 h-4" />
-                      <span>تنزيل content.json</span>
+                      <span>💾 تنزيل content.json لـ GitHub</span>
                     </button>
 
+                    {/* 3. استيراد ملف content.json من الجهاز */}
+                    <label className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 border border-slate-700 active:scale-95">
+                      <Upload className="w-3.5 h-3.5 text-sky-400" />
+                      <span>📁 استيراد content.json من جهازك</span>
+                      <input
+                        type="file"
+                        accept=".json,application/json"
+                        className="hidden"
+                        onChange={handleImportContentJson}
+                      />
+                    </label>
+
+                    {/* 4. جلب وتحديث من السيرفر Vercel */}
                     <button
                       type="button"
                       onClick={async () => {
                         try {
-                          const fresh = await fetchLessons();
+                          const fresh = await fetchLessons(true);
                           if (fresh && fresh.length > 0) {
                             setEditableLessons(fresh);
                             if (onUpdateLessons) onUpdateLessons(fresh);
@@ -1330,18 +1374,18 @@ function doPost(e) {
                           console.warn('خطأ أثناء جلب الملف:', err);
                         }
                       }}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-xs transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-500/30"
+                      className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-sky-300 text-xs transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-500/30"
                       title="جلب وتحديث الدروس من ملف content.json المرفوع على سيرفر Vercel"
                     >
                       <BookOpen className="w-4 h-4" />
-                      <span>🔄 مزامنة من content.json السيرفر</span>
+                      <span>🔄 مزامنة من سيرفر Vercel</span>
                     </button>
                   </div>
 
                   {saveSuccess && (
-                    <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn">
+                    <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn self-end sm:self-auto">
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>تم حفظ ومزامنة البيانات بنجاح!</span>
+                      <span>تم الحفظ والمزامنة بنجاح!</span>
                     </span>
                   )}
                 </div>
