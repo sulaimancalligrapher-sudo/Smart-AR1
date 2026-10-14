@@ -4,7 +4,26 @@ import { LessonData } from '../types/ar';
 const STORAGE_KEY = 'ar_school_lessons_v3';
 const STORAGE_VERSION_KEY = 'ar_data_build_version';
 const DRAFT_FLAG_KEY = 'ar_has_unsaved_drafts';
-const CURRENT_BUILD_VERSION = '3.3.0';
+const CURRENT_BUILD_VERSION = '3.4.0';
+
+export function normalizeLessonsIndices(lessons: LessonData[]): LessonData[] {
+  let extraIndex = lessons.length;
+  return lessons.map((l, idx) => {
+    const validAdditionals = Array.isArray(l.additionalTargetImages)
+      ? l.additionalTargetImages.filter((img) => img && typeof img === 'string' && img.trim() !== '')
+      : [];
+    const additionalIndices: number[] = [];
+    validAdditionals.forEach(() => {
+      additionalIndices.push(extraIndex++);
+    });
+    return {
+      ...l,
+      targetIndex: idx, // يضمن دائماً مطابقة الترتيب الحقيقي لملف targets.mind
+      additionalTargetIndices: additionalIndices,
+      additionalTargetImages: validAdditionals
+    };
+  });
+}
 
 export const DEFAULT_LESSONS: LessonData[] = [
   {
@@ -168,7 +187,7 @@ export function getRawStoredLessons(): LessonData[] | null {
     if (local) {
       const parsed = JSON.parse(local);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return normalizeLessonsIndices(parsed);
       }
     }
   } catch (err) {

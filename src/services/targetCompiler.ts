@@ -40,51 +40,58 @@ export function buildMultiTargetMap(lessons: LessonData[]): {
   updatedLessons: LessonData[];
   orderedImageUrls: string[];
 } {
-  const entries: TargetEntry[] = [];
-  let currentIndex = 0;
+  const primaryEntries: TargetEntry[] = [];
+  const additionalEntries: TargetEntry[] = [];
 
-  const updatedLessons = lessons.map((lesson) => {
+  // 1. تثبيت الفهارس الأساسية لكل درس (0, 1, 2, ...) بدقة مطابقة لملف targets.mind
+  lessons.forEach((lesson, idx) => {
     const primaryImg = normalizeImageUrl(lesson.targetImage);
-    const primaryIndex = currentIndex;
-    entries.push({
-      globalTargetIndex: primaryIndex,
+    primaryEntries.push({
+      globalTargetIndex: idx,
       lessonId: lesson.targetId,
       lessonTitle: lesson.title,
       imageUrl: primaryImg,
       isPrimary: true,
       pageLabel: `${lesson.title} (الصفحة الرئيسية)`
     });
-    currentIndex++;
+  });
 
+  // 2. إلحاق أي صفحات إضافية لنفس الدروس بعد جميع الدروس الأساسية (من lessons.length فصاعداً)
+  // هذا يضمن 100% عدم حدوث أي إزاحة أو لخبطة بين الدروس الأصلية
+  let extraIndex = lessons.length;
+  const updatedLessons = lessons.map((lesson, idx) => {
+    const validAdditionalImages = (lesson.additionalTargetImages || [])
+      .map(img => normalizeImageUrl(img))
+      .filter(Boolean);
     const additionalIndices: number[] = [];
-    const validAdditionalImages = (lesson.additionalTargetImages || []).map(img => normalizeImageUrl(img)).filter(Boolean);
 
-    validAdditionalImages.forEach((addImg, idx) => {
-      const addIndex = currentIndex;
+    validAdditionalImages.forEach((addImg, aIdx) => {
+      const addIndex = extraIndex++;
       additionalIndices.push(addIndex);
-      entries.push({
+      additionalEntries.push({
         globalTargetIndex: addIndex,
         lessonId: lesson.targetId,
         lessonTitle: lesson.title,
         imageUrl: addImg,
         isPrimary: false,
-        pageLabel: `${lesson.title} (صفحة إضافية #${idx + 1})`
+        pageLabel: `${lesson.title} (صفحة إضافية #${aIdx + 1})`
       });
-      currentIndex++;
     });
 
     return {
       ...lesson,
-      targetIndex: primaryIndex,
+      targetIndex: idx, // فهرس الدرس الأساسي ثابت ومضمون
       additionalTargetIndices: additionalIndices,
       additionalTargetImages: validAdditionalImages
     };
   });
 
+  const allEntries = [...primaryEntries, ...additionalEntries];
+
   return {
-    entries,
+    entries: allEntries,
     updatedLessons,
-    orderedImageUrls: entries.map(e => e.imageUrl)
+    orderedImageUrls: allEntries.map(e => e.imageUrl)
   };
 }
 

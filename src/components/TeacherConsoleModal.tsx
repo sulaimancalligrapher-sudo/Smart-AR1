@@ -425,13 +425,14 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
         }
       }
     };
-    const updated = [...editableLessons, newLesson];
-    setEditableLessons(updated);
-    setSelectedLessonIndex(updated.length - 1);
+    const rawUpdated = [...editableLessons, newLesson];
+    const { updatedLessons } = buildMultiTargetMap(rawUpdated);
+    setEditableLessons(updatedLessons);
+    setSelectedLessonIndex(updatedLessons.length - 1);
     if (onUpdateLessons) {
-      onUpdateLessons(updated);
+      onUpdateLessons(updatedLessons);
     }
-    saveStoredLessons(updated);
+    saveStoredLessons(updatedLessons);
   };
 
   const handleDeleteLesson = (indexToDelete: number) => {

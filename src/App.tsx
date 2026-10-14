@@ -103,10 +103,14 @@ export default function App() {
 
   const handleTargetDetected = (lesson: LessonData) => {
     setLessons((currentLessons) => {
-      const fresh = currentLessons.find(
-        (l, idx) => (typeof l.targetIndex === 'number' ? l.targetIndex : idx) === (typeof lesson.targetIndex === 'number' ? lesson.targetIndex : -1) ||
-                    l.targetId === lesson.targetId
-      ) || lesson;
+      const fresh =
+        currentLessons.find((l) => l.targetId === lesson.targetId) ||
+        currentLessons.find(
+          (l, idx) =>
+            (typeof l.targetIndex === 'number' ? l.targetIndex : idx) ===
+            (typeof lesson.targetIndex === 'number' ? lesson.targetIndex : -1)
+        ) ||
+        lesson;
       setActiveLesson(fresh);
       analytics.trackEvent({
         targetId: fresh.targetId,
