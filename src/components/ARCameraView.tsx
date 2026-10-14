@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume2, VolumeX, Music } from 'lucide-react';
+import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume1, Volume2, VolumeX, Music } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData, getActiveLessonModel, getLessonModelSound } from '../types/ar';
@@ -224,16 +224,20 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const [soundState, setSoundState] = useState({
     isPlaying: soundService.getIsPlaying(),
     isMuted: soundService.getIsMuted(),
-    isBlockedByAutoplay: soundService.getIsBlockedByAutoplay()
+    isBlockedByAutoplay: soundService.getIsBlockedByAutoplay(),
+    volume: soundService.getVolume()
   });
   const [activeModelSoundTitle, setActiveModelSoundTitle] = useState<string | null>(null);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const volumeControlRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsubscribe = soundService.subscribe((state) => {
       setSoundState({
         isPlaying: state.isPlaying,
         isMuted: state.isMuted,
-        isBlockedByAutoplay: state.isBlockedByAutoplay
+        isBlockedByAutoplay: state.isBlockedByAutoplay,
+        volume: state.volume
       });
     });
     return () => {
@@ -241,6 +245,22 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       soundService.stopModelSound();
     };
   }, []);
+
+  // إغلاق نافذة شريط رفع وخفض الصوت المنبثقة عند النقر في أي مكان خارجها
+  useEffect(() => {
+    if (!showVolumeSlider) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (volumeControlRef.current && !volumeControlRef.current.contains(e.target as Node)) {
+        setShowVolumeSlider(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showVolumeSlider]);
 
   const unlockAudioOnGesture = useCallback(() => {
     soundService.unlockAudio();
@@ -781,6 +801,10 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
     }
   };
 
+  // فحص هل الدرس المعروض حالياً لديه رابط صوت خاص بالمجسم ثلاثي الأبعاد
+  const activeModelSound = activeLesson ? getLessonModelSound(activeLesson) : null;
+  const hasModelSound = Boolean(activeModelSound?.soundUrl && activeModelSound.soundEnabled !== false);
+
   return (
     <div
       onClick={unlockAudioOnGesture}
@@ -856,32 +880,82 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-          {/* زر التحكم بصوت المجسم التلقائي (3D Model Sound) */}
-          <button
-            onClick={() => soundService.toggleMute()}
-            className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
-              soundState.isPlaying
-                ? 'bg-emerald-500/40 hover:bg-emerald-500/60 text-white border-emerald-300/60 ring-2 ring-emerald-400/30'
-                : soundState.isMuted
-                ? 'bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 border-rose-300/40'
-                : 'bg-white/10 hover:bg-white/25 text-slate-200 border-white/20'
-            }`}
-            title={
-              soundState.isMuted
-                ? 'إلغاء كتم صوت المجسم 3D'
-                : soundState.isPlaying
-                ? `صوت المجسم نشط: ${activeModelSoundTitle || ''} (اضغط للكتم)`
-                : 'صوت المجسم التلقائي'
-            }
-          >
-            {soundState.isMuted ? (
-              <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-300" />
-            ) : soundState.isPlaying ? (
-              <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300 animate-pulse" />
-            ) : (
-              <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
-            )}
-          </button>
+          {/* زر خفض ورفع صوت المجسم (أيقونة فقط بدون نص) - يظهر حصراً إذا كان للمجسم رابط صوت خاص */}
+          {hasModelSound && (
+            <div className="relative" ref={volumeControlRef}>
+              <button
+                onClick={() => setShowVolumeSlider((prev) => !prev)}
+                className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center backdrop-blur-md ${
+                  soundState.isMuted || soundState.volume === 0
+                    ? 'bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 border-rose-300/40'
+                    : soundState.isPlaying
+                    ? 'bg-emerald-500/40 hover:bg-emerald-500/60 text-white border-emerald-300/60 ring-2 ring-emerald-400/30'
+                    : 'bg-white/10 hover:bg-white/25 text-slate-200 border-white/20'
+                }`}
+                title={
+                  soundState.isMuted || soundState.volume === 0
+                    ? 'مكتوم - اضغط لضبط مستوى الصوت'
+                    : `مستوى الصوت: ${Math.round(soundState.volume * 100)}%`
+                }
+                aria-label="التحكم بالصوت"
+              >
+                {soundState.isMuted || soundState.volume === 0 ? (
+                  <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-300" />
+                ) : soundState.volume < 0.5 ? (
+                  <Volume1 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
+                ) : (
+                  <Volume2
+                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300 ${
+                      soundState.isPlaying ? 'animate-pulse' : ''
+                    }`}
+                  />
+                )}
+              </button>
+
+              {/* شريط رفع وخفض الصوت يظهر عند النقر على الأيقونة */}
+              {showVolumeSlider && (
+                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 backdrop-blur-xl border border-white/20 p-3 rounded-2xl shadow-2xl flex flex-col items-center gap-2.5 min-w-[140px] animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between w-full px-1 gap-2">
+                    <button
+                      onClick={() => soundService.toggleMute()}
+                      className="p-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                      title={soundState.isMuted ? 'إلغاء الكتم' : 'كتم'}
+                      aria-label="كتم أو تشغيل"
+                    >
+                      {soundState.isMuted || soundState.volume === 0 ? (
+                        <VolumeX className="w-4 h-4 text-rose-400" />
+                      ) : (
+                        <Volume2 className="w-4 h-4 text-emerald-400" />
+                      )}
+                    </button>
+                    <span className="text-xs font-mono font-bold text-slate-200">
+                      {soundState.isMuted ? '0%' : `${Math.round(soundState.volume * 100)}%`}
+                    </span>
+                  </div>
+
+                  {/* شريط التمرير للتحكم السلس في رفع وخفض الصوت */}
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={soundState.isMuted ? 0 : soundState.volume}
+                    onChange={(e) => {
+                      const newVol = parseFloat(e.target.value);
+                      soundService.setVolume(newVol);
+                    }}
+                    className="w-28 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                  />
+
+                  <div className="flex items-center justify-between w-full text-[10px] text-slate-400 px-1 font-mono">
+                    <span>0%</span>
+                    <span>50%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* زر التبديل الفوري بين ثبات المجسم فوق الكتاب أو التدوير */}
           <button
@@ -938,8 +1012,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
       </div>
 
-      {/* زر عائم لتشغيل الصوت عند حظره بواسطة قيود المتصفح */}
-      {soundState.isBlockedByAutoplay && isPhysicalTargetTracked && !soundState.isMuted && (
+      {/* زر عائم لتشغيل الصوت عند حظره بواسطة قيود المتصفح - يظهر فقط إذا كان للمجسم صوت */}
+      {hasModelSound && soundState.isBlockedByAutoplay && isPhysicalTargetTracked && !soundState.isMuted && (
         <div className="absolute top-16 sm:top-20 inset-x-0 z-50 flex justify-center pointer-events-auto px-4 animate-bounce">
           <button
             onClick={() => soundService.unlockAudio()}

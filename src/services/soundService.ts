@@ -11,6 +11,7 @@ type SoundStateListener = (state: {
   isMuted: boolean;
   isBlockedByAutoplay: boolean;
   activeUrl: string | null;
+  volume: number;
 }) => void;
 
 class SoundService {
@@ -21,6 +22,7 @@ class SoundService {
   private isPlaying = false;
   private isBlockedByAutoplay = false;
   private activeUrl: string | null = null;
+  private volume = 0.85;
   private listeners: Set<SoundStateListener> = new Set();
 
   constructor() {
@@ -88,7 +90,7 @@ class SoundService {
     if (!this.audioElement && typeof window !== 'undefined') {
       const a = new Audio();
       a.loop = true;
-      a.volume = 0.9;
+      a.volume = this.volume;
       // Silent 1ms wav data to prime
       a.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
       a.addEventListener('play', () => {
@@ -124,7 +126,7 @@ class SoundService {
 
     const audio = this.getAudioElement();
     audio.loop = loop;
-    audio.volume = 0.9;
+    audio.volume = this.volume;
 
     // If same sound is already playing and not muted, keep playing
     if (this.activeUrl === url && this.isPlaying && !this.isMuted) {
@@ -192,6 +194,32 @@ class SoundService {
   }
 
   /**
+   * Sets the volume (0.0 to 1.0) smoothly
+   */
+  public setVolume(val: number): void {
+    const clamped = Math.max(0, Math.min(1, val));
+    this.volume = clamped;
+    if (this.audioElement) {
+      this.audioElement.volume = clamped;
+      if (clamped === 0) {
+        this.isMuted = true;
+        this.audioElement.muted = true;
+      } else if (this.isMuted) {
+        this.isMuted = false;
+        this.audioElement.muted = false;
+        if (this.activeUrl && !this.isPlaying) {
+          this.audioElement.play().catch(() => {});
+        }
+      }
+    }
+    this.notify();
+  }
+
+  public getVolume(): number {
+    return this.volume;
+  }
+
+  /**
    * Toggles mute state
    */
   public toggleMute(): boolean {
@@ -201,15 +229,21 @@ class SoundService {
       if (this.isMuted) {
         this.audioElement.pause();
         this.isPlaying = false;
-      } else if (this.activeUrl) {
-        this.audioElement.play().then(() => {
-          this.isPlaying = true;
-          this.isBlockedByAutoplay = false;
-          this.notify();
-        }).catch(() => {
-          this.isBlockedByAutoplay = true;
-          this.notify();
-        });
+      } else {
+        if (this.volume === 0) {
+          this.volume = 0.85;
+        }
+        this.audioElement.volume = this.volume;
+        if (this.activeUrl) {
+          this.audioElement.play().then(() => {
+            this.isPlaying = true;
+            this.isBlockedByAutoplay = false;
+            this.notify();
+          }).catch(() => {
+            this.isBlockedByAutoplay = true;
+            this.notify();
+          });
+        }
       }
     }
     this.notify();
@@ -247,7 +281,8 @@ class SoundService {
       isPlaying: this.isPlaying,
       isMuted: this.isMuted,
       isBlockedByAutoplay: this.isBlockedByAutoplay,
-      activeUrl: this.activeUrl
+      activeUrl: this.activeUrl,
+      volume: this.volume
     });
     return () => this.listeners.delete(listener);
   }
@@ -257,7 +292,8 @@ class SoundService {
       isPlaying: this.isPlaying,
       isMuted: this.isMuted,
       isBlockedByAutoplay: this.isBlockedByAutoplay,
-      activeUrl: this.activeUrl
+      activeUrl: this.activeUrl,
+      volume: this.volume
     };
     this.listeners.forEach((listener) => {
       try {

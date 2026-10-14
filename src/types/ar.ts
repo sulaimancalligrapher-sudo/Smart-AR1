@@ -62,7 +62,8 @@ export interface LessonData {
 
 /**
  * دالة ذكية لإرجاع ملف الصوت المخصص للمجسم:
- * تفحص المجسم المخصص للـ AR، ثم المجسم المشترك 3D Model لضمان عدم ضياع الصوت أبداً!
+ * تفحص حصراً صوت المجسم المخصص للـ AR أو المجسم المشترك 3D Model.
+ * لا يتم استخدام صوت الدرس كبديل، لضمان عدم تشغيل أي صوت تلقائياً إذا لم يضع المعلم صوتاً للمجسم.
  */
 export function getLessonModelSound(lesson?: LessonData | null): { soundUrl: string; soundEnabled: boolean } | null {
   if (!lesson) return null;
@@ -83,14 +84,7 @@ export function getLessonModelSound(lesson?: LessonData | null): { soundUrl: str
     };
   }
 
-  // 3. فحص صوت الدرس العام audio.url كبديل ذكي لضمان تشغيل الصوت دائماً
-  if (lesson.audio?.url && lesson.audio.url.trim() !== '') {
-    return {
-      soundUrl: lesson.audio.url.trim(),
-      soundEnabled: true
-    };
-  }
-
+  // إذا لم يحدد المعلم صوتاً خاصاً للمجسم، لا يتم تشغيل أي صوت تلقائياً
   return null;
 }
 
