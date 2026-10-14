@@ -4,7 +4,7 @@ import { LessonData } from '../types/ar';
 const STORAGE_KEY = 'ar_school_lessons_v3';
 const STORAGE_VERSION_KEY = 'ar_data_build_version';
 const DRAFT_FLAG_KEY = 'ar_has_unsaved_drafts';
-const CURRENT_BUILD_VERSION = '3.4.0';
+const CURRENT_BUILD_VERSION = '3.5.0';
 
 export function normalizeLessonsIndices(lessons: LessonData[]): LessonData[] {
   let extraIndex = lessons.length;
@@ -38,8 +38,22 @@ export const DEFAULT_LESSONS: LessonData[] = [
       type: 'mp4',
       url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-      title: 'فيديو تعليمي تفاعلي'
+      title: '١. فيديو تعليمي تفاعلي (MP4)'
     },
+    videos: [
+      {
+        type: 'mp4',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        title: '١. شرح الدرس التفاعلي (MP4)'
+      },
+      {
+        type: 'youtube',
+        url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+        embedUrl: 'https://www.youtube.com/embed/aqz-KE-bpKQ?autoplay=1&rel=0&playsinline=1',
+        title: '٢. درس خط الرقعة المرئي (YouTube)'
+      }
+    ],
     images: [
       {
         url: '/images/lesson_1_img_1.png',
@@ -48,9 +62,19 @@ export const DEFAULT_LESSONS: LessonData[] = [
       }
     ],
     audio: {
-      url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
-      title: 'تسجيل صوتي تعليمي'
+      url: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/race.mp3',
+      title: '١. التسجيل الصوتي لشرح الدرس'
     },
+    audios: [
+      {
+        url: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/race.mp3',
+        title: '١. التسجيل الصوتي النموذجي'
+      },
+      {
+        url: 'https://commondatastorage.googleapis.com/codeskulptor-assets/Epoq-Lepidoptera.ogg',
+        title: '٢. قراءة وتلاوة النص التعليمي'
+      }
+    ],
     model3d: {
       url: '/models/Astronaut.glb',
       title: 'مجسم ثلاثي الأبعاد تفاعلي',
@@ -83,8 +107,16 @@ export const DEFAULT_LESSONS: LessonData[] = [
       type: 'mp4',
       url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
       embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-      title: 'فيديو تعليمي تفاعلي'
+      title: '١. فيديو استكشافي للخط الديواني'
     },
+    videos: [
+      {
+        type: 'mp4',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+        embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+        title: '١. فيديو استكشافي للخط الديواني'
+      }
+    ],
     images: [
       {
         url: '/images/lesson_2_img_1.png',
@@ -93,9 +125,15 @@ export const DEFAULT_LESSONS: LessonData[] = [
       }
     ],
     audio: {
-      url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
-      title: 'تسجيل صوتي تعليمي'
+      url: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/race.mp3',
+      title: 'تسجيل صوتي تعليمي للخط الديواني'
     },
+    audios: [
+      {
+        url: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/race.mp3',
+        title: 'تسجيل صوتي تعليمي للخط الديواني'
+      }
+    ],
     model3d: {
       url: '/models/Astronaut.glb',
       title: 'مجسم ثلاثي الأبعاد تفاعلي',
@@ -130,6 +168,14 @@ export const DEFAULT_LESSONS: LessonData[] = [
       embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
       title: 'فيديو تعليمي لخط النسخ'
     },
+    videos: [
+      {
+        type: 'mp4',
+        url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        embedUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        title: 'فيديو تعليمي لخط النسخ'
+      }
+    ],
     images: [
       {
         url: '/images/lesson_3_img_1.png',
@@ -143,9 +189,15 @@ export const DEFAULT_LESSONS: LessonData[] = [
       }
     ],
     audio: {
-      url: 'https://actions.google.com/sounds/v1/science/ambient_space.ogg',
+      url: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/race.mp3',
       title: 'تسجيل صوتي لخط النسخ'
     },
+    audios: [
+      {
+        url: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/race.mp3',
+        title: 'تسجيل صوتي لخط النسخ'
+      }
+    ],
     model3d: {
       url: '/models/calligraphy_word.glb',
       title: 'مجسم كلمة الخط العربي ثلاثي الأبعاد',

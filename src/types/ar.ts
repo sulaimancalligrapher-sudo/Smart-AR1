@@ -1,10 +1,11 @@
-export type VideoSourceType = 'youtube' | 'vimeo' | 'mp4';
+export type VideoSourceType = 'youtube' | 'vimeo' | 'mp4' | 'gdrive' | 'custom';
 
 export interface LessonVideo {
-  type: VideoSourceType;
+  type?: VideoSourceType;
   url: string;
-  embedUrl: string;
+  embedUrl?: string;
   title: string;
+  duration?: string;
 }
 
 export interface LessonImage {
@@ -13,10 +14,14 @@ export interface LessonImage {
   caption: string;
 }
 
+export type AudioSourceType = 'audio' | 'youtube' | 'soundcloud' | 'gdrive' | 'custom';
+
 export interface LessonAudio {
   url: string;
   title: string;
   duration?: string;
+  type?: AudioSourceType;
+  embedUrl?: string;
 }
 
 export interface LessonQuiz {
@@ -53,11 +58,126 @@ export interface LessonData {
   grade: string;
   targetImage: string;
   video: LessonVideo;
+  videos?: LessonVideo[]; // قائمة الفيديوهات المتعددة للدرس الواحد
   images: LessonImage[];
   audio: LessonAudio;
+  audios?: LessonAudio[]; // قائمة التسجيلات الصوتية المتعددة للدرس الواحد
   description: LessonDescription;
   model3d?: LessonModel3D;
   arModel3d?: LessonModel3D; // مجسم مخصص اختياري للواقع المعزز (AR) - إذا لم يُحدد يستخدم model3d تلقائياً
+}
+
+/**
+ * استخراج قائمة جميع الفيديوهات للدرس (يدعم الفيديوهات المتعددة أو المفردة القديمة)
+ */
+export function getLessonVideos(lesson?: LessonData | null): LessonVideo[] {
+  if (!lesson) return [];
+  if (Array.isArray(lesson.videos) && lesson.videos.length > 0) {
+    const valid = lesson.videos.filter((v) => v && (v.url?.trim() || v.embedUrl?.trim()));
+    if (valid.length > 0) return valid;
+  }
+  if (lesson.video?.url?.trim() || lesson.video?.embedUrl?.trim()) {
+    return [lesson.video];
+  }
+  return [];
+}
+
+/**
+ * استخراج قائمة جميع التسجيلات الصوتية للدرس (يدعم الصوتيات المتعددة أو المفردة القديمة)
+ */
+export function getLessonAudios(lesson?: LessonData | null): LessonAudio[] {
+  if (!lesson) return [];
+  if (Array.isArray(lesson.audios) && lesson.audios.length > 0) {
+    const valid = lesson.audios.filter((a) => a && a.url?.trim());
+    if (valid.length > 0) return valid;
+  }
+  if (lesson.audio?.url?.trim()) {
+    return [lesson.audio];
+  }
+  return [];
+}
+
+/**
+ * تطبيع وفحص روابط الفيديو من يوتيوب، فيميو، جوجل درايف، أو الروابط المباشرة والمخصصة
+ */
+export function normalizeVideoData(rawUrl: string, title?: string): LessonVideo {
+  const url = (rawUrl || '').trim();
+  let embedUrl = url;
+  let type: VideoSourceType = 'mp4';
+
+  if (!url) {
+    return { type: 'mp4', url: '', embedUrl: '', title: title || 'فيديو تعليمي' };
+  }
+
+  // 1. YouTube (standard watch?v=, short youtu.be, or shorts)
+  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if (ytMatch && ytMatch[1]) {
+    const videoId = ytMatch[1];
+    embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1`;
+    type = 'youtube';
+  } else if (url.includes('vimeo.com')) {
+    const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?([0-9]+)/);
+    if (vimeoMatch && vimeoMatch[1]) {
+      embedUrl = `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1`;
+      type = 'vimeo';
+    }
+  } else if (url.includes('drive.google.com')) {
+    const gdriveMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (gdriveMatch && gdriveMatch[1]) {
+      embedUrl = `https://drive.google.com/file/d/${gdriveMatch[1]}/preview`;
+      type = 'gdrive';
+    }
+  } else if (url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.includes('/gtv-videos-bucket/')) {
+    type = 'mp4';
+    embedUrl = url;
+  } else {
+    type = 'custom';
+    embedUrl = url;
+  }
+
+  return {
+    type,
+    url,
+    embedUrl,
+    title: title || 'فيديو تعليمي تفاعلي'
+  };
+}
+
+/**
+ * تطبيع وفحص روابط الصوت: ملفات مباشرة، جوجل درايف، يوتيوب، ساوندكلاود، أو روابط مخصصة
+ */
+export function normalizeAudioData(rawUrl: string, title?: string): LessonAudio {
+  const url = (rawUrl || '').trim();
+  let type: AudioSourceType = 'audio';
+  let embedUrl: string | undefined = undefined;
+  let streamUrl = url;
+
+  if (!url) {
+    return { url: '', title: title || 'تسجيل صوتي', type: 'audio' };
+  }
+
+  // Google Drive
+  const gdriveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (gdriveMatch && gdriveMatch[1]) {
+    streamUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
+    type = 'gdrive';
+  } else if (url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)) {
+    const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (ytMatch && ytMatch[1]) {
+      embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0`;
+      type = 'youtube';
+    }
+  } else if (url.includes('soundcloud.com')) {
+    type = 'soundcloud';
+    embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=true`;
+  }
+
+  return {
+    url: streamUrl,
+    embedUrl,
+    title: title || 'تسجيل صوتي تعليمي',
+    type
+  };
 }
 
 /**

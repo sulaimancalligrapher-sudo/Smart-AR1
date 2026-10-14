@@ -6,7 +6,19 @@ import {
   Volume2, VolumeX, Play, Pause, Disc
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
-import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage, getActiveLessonModel } from '../types/ar';
+import {
+  AnalyticsLogItem,
+  LessonData,
+  LessonModel3D,
+  LessonImage,
+  LessonVideo,
+  LessonAudio,
+  getActiveLessonModel,
+  getLessonVideos,
+  getLessonAudios,
+  normalizeVideoData,
+  normalizeAudioData
+} from '../types/ar';
 import { saveStoredLessons, fetchLessons, setHasLocalDrafts } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
 import { normalizeImageUrl, normalizeAudioUrl, getAlternativeImageUrls } from '../services/urlHelpers';
@@ -165,6 +177,27 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [newImageTitle, setNewImageTitle] = useState<string>('');
   const [imageNotice, setImageNotice] = useState<string | null>(null);
 
+  // Multi-Video Management State
+  const [newVideoUrl, setNewVideoUrl] = useState<string>('');
+  const [newVideoTitle, setNewVideoTitle] = useState<string>('');
+  const [videoNotice, setVideoNotice] = useState<string | null>(null);
+
+  // Multi-Audio Management State
+  const [newAudioUrl, setNewAudioUrl] = useState<string>('');
+  const [newAudioTitle, setNewAudioTitle] = useState<string>('');
+  const [audioNotice, setAudioNotice] = useState<string | null>(null);
+  const [playingLessonAudioUrl, setPlayingLessonAudioUrl] = useState<string | null>(null);
+  const lessonAudioTestRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (lessonAudioTestRef.current) {
+        lessonAudioTestRef.current.pause();
+        lessonAudioTestRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     // Only update if incoming lessons changed significantly and not during active editing
     if (lessons && lessons.length > 0 && editableLessons.length === 0) {
@@ -303,15 +336,35 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       else if (field === 'model3d') cur.model3d = value;
       else if (field === 'arModel3d') cur.arModel3d = value;
       else if (field === 'videoUrl') {
-        cur.video = {
-          ...cur.video,
-          url: value,
-          embedUrl: value.includes('watch?v=')
-            ? value.replace('watch?v=', 'embed/').split('&')[0] + '?autoplay=1&rel=0'
-            : value
-        };
+        const norm = normalizeVideoData(value, cur.video?.title);
+        cur.video = norm;
+        const currentList = getLessonVideos(cur);
+        if (currentList.length > 0) {
+          currentList[0] = norm;
+          cur.videos = [...currentList];
+        } else {
+          cur.videos = [norm];
+        }
       } else if (field === 'audioUrl') {
-        cur.audio = { ...cur.audio, url: value };
+        const norm = normalizeAudioData(value, cur.audio?.title);
+        cur.audio = norm;
+        const currentList = getLessonAudios(cur);
+        if (currentList.length > 0) {
+          currentList[0] = norm;
+          cur.audios = [...currentList];
+        } else {
+          cur.audios = [norm];
+        }
+      } else if (field === 'videos') {
+        cur.videos = value;
+        if (Array.isArray(value) && value.length > 0) {
+          cur.video = value[0];
+        }
+      } else if (field === 'audios') {
+        cur.audios = value;
+        if (Array.isArray(value) && value.length > 0) {
+          cur.audio = value[0];
+        }
       } else if (field === 'summary') {
         cur.description = { ...cur.description, summary: value };
       } else if (field === 'images') {
@@ -390,6 +443,151 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     setNewImageTitle('');
     setImageNotice('✓ تمت إضافة رابط الصورة إلى معرض الدرس بنجاح!');
     setTimeout(() => setImageNotice(null), 3500);
+  };
+
+  // وظائف إدارة الفيديوهات المتعددة للدرس
+  const handleAddVideo = () => {
+    if (!newVideoUrl.trim()) {
+      setVideoNotice('⚠️ يرجى إدخال رابط الفيديو (YouTube، MP4، Drive، أو أي رابط آخر)');
+      return;
+    }
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+
+    const currentVideos = getLessonVideos(curLesson);
+    const norm = normalizeVideoData(
+      newVideoUrl.trim(),
+      newVideoTitle.trim() || `فيديو ${currentVideos.length + 1}: ${curLesson.title}`
+    );
+    const updated = [...currentVideos, norm];
+    handleFieldChange('videos', updated);
+    setNewVideoUrl('');
+    setNewVideoTitle('');
+    setVideoNotice('✓ تمت إضافة الفيديو بنجاح!');
+    setTimeout(() => setVideoNotice(null), 3500);
+  };
+
+  const handleDeleteVideo = (idx: number) => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentVideos = getLessonVideos(curLesson);
+    const updated = currentVideos.filter((_, i) => i !== idx);
+    handleFieldChange('videos', updated);
+  };
+
+  const handleUpdateVideo = (idx: number, patch: Partial<LessonVideo>) => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentVideos = [...getLessonVideos(curLesson)];
+    if (currentVideos[idx]) {
+      const merged = { ...currentVideos[idx], ...patch };
+      if (patch.url !== undefined) {
+        currentVideos[idx] = normalizeVideoData(patch.url, merged.title);
+      } else {
+        currentVideos[idx] = merged;
+      }
+      handleFieldChange('videos', currentVideos);
+    }
+  };
+
+  // وظائف إدارة الصوتيات المتعددة للدرس
+  const handleAddAudio = () => {
+    if (!newAudioUrl.trim()) {
+      setAudioNotice('⚠️ يرجى إدخال رابط أو رفع ملف صوتي');
+      return;
+    }
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+
+    const currentAudios = getLessonAudios(curLesson);
+    const norm = normalizeAudioData(
+      newAudioUrl.trim(),
+      newAudioTitle.trim() || `تسجيل صوتي ${currentAudios.length + 1}: ${curLesson.title}`
+    );
+    const updated = [...currentAudios, norm];
+    handleFieldChange('audios', updated);
+    setNewAudioUrl('');
+    setNewAudioTitle('');
+    setAudioNotice('✓ تم حفظ التسجيل الصوتي بنجاح!');
+    setTimeout(() => setAudioNotice(null), 3500);
+  };
+
+  const handleDeleteAudio = (idx: number) => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentAudios = getLessonAudios(curLesson);
+    if (playingLessonAudioUrl === currentAudios[idx]?.url) {
+      if (lessonAudioTestRef.current) {
+        lessonAudioTestRef.current.pause();
+      }
+      setPlayingLessonAudioUrl(null);
+    }
+    const updated = currentAudios.filter((_, i) => i !== idx);
+    handleFieldChange('audios', updated);
+  };
+
+  const handleUpdateAudio = (idx: number, patch: Partial<LessonAudio>) => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentAudios = [...getLessonAudios(curLesson)];
+    if (currentAudios[idx]) {
+      const merged = { ...currentAudios[idx], ...patch };
+      if (patch.url !== undefined) {
+        currentAudios[idx] = normalizeAudioData(patch.url, merged.title);
+      } else {
+        currentAudios[idx] = merged;
+      }
+      handleFieldChange('audios', currentAudios);
+    }
+  };
+
+  const handleTestPlayLessonAudio = (url: string) => {
+    if (!url) return;
+    if (playingLessonAudioUrl === url) {
+      if (lessonAudioTestRef.current) {
+        lessonAudioTestRef.current.pause();
+      }
+      setPlayingLessonAudioUrl(null);
+      return;
+    }
+
+    if (lessonAudioTestRef.current) {
+      lessonAudioTestRef.current.pause();
+    }
+    const a = new Audio(url);
+    lessonAudioTestRef.current = a;
+    setPlayingLessonAudioUrl(url);
+    a.play().catch((err) => {
+      console.warn('Audio test error:', err);
+      setPlayingLessonAudioUrl(null);
+      alert('تعذر تشغيل هذا المقطع الصوتي للمعاينة. قد يكون الرابط محظوراً أو التنسيق غير مدعوم.');
+    });
+    a.onended = () => setPlayingLessonAudioUrl(null);
+    a.onerror = () => setPlayingLessonAudioUrl(null);
+  };
+
+  const handleUploadLessonAudioLocal = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|ogg|aac|m4a)$/i)) {
+      alert('يرجى اختيار ملف صوتي صالح (MP3 أو WAV أو OGG).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const curLesson = editableLessons[selectedLessonIndex];
+      if (!curLesson) return;
+      const currentAudios = getLessonAudios(curLesson);
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, '');
+      const norm = normalizeAudioData(dataUrl, cleanFileName || `تسجيل صوتي ${currentAudios.length + 1}`);
+      const updated = [...currentAudios, norm];
+      handleFieldChange('audios', updated);
+      setAudioNotice(`✓ تم رفع الملف الصوتي (${file.name}) بنجاح!`);
+      setTimeout(() => setAudioNotice(null), 4000);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleAddNewLesson = () => {
@@ -842,9 +1040,9 @@ function doPost(e) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Lesson Title */}
-                  <div className="space-y-1">
+                  <div className="space-y-1 md:col-span-1">
                     <label className="text-xs font-bold text-slate-300">عنوان الدرس:</label>
                     <input
                       type="text"
@@ -855,32 +1053,8 @@ function doPost(e) {
                     />
                   </div>
 
-                  {/* YouTube Video URL */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300">رابط فيديو YouTube التعليمي:</label>
-                    <input
-                      type="url"
-                      value={currentLesson.video.url}
-                      onChange={(e) => handleFieldChange('videoUrl', e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-
-                  {/* Audio URL */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300">رابط ملف الصوت (MP3 / OGG):</label>
-                    <input
-                      type="url"
-                      value={currentLesson.audio.url}
-                      onChange={(e) => handleFieldChange('audioUrl', e.target.value)}
-                      placeholder="https://.../audio.mp3"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-
-                  {/* Subject and Grade */}
-                  <div className="space-y-1">
+                  {/* Subject */}
+                  <div className="space-y-1 md:col-span-1">
                     <label className="text-xs font-bold text-slate-300">المادة الدراسية:</label>
                     <input
                       type="text"
@@ -891,7 +1065,8 @@ function doPost(e) {
                     />
                   </div>
 
-                  <div className="space-y-1">
+                  {/* Grade */}
+                  <div className="space-y-1 md:col-span-1">
                     <label className="text-xs font-bold text-slate-300">الصف الدراسي:</label>
                     <input
                       type="text"
@@ -903,7 +1078,7 @@ function doPost(e) {
                   </div>
 
                   {/* Summary */}
-                  <div className="space-y-1 md:col-span-2">
+                  <div className="space-y-1 md:col-span-3">
                     <label className="text-xs font-bold text-slate-300">ملخص وشرح الدرس:</label>
                     <textarea
                       rows={2}
@@ -912,6 +1087,307 @@ function doPost(e) {
                       placeholder="اكتب شرحاً ومعلومات مفيدة للطالب عند قراءة صفحة الدرس..."
                       className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
                     />
+                  </div>
+                </div>
+
+                {/* 🎬 بطاقة إدارة فيديوهات الدرس (دعم روابط متعددة: YouTube, MP4, Vimeo, Drive, مواقع أخرى) */}
+                <div className="p-3.5 rounded-xl bg-rose-950/20 border border-rose-500/40 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1 rounded-lg bg-rose-500/20 text-rose-400">
+                        <Video className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                          <span>فيديوهات الدرس التعليمية (روابط متعددة)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono">
+                            {getLessonVideos(currentLesson).length} فيديو
+                          </span>
+                        </h5>
+                        <p className="text-[11px] text-slate-300">
+                          يمكنك إضافة أكثر من فيديو للدرس الواحد من YouTube أو Google Drive أو ملفات MP4 المباشرة أو أي موقع خارجي.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notice for video */}
+                  {videoNotice && (
+                    <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-1.5 animate-fadeIn">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{videoNotice}</span>
+                    </div>
+                  )}
+
+                  {/* Existing Videos List */}
+                  {getLessonVideos(currentLesson).length > 0 ? (
+                    <div className="space-y-2">
+                      {getLessonVideos(currentLesson).map((vid, vidIdx) => {
+                        const platformBadge =
+                          vid.type === 'youtube'
+                            ? 'YouTube'
+                            : vid.type === 'vimeo'
+                            ? 'Vimeo'
+                            : vid.type === 'gdrive'
+                            ? 'Drive'
+                            : vid.type === 'mp4'
+                            ? 'MP4 مباشر'
+                            : 'رابط خارجي';
+
+                        return (
+                          <div
+                            key={vidIdx}
+                            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="w-6 h-6 rounded-lg bg-rose-500/20 text-rose-300 font-bold flex items-center justify-center font-mono">
+                                #{vidIdx + 1}
+                              </span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">
+                                {platformBadge}
+                              </span>
+                            </div>
+
+                            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 min-w-0">
+                              <input
+                                type="text"
+                                value={vid.title}
+                                onChange={(e) => handleUpdateVideo(vidIdx, { title: e.target.value })}
+                                placeholder="عنوان المقطع (مثال: شرح الخطوات)"
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-rose-500"
+                              />
+                              <input
+                                type="url"
+                                value={vid.url}
+                                onChange={(e) => handleUpdateVideo(vidIdx, { url: e.target.value })}
+                                placeholder="رابط الفيديو (https://...)"
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-rose-500"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-1.5 self-end md:self-center flex-shrink-0">
+                              {vid.url && (
+                                <a
+                                  href={vid.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-sky-400 hover:text-sky-300 transition-colors"
+                                  title="معاينة الرابط في تبويب جديد"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteVideo(vidIdx)}
+                                className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/30 transition-colors cursor-pointer"
+                                title="حذف هذا الفيديو"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 text-center text-xs text-slate-400 bg-slate-900/60 rounded-xl border border-dashed border-slate-800">
+                      لا توجد فيديوهات مضافة لهذا الدرس حتى الآن.
+                    </div>
+                  )}
+
+                  {/* Add New Video Form */}
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                      <Plus className="w-3.5 h-3.5 text-rose-400" />
+                      <span>إضافة فيديو جديد لهذا الدرس:</span>
+                    </span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={newVideoTitle}
+                        onChange={(e) => setNewVideoTitle(e.target.value)}
+                        placeholder="عنوان الفيديو (مثال: شرح المعلم للدرس)"
+                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                      />
+                      <input
+                        type="url"
+                        value={newVideoUrl}
+                        onChange={(e) => setNewVideoUrl(e.target.value)}
+                        placeholder="رابط الفيديو (YouTube، MP4، Drive، أو أي موقع آخر)"
+                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleAddVideo}
+                        className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>إضافة الفيديو لقائمة الدرس</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 🎵 بطاقة إدارة التسجيلات الصوتية للدرس (دعم ملفات متعددة: MP3, Drive, YouTube, رفع مباشر وتجربة الصوت) */}
+                <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/40 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400">
+                        <Music className="w-4 h-4" />
+                      </span>
+                      <div>
+                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                          <span>التسجيلات الصوتية للدرس (روابط وملفات صوتية متعددة)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                            {getLessonAudios(currentLesson).length} تسجيل
+                          </span>
+                        </h5>
+                        <p className="text-[11px] text-slate-300">
+                          صوت الدرس منفصل تماماً عن صوت المجسم. يمكن للطالب الاستماع إليها عبر زر الصوت أو التنقل بين عدة مقاطع.
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-700/20 transition-all flex-shrink-0 self-start sm:self-auto">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>📁 رفع ملف صوت من الجهاز (MP3)</span>
+                      <input
+                        type="file"
+                        accept="audio/*,.mp3,.wav,.ogg,.m4a"
+                        onChange={handleUploadLessonAudioLocal}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Notice for audio */}
+                  {audioNotice && (
+                    <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-1.5 animate-fadeIn">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{audioNotice}</span>
+                    </div>
+                  )}
+
+                  {/* Existing Audios List */}
+                  {getLessonAudios(currentLesson).length > 0 ? (
+                    <div className="space-y-2">
+                      {getLessonAudios(currentLesson).map((aud, audIdx) => {
+                        const isThisPlaying = playingLessonAudioUrl === aud.url;
+                        const isData = aud.url.startsWith('data:');
+                        return (
+                          <div
+                            key={audIdx}
+                            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center font-mono">
+                                #{audIdx + 1}
+                              </span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">
+                                {isData ? 'ملف مرفوع' : aud.type || 'صوت'}
+                              </span>
+                            </div>
+
+                            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 min-w-0">
+                              <input
+                                type="text"
+                                value={aud.title}
+                                onChange={(e) => handleUpdateAudio(audIdx, { title: e.target.value })}
+                                placeholder="عنوان التسجيل (مثال: قراءة النص بصوت المعلم)"
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                              />
+                              <input
+                                type="url"
+                                value={isData ? 'ملف صوتي مرفوع محلياً (Data URL)' : aud.url}
+                                disabled={isData}
+                                onChange={(e) => handleUpdateAudio(audIdx, { url: e.target.value })}
+                                placeholder="رابط الصوت (https://.../audio.mp3)"
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-1.5 self-end md:self-center flex-shrink-0">
+                              {/* Test play button in console */}
+                              <button
+                                type="button"
+                                onClick={() => handleTestPlayLessonAudio(aud.url)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer border ${
+                                  isThisPlaying
+                                    ? 'bg-amber-500 text-slate-950 border-amber-400'
+                                    : 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border-emerald-500/30'
+                                }`}
+                                title={isThisPlaying ? 'إيقاف التجربة' : 'تجربة وتشغيل الصوت الآن للتأكد منه'}
+                              >
+                                {isThisPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                                <span>{isThisPlaying ? 'إيقاف' : 'تجربة الصوت'}</span>
+                              </button>
+
+                              {!isData && aud.url && (
+                                <a
+                                  href={aud.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-sky-400 hover:text-sky-300 transition-colors"
+                                  title="فتح الرابط في تبويب جديد"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAudio(audIdx)}
+                                className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/30 transition-colors cursor-pointer"
+                                title="حذف هذا التسجيل الصوتي"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 text-center text-xs text-slate-400 bg-slate-900/60 rounded-xl border border-dashed border-slate-800">
+                      لا توجد تسجيلات صوتية مضافة لهذا الدرس. يمكنك إضافة رابط أو رفع ملف صوتي.
+                    </div>
+                  )}
+
+                  {/* Add New Audio Form */}
+                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                      <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>إضافة تسجيل صوتي جديد للدرس عبر الرابط:</span>
+                    </span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={newAudioTitle}
+                        onChange={(e) => setNewAudioTitle(e.target.value)}
+                        placeholder="عنوان التسجيل (مثال: الشرح التوضيحي)"
+                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                      />
+                      <input
+                        type="url"
+                        value={newAudioUrl}
+                        onChange={(e) => setNewAudioUrl(e.target.value)}
+                        placeholder="رابط الصوت (MP3 مباشر، Google Drive، YouTube، أو موقع صوتي)"
+                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleAddAudio}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-600/20"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>إضافة التسجيل لقائمة الدرس</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 

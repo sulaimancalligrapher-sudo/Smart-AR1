@@ -11,7 +11,7 @@ import {
   ChevronUp,
   Sparkles
 } from 'lucide-react';
-import { LessonData, getActiveLessonModel } from '../types/ar';
+import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios } from '../types/ar';
 
 interface TransparentOverlayProps {
   lesson: LessonData;
@@ -40,13 +40,15 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // التحقق من توفر كل نوع من أنواع بيانات الدرس
-  const hasVideo = Boolean(lesson.video?.url?.trim() || lesson.video?.embedUrl?.trim());
+  // التحقق من توفر كل نوع من أنواع بيانات الدرس (دعم التعدد)
+  const videosList = getLessonVideos(lesson);
+  const audiosList = getLessonAudios(lesson);
+  const hasVideo = videosList.length > 0;
   const hasImages = Boolean(
     (lesson.images && lesson.images.length > 0) ||
     (lesson.targetImage && lesson.targetImage.trim() !== '')
   );
-  const hasAudio = Boolean(lesson.audio?.url?.trim());
+  const hasAudio = audiosList.length > 0;
   const hasDescription = Boolean(
     lesson.description?.summary?.trim() ||
     lesson.description?.fullText?.trim() ||
@@ -102,11 +104,16 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
               {hasVideo && (
                 <button
                   onClick={onOpenVideo}
-                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white border border-rose-400/40 flex items-center justify-center shadow-lg shadow-rose-600/30 active:scale-90 transition-all cursor-pointer group"
-                  title="🎬 فيديو تعليمي"
+                  className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white border border-rose-400/40 flex items-center justify-center shadow-lg shadow-rose-600/30 active:scale-90 transition-all cursor-pointer group"
+                  title={videosList.length > 1 ? `🎬 فيديوهات الدرس (${videosList.length})` : '🎬 فيديو تعليمي'}
                   aria-label="فيديو تعليمي"
                 >
                   <Video className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
+                  {videosList.length > 1 && (
+                    <span className="absolute -top-1 -right-1 bg-amber-400 text-slate-950 font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center shadow border border-slate-900">
+                      {videosList.length}
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -126,11 +133,16 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
               {hasAudio && (
                 <button
                   onClick={onOpenAudio}
-                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white border border-emerald-400/40 flex items-center justify-center shadow-lg shadow-emerald-600/30 active:scale-90 transition-all cursor-pointer group"
-                  title="🎵 تسجيل صوتي"
+                  className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white border border-emerald-400/40 flex items-center justify-center shadow-lg shadow-emerald-600/30 active:scale-90 transition-all cursor-pointer group"
+                  title={audiosList.length > 1 ? `🎵 التسجيلات الصوتية (${audiosList.length})` : '🎵 تسجيل صوتي للدرس'}
                   aria-label="تسجيل صوتي"
                 >
                   <Music className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
+                  {audiosList.length > 1 && (
+                    <span className="absolute -top-1 -right-1 bg-amber-400 text-slate-950 font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center shadow border border-slate-900">
+                      {audiosList.length}
+                    </span>
+                  )}
                 </button>
               )}
 

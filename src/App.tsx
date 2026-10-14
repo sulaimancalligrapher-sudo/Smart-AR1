@@ -19,9 +19,10 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminPortalView } from './components/AdminPortalView';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
-import { LessonData, getActiveLessonModel } from './types/ar';
+import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
+import { soundService } from './services/soundService';
 import { getIsAdminLoggedIn, setAdminLoggedIn } from './services/adminAuth';
 
 type ActiveModalType =
@@ -281,6 +282,7 @@ export default function App() {
           isModel3DActive={showHologram3D}
           isFloatingModelActive={showFloatingModel}
           onOpenVideo={() => {
+            soundService.pauseModelSound();
             setShowHologram3D(false);
             setActiveModal('video');
           }}
@@ -289,6 +291,7 @@ export default function App() {
             setActiveModal('images');
           }}
           onOpenAudio={() => {
+            soundService.pauseModelSound();
             setShowHologram3D(false);
             setActiveModal('audio');
           }}
@@ -326,6 +329,7 @@ export default function App() {
       {activeModal === 'video' && activeLesson && (
         <VideoModal
           video={activeLesson.video}
+          videos={getLessonVideos(activeLesson)}
           lessonTitle={activeLesson.title}
           targetId={activeLesson.targetId}
           onClose={() => {
@@ -351,6 +355,7 @@ export default function App() {
       {activeModal === 'audio' && activeLesson && (
         <AudioPlayerModal
           audio={activeLesson.audio}
+          audios={getLessonAudios(activeLesson)}
           lessonTitle={activeLesson.title}
           targetId={activeLesson.targetId}
           lessonSummary={activeLesson.description.summary}
