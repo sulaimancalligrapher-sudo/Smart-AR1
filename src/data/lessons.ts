@@ -207,8 +207,9 @@ export function saveStoredLessons(lessons: LessonData[]): void {
     try {
       const compact = lessons.map((l) => ({
         ...l,
-        targetImage: l.targetImage?.startsWith('data:') ? '' : l.targetImage,
-        images: l.images?.filter((img) => !img.url?.startsWith('data:')) || [],
+        targetImage: l.targetImage?.startsWith('data:') && l.targetImage.length > 500000 ? '' : l.targetImage,
+        additionalTargetImages: (l.additionalTargetImages || []).filter((img) => !img.startsWith('data:') || img.length <= 500000),
+        images: l.images?.filter((img) => !img.url?.startsWith('data:') || img.url.length <= 500000) || [],
         model3d: l.model3d?.url?.startsWith('data:') ? { ...l.model3d, url: '' } : l.model3d,
         arModel3d: l.arModel3d?.url?.startsWith('data:') ? { ...l.arModel3d, url: '' } : l.arModel3d
       }));

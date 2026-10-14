@@ -26,10 +26,9 @@ export const TargetCardsModal: React.FC<TargetCardsModalProps> = ({
   const handleAutoCompileAll = async () => {
     try {
       setIsCompiling(true);
-      setCompileProgress({ percent: 10, statusText: 'بدء تجميع بصمات الصور...' });
+      setCompileProgress({ percent: 10, statusText: 'بدء تجميع بصمات الصور (بما فيها الصفحات الإضافية Multi-Target)...' });
 
-      const allImages = lessons.map((l) => l.targetImage);
-      const res = await targetCompiler.compileImages(allImages, (progress) => {
+      const res = await targetCompiler.compileAllLessonsTargets(lessons, (progress) => {
         setCompileProgress(progress);
       });
 

@@ -16,6 +16,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { LessonData } from '../types/ar';
+import { soundService } from '../services/soundService';
 
 interface WelcomeScreenProps {
   onStartCamera: () => void;
@@ -110,7 +111,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         {/* Primary CTA: Start Camera (الزر الوحيد المطلوب للطالب) */}
         <div className="w-full max-w-sm pt-2">
           <button
-            onClick={onStartCamera}
+            onClick={() => {
+              soundService.unlockAudio();
+              onStartCamera();
+            }}
             className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-lg sm:text-xl flex items-center justify-center gap-3 shadow-xl shadow-sky-600/35 active:scale-95 transition-all cursor-pointer group"
           >
             <Camera className="w-7 h-7 group-hover:scale-110 transition-transform" />

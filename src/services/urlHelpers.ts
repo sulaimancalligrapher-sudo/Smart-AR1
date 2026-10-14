@@ -93,11 +93,36 @@ export function convertGoogleDriveImageUrl(url: string): string {
 }
 
 /**
+ * Automatically converts Google Drive audio links into streamable direct audio URLs.
+ */
+export function convertGoogleDriveAudioUrl(url: string): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return trimmed;
+
+  const driveId = extractGoogleDriveFileId(trimmed);
+  if (driveId) {
+    return `https://drive.google.com/uc?export=download&id=${driveId}`;
+  }
+
+  return trimmed;
+}
+
+/**
  * Normalizes any image URL (handles Google Drive conversion, trims spaces, etc.)
  */
 export function normalizeImageUrl(url: string): string {
   if (!url || typeof url !== 'string') return '';
   return convertGoogleDriveImageUrl(url);
+}
+
+/**
+ * Normalizes any audio URL (handles Google Drive audio conversion, trims spaces, etc.)
+ */
+export function normalizeAudioUrl(url: string): string {
+  if (!url || typeof url !== 'string') return '';
+  return convertGoogleDriveAudioUrl(url);
 }
 
 /**

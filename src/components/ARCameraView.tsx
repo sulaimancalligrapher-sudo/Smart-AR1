@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause } from 'lucide-react';
+import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume2, VolumeX, Music } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { LessonData, getActiveLessonModel } from '../types/ar';
+import { LessonData, getActiveLessonModel, getLessonModelSound } from '../types/ar';
 import { getStoredLessons, DEFAULT_LESSONS } from '../data/lessons';
 import { targetCompiler } from '../services/targetCompiler';
+import { normalizeAudioUrl } from '../services/urlHelpers';
+import { soundService } from '../services/soundService';
 
 interface ARCameraViewProps {
   lessons: LessonData[];
@@ -215,6 +217,51 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
     isARAutoRotateActiveRef.current = isARAutoRotateActive;
   }, [isARAutoRotateActive]);
 
+  // -------------------------------------------------------------
+  // ⭐ إدارة الصوت التلقائي للمجسم ثلاثي الأبعاد (3D Model Sound) ⭐
+  // مدعوم بنظام Web Audio & HTML5 Audio الموحد لتفادي حظر المتصفحات
+  // -------------------------------------------------------------
+  const [soundState, setSoundState] = useState({
+    isPlaying: soundService.getIsPlaying(),
+    isMuted: soundService.getIsMuted(),
+    isBlockedByAutoplay: soundService.getIsBlockedByAutoplay()
+  });
+  const [activeModelSoundTitle, setActiveModelSoundTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = soundService.subscribe((state) => {
+      setSoundState({
+        isPlaying: state.isPlaying,
+        isMuted: state.isMuted,
+        isBlockedByAutoplay: state.isBlockedByAutoplay
+      });
+    });
+    return () => {
+      unsubscribe();
+      soundService.stopModelSound();
+    };
+  }, []);
+
+  const unlockAudioOnGesture = useCallback(() => {
+    soundService.unlockAudio();
+  }, []);
+
+  const playModelSound = useCallback((lesson: LessonData) => {
+    const soundInfo = getLessonModelSound(lesson);
+    if (!soundInfo || !soundInfo.soundUrl || soundInfo.soundEnabled === false) {
+      soundService.pauseModelSound();
+      setActiveModelSoundTitle(null);
+      return;
+    }
+
+    setActiveModelSoundTitle(lesson.model3d?.title || lesson.title);
+    soundService.playModelSound(soundInfo.soundUrl, true);
+  }, []);
+
+  const pauseModelSound = useCallback(() => {
+    soundService.pauseModelSound();
+  }, []);
+
   const mindarThreeRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -334,12 +381,18 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
     }
   }, []);
 
-  // مزامنة المجسمات مع الدروس كلما تم تعديل أو إضافة ملف جديد من لوحة المعلم
+  // مزامنة المجسمات مع الدروس وخريطة الأهداف المتعددة (Multi-Target Mapping)
   useEffect(() => {
     if (anchorContentGroupsRef.current.size === 0) return;
     lessons.forEach((l, idx) => {
-      const targetIdx = typeof l.targetIndex === 'number' && !isNaN(l.targetIndex) ? l.targetIndex : idx;
-      updateAnchorModel(targetIdx, l);
+      const primaryIdx = typeof l.targetIndex === 'number' && !isNaN(l.targetIndex) ? l.targetIndex : idx;
+      updateAnchorModel(primaryIdx, l);
+
+      if (Array.isArray(l.additionalTargetIndices)) {
+        l.additionalTargetIndices.forEach((addIdx) => {
+          updateAnchorModel(addIdx, l);
+        });
+      }
     });
   }, [lessons, updateAnchorModel]);
 
@@ -498,60 +551,77 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           // -------------------------------------------------------------
           // ⭐ إعداد الـ Anchors وتثبيت المجسمات على بطاقات الورقة في الكتاب ⭐
+          // يدعم الآن كلياً تعدد أهداف ومسحات الدرس الواحد (Multi-Target Mapping)
           // -------------------------------------------------------------
           activeLessons.forEach((lesson, index) => {
-            const targetIdx =
+            const primaryIdx =
               typeof lesson.targetIndex === 'number' && !isNaN(lesson.targetIndex)
                 ? lesson.targetIndex
                 : index;
 
-            const anchor = mindarThree.addAnchor(targetIdx);
-            anchorsRef.current.set(targetIdx, anchor);
+            const allTargetIndices = [
+              primaryIdx,
+              ...(Array.isArray(lesson.additionalTargetIndices) ? lesson.additionalTargetIndices : [])
+            ];
 
-            const contentGroup = new THREE_NS.Group();
-            contentGroup.visible = showFloatingModel;
-            anchor.group.add(contentGroup);
-            anchorContentGroupsRef.current.set(targetIdx, contentGroup);
+            allTargetIndices.forEach((targetIdx) => {
+              const anchor = mindarThree.addAnchor(targetIdx);
+              anchorsRef.current.set(targetIdx, anchor);
 
-            // تحميل وربط المجسم مباشرة فوق صفحة الكتاب بدون أي قاعدة أو تظليل
-            updateAnchorModel(targetIdx, lesson);
+              const contentGroup = new THREE_NS.Group();
+              contentGroup.visible = showFloatingModel;
+              anchor.group.add(contentGroup);
+              anchorContentGroupsRef.current.set(targetIdx, contentGroup);
 
-            // 3. أحداث التعرف البصري على الورقة مع مهلة نعومة لتفادي الاهتزاز
-            let targetLostTimer: any = null;
-            anchor.onTargetFound = () => {
-              if (isCancelled) return;
-              if (targetLostTimer) {
-                clearTimeout(targetLostTimer);
-                targetLostTimer = null;
-              }
-              setIsPhysicalTargetTracked(true);
-              playMatchChime();
-              if ('vibrate' in navigator) {
-                try {
-                  navigator.vibrate(100);
-                } catch (_) {}
-              }
+              // تحميل وربط المجسم مباشرة فوق صفحة الكتاب بدون أي قاعدة أو تظليل
+              updateAnchorModel(targetIdx, lesson);
 
-              const latestLesson =
-                lessonsRef.current.find((l, idx) => (typeof l.targetIndex === 'number' ? l.targetIndex : idx) === targetIdx) ||
-                lesson;
-              console.log('🎯 تم التعرف على صورة الدرس وتثبيت المجسم:', latestLesson.title);
-              onTargetDetected(latestLesson);
-            };
-
-            anchor.onTargetLost = () => {
-              if (isCancelled) return;
-              if (targetLostTimer) clearTimeout(targetLostTimer);
-              targetLostTimer = setTimeout(() => {
-                if (!isCancelled) {
-                  setIsPhysicalTargetTracked(false);
-                  const latestLesson =
-                    lessonsRef.current.find((l, idx) => (typeof l.targetIndex === 'number' ? l.targetIndex : idx) === targetIdx) ||
-                    lesson;
-                  onTargetLost(latestLesson);
+              // 3. أحداث التعرف البصري على الورقة مع مهلة نعومة لتفادي الاهتزاز
+              let targetLostTimer: any = null;
+              anchor.onTargetFound = () => {
+                if (isCancelled) return;
+                if (targetLostTimer) {
+                  clearTimeout(targetLostTimer);
+                  targetLostTimer = null;
                 }
-              }, 800);
-            };
+                setIsPhysicalTargetTracked(true);
+                playMatchChime();
+                if ('vibrate' in navigator) {
+                  try {
+                    navigator.vibrate(100);
+                  } catch (_) {}
+                }
+
+                const latestLesson =
+                  lessonsRef.current.find((l, idx) => {
+                    const pIdx = typeof l.targetIndex === 'number' ? l.targetIndex : idx;
+                    const adds = Array.isArray(l.additionalTargetIndices) ? l.additionalTargetIndices : [];
+                    return pIdx === targetIdx || adds.includes(targetIdx);
+                  }) || lesson;
+
+                console.log(`🎯 تم التعرف على هدف مسح الدرس (Target #${targetIdx}): ${latestLesson.title}`);
+                onTargetDetected(latestLesson);
+                playModelSound(latestLesson);
+              };
+
+              anchor.onTargetLost = () => {
+                if (isCancelled) return;
+                if (targetLostTimer) clearTimeout(targetLostTimer);
+                targetLostTimer = setTimeout(() => {
+                  if (!isCancelled) {
+                    setIsPhysicalTargetTracked(false);
+                    pauseModelSound();
+                    const latestLesson =
+                      lessonsRef.current.find((l, idx) => {
+                        const pIdx = typeof l.targetIndex === 'number' ? l.targetIndex : idx;
+                        const adds = Array.isArray(l.additionalTargetIndices) ? l.additionalTargetIndices : [];
+                        return pIdx === targetIdx || adds.includes(targetIdx);
+                      }) || lesson;
+                    onTargetLost(latestLesson);
+                  }
+                }, 800);
+              };
+            });
           });
 
           // تشغيل محرك MindAR بالكاميرا
@@ -695,26 +765,36 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
+      pauseModelSound();
       anchorsRef.current.clear();
       anchorContentGroupsRef.current.clear();
       modelEntriesRef.current.clear();
     };
-  }, [facingMode, lessons.length, updateAnchorModel]);
+  }, [facingMode, lessons.length, updateAnchorModel, pauseModelSound]);
 
   const handleSimulateFirstLesson = () => {
     if (lessons.length > 0) {
       playMatchChime();
       const firstLesson = lessons[0];
       onTargetDetected(firstLesson);
+      playModelSound(firstLesson);
     }
   };
 
   return (
-    <div className="relative w-full h-full min-h-screen bg-black overflow-hidden select-none">
+    <div
+      onClick={unlockAudioOnGesture}
+      onTouchStart={unlockAudioOnGesture}
+      className="relative w-full h-full min-h-screen bg-black overflow-hidden select-none"
+    >
       {/* 1. حاوية عرض محرك MindAR ثلاثي الأبعاد + الكاميرا الحية */}
       <div
         ref={containerRef}
-        onClick={applyAutoFocus}
+        onClick={() => {
+          applyAutoFocus();
+          unlockAudioOnGesture();
+        }}
+        onTouchStart={unlockAudioOnGesture}
         className="mindar-container absolute inset-0 w-full h-full z-0 overflow-hidden cursor-crosshair"
       />
 
@@ -725,7 +805,11 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           playsInline
           muted
           autoPlay
-          onClick={applyAutoFocus}
+          onClick={() => {
+            applyAutoFocus();
+            unlockAudioOnGesture();
+          }}
+          onTouchStart={unlockAudioOnGesture}
           className="absolute inset-0 w-full h-full object-cover z-0 cursor-crosshair"
         />
       )}
@@ -772,6 +856,33 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+          {/* زر التحكم بصوت المجسم التلقائي (3D Model Sound) */}
+          <button
+            onClick={() => soundService.toggleMute()}
+            className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
+              soundState.isPlaying
+                ? 'bg-emerald-500/40 hover:bg-emerald-500/60 text-white border-emerald-300/60 ring-2 ring-emerald-400/30'
+                : soundState.isMuted
+                ? 'bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 border-rose-300/40'
+                : 'bg-white/10 hover:bg-white/25 text-slate-200 border-white/20'
+            }`}
+            title={
+              soundState.isMuted
+                ? 'إلغاء كتم صوت المجسم 3D'
+                : soundState.isPlaying
+                ? `صوت المجسم نشط: ${activeModelSoundTitle || ''} (اضغط للكتم)`
+                : 'صوت المجسم التلقائي'
+            }
+          >
+            {soundState.isMuted ? (
+              <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-300" />
+            ) : soundState.isPlaying ? (
+              <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300 animate-pulse" />
+            ) : (
+              <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
+            )}
+          </button>
+
           {/* زر التبديل الفوري بين ثبات المجسم فوق الكتاب أو التدوير */}
           <button
             onClick={() => setIsARAutoRotateActive((prev) => !prev)}
@@ -826,6 +937,19 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* زر عائم لتشغيل الصوت عند حظره بواسطة قيود المتصفح */}
+      {soundState.isBlockedByAutoplay && isPhysicalTargetTracked && !soundState.isMuted && (
+        <div className="absolute top-16 sm:top-20 inset-x-0 z-50 flex justify-center pointer-events-auto px-4 animate-bounce">
+          <button
+            onClick={() => soundService.unlockAudio()}
+            className="px-4 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-2xl flex items-center gap-2 border-2 border-emerald-300 cursor-pointer active:scale-95 transition-all"
+          >
+            <Volume2 className="w-4 h-4 animate-pulse text-amber-300 flex-shrink-0" />
+            <span>🔊 انقر هنا لتشغيل صوت المجسم التفاعلي</span>
+          </button>
+        </div>
+      )}
 
       {/* 5. ⭐ مؤشر مسح بصري نقي وشفاف تماماً بدون أي تظليل أو خلفية عند توجيه الكاميرا للكتاب ⭐ */}
       {!isPhysicalTargetTracked && !cameraLoading && !cameraError && !hideScanReticle && (

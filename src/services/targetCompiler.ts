@@ -1,3 +1,6 @@
+import { LessonData } from '../types/ar';
+import { normalizeImageUrl } from './urlHelpers';
+
 /**
  * MindAR In-Browser Target Compiler Service
  * يسمح بتجميع أي صور للدروس وتحويلها إلى ملف targets.mind مباشرة في متصفح المستخدم
@@ -8,15 +11,81 @@ export interface CompileProgress {
   statusText: string;
 }
 
+export interface TargetEntry {
+  globalTargetIndex: number;
+  lessonId: string;
+  lessonTitle: string;
+  imageUrl: string;
+  isPrimary: boolean;
+  pageLabel: string;
+}
+
 // Helper to load an image source into an HTMLImageElement
 export function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
-    img.onerror = (e) => reject(new Error('Failed to load image from ' + src));
+    img.onerror = () => reject(new Error('Failed to load image from ' + src));
     img.src = src;
   });
+}
+
+/**
+ * تبني خريطة الأهداف لجميع الدروس مع دعم الأهداف المتعددة (Multi-Target Mapping).
+ * تعيد الدروس مع تحديث targetIndex و additionalTargetIndices تلقائياً بالتسلسل الصحيح.
+ */
+export function buildMultiTargetMap(lessons: LessonData[]): {
+  entries: TargetEntry[];
+  updatedLessons: LessonData[];
+  orderedImageUrls: string[];
+} {
+  const entries: TargetEntry[] = [];
+  let currentIndex = 0;
+
+  const updatedLessons = lessons.map((lesson) => {
+    const primaryImg = normalizeImageUrl(lesson.targetImage);
+    const primaryIndex = currentIndex;
+    entries.push({
+      globalTargetIndex: primaryIndex,
+      lessonId: lesson.targetId,
+      lessonTitle: lesson.title,
+      imageUrl: primaryImg,
+      isPrimary: true,
+      pageLabel: `${lesson.title} (الصفحة الرئيسية)`
+    });
+    currentIndex++;
+
+    const additionalIndices: number[] = [];
+    const validAdditionalImages = (lesson.additionalTargetImages || []).map(img => normalizeImageUrl(img)).filter(Boolean);
+
+    validAdditionalImages.forEach((addImg, idx) => {
+      const addIndex = currentIndex;
+      additionalIndices.push(addIndex);
+      entries.push({
+        globalTargetIndex: addIndex,
+        lessonId: lesson.targetId,
+        lessonTitle: lesson.title,
+        imageUrl: addImg,
+        isPrimary: false,
+        pageLabel: `${lesson.title} (صفحة إضافية #${idx + 1})`
+      });
+      currentIndex++;
+    });
+
+    return {
+      ...lesson,
+      targetIndex: primaryIndex,
+      additionalTargetIndices: additionalIndices,
+      additionalTargetImages: validAdditionalImages
+    };
+  });
+
+  return {
+    entries,
+    updatedLessons,
+    orderedImageUrls: entries.map(e => e.imageUrl)
+  };
 }
 
 class TargetCompilerService {
@@ -83,6 +152,18 @@ class TargetCompilerService {
     onProgress?.({ percent: 100, statusText: '✓ اكتمل تجميع البصمات وجاهز للتعرف بالكاميرا!' });
 
     return { blob, blobUrl };
+  }
+
+  /**
+   * تجميع كافة أهداف الدروس بما فيها الصفحات الإضافية Multi-Target وتعيين الفهارس تلقائياً
+   */
+  public async compileAllLessonsTargets(
+    lessons: LessonData[],
+    onProgress?: (progress: CompileProgress) => void
+  ): Promise<{ blob: Blob; blobUrl: string; updatedLessons: LessonData[]; entries: TargetEntry[] }> {
+    const { entries, updatedLessons, orderedImageUrls } = buildMultiTargetMap(lessons);
+    const { blob, blobUrl } = await this.compileImages(orderedImageUrls, onProgress);
+    return { blob, blobUrl, updatedLessons, entries };
   }
 }
 

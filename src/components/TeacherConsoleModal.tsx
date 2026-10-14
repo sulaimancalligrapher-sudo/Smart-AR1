@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Database, Send, Trash2, CheckCircle2, AlertCircle, Copy, Check, 
   FileSpreadsheet, ExternalLink, BookOpen, Edit3, Image, Video, Music, 
-  HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box
+  HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
+  Volume2, VolumeX, Play, Pause, Disc
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
 import { AnalyticsLogItem, LessonData, LessonModel3D, LessonImage, getActiveLessonModel } from '../types/ar';
 import { saveStoredLessons, fetchLessons, setHasLocalDrafts } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
-import { normalizeImageUrl, getAlternativeImageUrls } from '../services/urlHelpers';
+import { normalizeImageUrl, normalizeAudioUrl, getAlternativeImageUrls } from '../services/urlHelpers';
+import { buildMultiTargetMap } from '../services/targetCompiler';
+import { optimizeImageFile } from '../services/imageOptimizer';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -138,6 +141,25 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [uploadedARModelFileName, setUploadedARModelFileName] = useState<string | null>(null);
   const [showCustomARModelOverride, setShowCustomARModelOverride] = useState(false);
 
+  // Multi-Target Mapping State
+  const [newAdditionalTargetUrl, setNewAdditionalTargetUrl] = useState<string>('');
+  const [multiTargetNotice, setMultiTargetNotice] = useState<string | null>(null);
+
+  // 3D Model Sound State
+  const testAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlayingTestAudio, setIsPlayingTestAudio] = useState(false);
+  const [audioUploadFileName, setAudioUploadFileName] = useState<string | null>(null);
+  const [modelSoundNotice, setModelSoundNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (testAudioRef.current) {
+        testAudioRef.current.pause();
+        testAudioRef.current = null;
+      }
+    };
+  }, []);
+
   // External Image Link addition state
   const [newImageUrl, setNewImageUrl] = useState<string>('');
   const [newImageTitle, setNewImageTitle] = useState<string>('');
@@ -156,6 +178,58 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     });
     return unsubscribe;
   }, []);
+
+  const toggleTestAudio = (soundUrl?: string) => {
+    if (!soundUrl) return;
+    const normalized = normalizeAudioUrl(soundUrl);
+    if (!normalized) return;
+
+    if (isPlayingTestAudio && testAudioRef.current) {
+      testAudioRef.current.pause();
+      testAudioRef.current = null;
+      setIsPlayingTestAudio(false);
+      return;
+    }
+
+    if (testAudioRef.current) {
+      testAudioRef.current.pause();
+      testAudioRef.current = null;
+    }
+
+    try {
+      const a = new Audio(normalized);
+      a.volume = 0.9;
+      a.onended = () => setIsPlayingTestAudio(false);
+      a.onerror = () => {
+        setIsPlayingTestAudio(false);
+        setModelSoundNotice('⚠️ تعذر تشغيل ملف الصوت، تأكد من صحة الرابط أو صلاحية مشاركة قوقل درايف (أي شخص لديه الرابط).');
+        setTimeout(() => setModelSoundNotice(null), 4000);
+      };
+      a.play().then(() => {
+        setIsPlayingTestAudio(true);
+      }).catch((e) => {
+        console.warn('Playback error:', e);
+        setIsPlayingTestAudio(false);
+      });
+      testAudioRef.current = a;
+    } catch (e) {
+      console.warn('Audio init error:', e);
+    }
+  };
+
+  const handleAddAdditionalTargetImage = () => {
+    if (!newAdditionalTargetUrl.trim()) return;
+    const normalized = normalizeImageUrl(newAdditionalTargetUrl.trim());
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+
+    const existingTargets = curLesson.additionalTargetImages || [];
+    const updatedTargets = [...existingTargets, normalized];
+    handleFieldChange('additionalTargetImages', updatedTargets);
+    setNewAdditionalTargetUrl('');
+    setMultiTargetNotice('✓ تمت إضافة صورة المسح الإضافية لهذا الدرس بنجاح!');
+    setTimeout(() => setMultiTargetNotice(null), 3500);
+  };
 
   const handleSaveUrl = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,17 +256,17 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   };
 
   const handleSaveLessonChanges = () => {
-    const normalized = editableLessons.map((l, idx) => ({ ...l, targetIndex: idx }));
-    setEditableLessons(normalized);
+    const { updatedLessons } = buildMultiTargetMap(editableLessons);
+    setEditableLessons(updatedLessons);
     if (onUpdateLessons) {
-      onUpdateLessons(normalized);
+      onUpdateLessons(updatedLessons);
     }
-    saveStoredLessons(normalized);
+    saveStoredLessons(updatedLessons);
     setHasLocalDrafts(true);
     setSaveSuccess(true);
     setStatusNotice({
       type: 'success',
-      text: '✓ تم حفظ التعديلات محلياً في هذا المتصفح! لتفعيلها للطلاب في الجوال والتابلت، اضغط على زر (💾 تنزيل content.json لـ GitHub) ثم ارفعه لمستودعك على GitHub.'
+      text: '✓ تم حفظ التعديلات محلياً وتحديث خريطة الأهداف! لتفعيلها للطلاب في الجوال والتابلت، اضغط على زر (💾 تنزيل content.json لـ GitHub) ثم ارفعه لمستودعك على GitHub.'
     });
     setTimeout(() => {
       setSaveSuccess(false);
@@ -201,11 +275,15 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   };
 
   const handleCloseModal = () => {
-    const normalized = editableLessons.map((l, idx) => ({ ...l, targetIndex: idx }));
-    if (onUpdateLessons) {
-      onUpdateLessons(normalized);
+    if (testAudioRef.current) {
+      testAudioRef.current.pause();
+      testAudioRef.current = null;
     }
-    saveStoredLessons(normalized);
+    const { updatedLessons } = buildMultiTargetMap(editableLessons);
+    if (onUpdateLessons) {
+      onUpdateLessons(updatedLessons);
+    }
+    saveStoredLessons(updatedLessons);
     onClose();
   };
 
@@ -219,7 +297,9 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       else if (field === 'subtitle') cur.subtitle = value;
       else if (field === 'subject') cur.subject = value;
       else if (field === 'grade') cur.grade = value;
-      else if (field === 'targetImage') cur.targetImage = value;
+      else if (field === 'targetImage') cur.targetImage = normalizeImageUrl(value);
+      else if (field === 'additionalTargetImages') cur.additionalTargetImages = Array.isArray(value) ? value.map((v: string) => normalizeImageUrl(v)) : value;
+      else if (field === 'additionalTargetIndices') cur.additionalTargetIndices = value;
       else if (field === 'model3d') cur.model3d = value;
       else if (field === 'arModel3d') cur.arModel3d = value;
       else if (field === 'videoUrl') {
@@ -236,6 +316,8 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
         cur.description = { ...cur.description, summary: value };
       } else if (field === 'images') {
         cur.images = value;
+      } else {
+        (cur as any)[field] = value;
       }
       updated[selectedLessonIndex] = cur;
 
@@ -247,6 +329,43 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
         }
       } catch (_) {}
 
+      return updated;
+    });
+  };
+
+  const handleUpdateModelSound = (soundUrl?: string, soundEnabled?: boolean) => {
+    setHasLocalDrafts(true);
+    setEditableLessons((prev) => {
+      const updated = [...prev];
+      if (!updated[selectedLessonIndex]) return prev;
+      const cur = { ...updated[selectedLessonIndex] };
+      const existingModel = cur.model3d || {
+        url: '',
+        title: `مجسم: ${cur.title}`,
+        autoRotate: true
+      };
+      const finalSoundUrl = soundUrl !== undefined ? soundUrl : (existingModel.soundUrl || '');
+      const finalSoundEnabled = soundEnabled !== undefined ? soundEnabled : (finalSoundUrl.trim() !== '');
+
+      cur.model3d = {
+        ...existingModel,
+        soundUrl: finalSoundUrl,
+        soundEnabled: finalSoundEnabled
+      };
+
+      if (cur.arModel3d) {
+        cur.arModel3d = {
+          ...cur.arModel3d,
+          soundUrl: finalSoundUrl,
+          soundEnabled: finalSoundEnabled
+        };
+      }
+
+      updated[selectedLessonIndex] = cur;
+      try {
+        saveStoredLessons(updated);
+        if (onUpdateLessons) onUpdateLessons(updated);
+      } catch (_) {}
       return updated;
     });
   };
@@ -320,16 +439,15 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     if (!window.confirm(`هل أنت متأكد من حذف "${lessonTitle}" نهائياً من قائمة الدروس؟`)) {
       return;
     }
-    const updated = editableLessons
-      .filter((_, idx) => idx !== indexToDelete)
-      .map((l, idx) => ({ ...l, targetIndex: idx })); // renumber targetIndex sequentially 0, 1, 2...
+    const filtered = editableLessons.filter((_, idx) => idx !== indexToDelete);
+    const { updatedLessons } = buildMultiTargetMap(filtered);
     
-    setEditableLessons(updated);
-    setSelectedLessonIndex((prev) => Math.max(0, Math.min(prev, updated.length - 1)));
+    setEditableLessons(updatedLessons);
+    setSelectedLessonIndex((prev) => Math.max(0, Math.min(prev, updatedLessons.length - 1)));
     if (onUpdateLessons) {
-      onUpdateLessons(updated);
+      onUpdateLessons(updatedLessons);
     }
-    saveStoredLessons(updated);
+    saveStoredLessons(updatedLessons);
   };
 
   const handleClearAllLessons = () => {
@@ -345,7 +463,8 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   };
 
   const handleDownloadContentJson = () => {
-    const normalized = editableLessons.map((l, idx) => {
+    const { updatedLessons } = buildMultiTargetMap(editableLessons);
+    const normalized = updatedLessons.map((l, idx) => {
       // Ensure model URLs are permanent paths rather than temporary blob URLs
       let cleanModel = l.model3d;
       if (cleanModel?.url?.startsWith('blob:')) {
@@ -363,7 +482,6 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       }
       return {
         ...l,
-        targetIndex: idx,
         model3d: cleanModel,
         arModel3d: cleanAR
       };
@@ -824,16 +942,19 @@ function doPost(e) {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           if (e.target.files && e.target.files[0]) {
                             const file = e.target.files[0];
-                            const reader = new FileReader();
-                            reader.onload = (uploadEvent) => {
-                              const base64 = uploadEvent.target?.result as string;
-                              handleFieldChange('targetImage', base64);
-                            };
-                            reader.readAsDataURL(file);
+                            try {
+                              const optimized = await optimizeImageFile(file, 1024, 1024, 0.85);
+                              handleFieldChange('targetImage', optimized);
+                              setStatusNotice({ type: 'success', text: '✓ تم رفع وضغط صورة كتاب الدرس بنجاح!' });
+                              setTimeout(() => setStatusNotice(null), 3000);
+                            } catch (err: any) {
+                              setStatusNotice({ type: 'error', text: 'تعذر معالجة الصورة: ' + (err.message || String(err)) });
+                            }
                           }
+                          e.target.value = '';
                         }}
                       />
                     </label>
@@ -860,6 +981,154 @@ function doPost(e) {
                         placeholder="اضغط (رفع صورة صفحة الكتاب) أو الصق الرابط هنا"
                         className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
                       />
+                    </div>
+                  </div>
+
+                  {/* ⭐ Multi-Target Mapping: إضافة صفحات وبطاقات مسح إضافية لنفس الدرس ⭐ */}
+                  <div className="p-3 rounded-lg bg-slate-900/90 border border-sky-500/30 space-y-2.5 mt-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                        <div>
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <span>صفحات وأهداف مسح إضافية لنفس الدرس (Multi-Target Mapping)</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono font-bold">
+                              {currentLesson.additionalTargetImages?.length || 0} إضافية
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        التعرف على أي صفحة منها يفتح نفس الدرس ومجسمه
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      إذا كان الدرس يمتد عبر عدة صفحات في الكتاب (مثلاً صفحة ١٤ وصفحة ١٥)، أو يحتوي على أكثر من بطاقة ورقية، أضف صور الصفحات الأخرى هنا. سيتعرف نظام الكاميرا على أي صفحة منها فوراً ويفتح نفس الدرس ومجسمه ثلاثي الأبعاد!
+                    </p>
+
+                    {/* حقل إضافة رابط أو رفع صفحة إضافية */}
+                    <div className="flex flex-col sm:flex-row gap-2 items-center">
+                      <div className="flex-1 w-full">
+                        <input
+                          type="url"
+                          value={newAdditionalTargetUrl}
+                          onChange={(e) => setNewAdditionalTargetUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddAdditionalTargetImage();
+                            }
+                          }}
+                          placeholder="الصق رابط صورة صفحة إضافية (قوقل درايف أو رابط مباشر)..."
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={handleAddAdditionalTargetImage}
+                          disabled={!newAdditionalTargetUrl.trim()}
+                          className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>إضافة الرابط</span>
+                        </button>
+
+                        <label className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold cursor-pointer border border-slate-700 transition-colors flex items-center justify-center gap-1">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>📁 رفع صفحة</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                try {
+                                  const optimized = await optimizeImageFile(file, 1024, 1024, 0.85);
+                                  const curLesson = editableLessons[selectedLessonIndex];
+                                  const existing = curLesson?.additionalTargetImages || [];
+                                  handleFieldChange('additionalTargetImages', [...existing, optimized]);
+                                  setMultiTargetNotice('✓ تمت إضافة صورة المسح الإضافية للدرس بنجاح وبدقة عالية!');
+                                  setTimeout(() => setMultiTargetNotice(null), 3500);
+                                } catch (err: any) {
+                                  setMultiTargetNotice('تعذر معالجة الصورة: ' + (err.message || String(err)));
+                                }
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {multiTargetNotice && (
+                      <p className="text-[11px] text-emerald-400 font-medium bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
+                        {multiTargetNotice}
+                      </p>
+                    )}
+
+                    {/* شبكة معاينة صور صفحات المسح المسجلة لهذا الدرس */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        <span>خريطة أهداف المسح البصري المعتمدة لهذا الدرس:</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {/* الهدف الأساسي */}
+                        <div className="p-2 rounded-lg bg-sky-950/50 border border-sky-500/40 space-y-1.5 flex flex-col items-center">
+                          <div className="w-full h-20 rounded bg-black/60 border border-slate-700 overflow-hidden flex items-center justify-center">
+                            {currentLesson.targetImage ? (
+                              <img
+                                src={normalizeImageUrl(currentLesson.targetImage)}
+                                alt="الهدف الرئيسي"
+                                className="w-full h-full object-contain"
+                              />
+                            ) : (
+                              <span className="text-[9px] text-slate-500 text-center">لا توجد صورة</span>
+                            )}
+                          </div>
+                          <div className="w-full flex items-center justify-between text-[10px]">
+                            <span className="font-bold text-sky-300">الهدف الأساسي #1</span>
+                            <span className="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-200 text-[9px] font-mono">
+                              Target #{currentLesson.targetIndex}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* الأهداف الإضافية */}
+                        {(currentLesson.additionalTargetImages || []).map((imgUrl, addIdx) => (
+                          <div
+                            key={`target_add_${addIdx}_${imgUrl.slice(0, 30)}`}
+                            className="p-2 rounded-lg bg-slate-950/80 border border-slate-700/80 space-y-1.5 flex flex-col items-center relative group"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const filtered = (currentLesson.additionalTargetImages || []).filter((_, i) => i !== addIdx);
+                                handleFieldChange('additionalTargetImages', filtered);
+                              }}
+                              className="absolute top-1 left-1 p-1 rounded-md bg-rose-950/90 hover:bg-rose-900 text-rose-300 border border-rose-500/50 transition-all cursor-pointer z-10"
+                              title="حذف هذه الصفحة الإضافية"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                            <div className="w-full h-20 rounded bg-black/60 border border-slate-700 overflow-hidden flex items-center justify-center">
+                              <img
+                                src={normalizeImageUrl(imgUrl)}
+                                alt={`هدف إضافي #${addIdx + 1}`}
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                            <div className="w-full flex items-center justify-between text-[10px]">
+                              <span className="font-bold text-slate-300">صفحة إضافية #{addIdx + 2}</span>
+                              <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-200 text-[9px] font-mono">
+                                Multi-Target
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1420,6 +1689,205 @@ function doPost(e) {
                     )}
                   </div>
 
+                  {/* 🎵 صوت المجسم التلقائي (3D Model Sound Effect) */}
+                  <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/40 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300">
+                          <Music className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                            <span>صوت المجسم التلقائي (3D Model Sound)</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-bold">
+                              ينطلق فور ظهور المجسم
+                            </span>
+                          </h5>
+                          <p className="text-[11px] text-slate-300">
+                            صوت أو مؤثر خاص بالمجسم يعمل تلقائياً وبشكل فوري بمجرد توجيه الكاميرا إلى صفحة الكتاب.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        {currentLesson.model3d?.soundUrl && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateModelSound('', false);
+                              if (isPlayingTestAudio && testAudioRef.current) {
+                                testAudioRef.current.pause();
+                                setIsPlayingTestAudio(false);
+                              }
+                              setAudioUploadFileName(null);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
+                            title="إلغاء صوت المجسم"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>إلغاء الصوت</span>
+                          </button>
+                        )}
+
+                        <label className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all flex-shrink-0">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>📁 رفع ملف صوتي (.mp3 / .wav)</span>
+                          <input
+                            key={`sound_upload_${currentLesson.targetId}`}
+                            type="file"
+                            accept="audio/*,.mp3,.wav,.ogg,.m4a"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                const cleanName = file.name;
+                                setAudioUploadFileName(`${cleanName} (${Math.round(file.size / 1024)} KB)`);
+
+                                const reader = new FileReader();
+                                reader.onload = (uploadEv) => {
+                                  const dataUrl = uploadEv.target?.result as string;
+                                  if (dataUrl) {
+                                    handleUpdateModelSound(dataUrl, true);
+                                    setModelSoundNotice(`✓ تم رفع وتفعيل ملف الصوت: ${cleanName}`);
+                                    setTimeout(() => setModelSoundNotice(null), 3500);
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* حقل الرابط واختبار الصوت */}
+                    <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-300">
+                            رابط ملف الصوت (Google Drive أو رابط مباشر MP3/OGG/WAV):
+                          </label>
+                          {currentLesson.model3d?.soundUrl && (
+                            <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>الصوت مخصص لهذا الدرس</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2 items-center">
+                          <input
+                            type="text"
+                            value={currentLesson.model3d?.soundUrl || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              handleUpdateModelSound(val, val.trim() !== '');
+                            }}
+                            placeholder="الصق رابط صوت قوقل درايف أو رابط مباشر (مثال: https://.../sound.mp3)"
+                            className="flex-1 w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-purple-500"
+                          />
+
+                          {currentLesson.model3d?.soundUrl && (
+                            <button
+                              type="button"
+                              onClick={() => toggleTestAudio(currentLesson.model3d?.soundUrl)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0 ${
+                                isPlayingTestAudio
+                                  ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse'
+                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                              }`}
+                              title={isPlayingTestAudio ? 'إيقاف التجربة' : 'استماع للصوت الآن'}
+                            >
+                              {isPlayingTestAudio ? (
+                                <>
+                                  <Pause className="w-3.5 h-3.5" />
+                                  <span>⏸ إيقاف الصوت</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3.5 h-3.5" />
+                                  <span>▶ استماع وتجربة</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* شريط تفعيل/كتم الصوت التلقائي */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                        <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={currentLesson.model3d?.soundEnabled !== false}
+                            onChange={(e) => {
+                              handleUpdateModelSound(undefined, e.target.checked);
+                            }}
+                            className="rounded border-slate-700 text-purple-600 focus:ring-purple-500"
+                          />
+                          <span className="font-semibold">
+                            تفعيل انطلاق الصوت تلقائياً مع ظهور المجسم ثلاثي الأبعاد في الكاميرا
+                          </span>
+                        </label>
+                      </div>
+
+                      {/* نماذج مؤثرات صوتية سريعة بنقرة واحدة */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-xs text-slate-300">
+                        <span className="text-[10px] text-slate-400">أصوات جاهزة للتجربة السريعة:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleUpdateModelSound('https://actions.google.com/sounds/v1/science_fiction/space_atmosphere.ogg', true);
+                            setAudioUploadFileName(null);
+                            setModelSoundNotice('✓ تم تعيين مؤثر الغلاف الجوي والفضاء للمجسم');
+                            setTimeout(() => setModelSoundNotice(null), 3000);
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-purple-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
+                        >
+                          🪐 مؤثر فضاء وكواكب
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleUpdateModelSound('https://actions.google.com/sounds/v1/science_fiction/teleport.ogg', true);
+                            setAudioUploadFileName(null);
+                            setModelSoundNotice('✓ تم تعيين نغمة الهولوجرام التقنية للمجسم');
+                            setTimeout(() => setModelSoundNotice(null), 3000);
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
+                        >
+                          ⚡ نغمة هولوجرام تقنية
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleUpdateModelSound('https://actions.google.com/sounds/v1/nature/wind_blowing_through_trees.ogg', true);
+                            setAudioUploadFileName(null);
+                            setModelSoundNotice('✓ تم تعيين مؤثر بيئي طبيعي للمجسم');
+                            setTimeout(() => setModelSoundNotice(null), 3000);
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
+                        >
+                          🌿 مؤثر بيئي طبيعي
+                        </button>
+                      </div>
+
+                      {modelSoundNotice && (
+                        <p className="text-[11px] text-emerald-400 font-medium bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
+                          {modelSoundNotice}
+                        </p>
+                      )}
+
+                      {audioUploadFileName && (
+                        <div className="text-[10px] text-purple-300 font-semibold flex items-center gap-1.5 pt-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
+                          <span>الملف المرفوع: {audioUploadFileName}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   {/* 3D Interactive Live Preview Window */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
@@ -1586,29 +2054,36 @@ function doPost(e) {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {editableLessons.map((lesson, idx) => (
+                  {buildMultiTargetMap(editableLessons).entries.map((entry) => (
                     <div 
-                      key={lesson.targetId || idx} 
-                      className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center gap-2.5"
+                      key={`entry_${entry.globalTargetIndex}_${entry.lessonId}`} 
+                      className={`p-2.5 rounded-lg border flex items-center gap-2.5 ${
+                        entry.isPrimary ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/70 border-indigo-500/30'
+                      }`}
                     >
                       <div className="w-12 h-12 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {lesson.targetImage ? (
-                          <img src={lesson.targetImage} alt={lesson.title} className="w-full h-full object-contain" />
+                        {entry.imageUrl ? (
+                          <img src={normalizeImageUrl(entry.imageUrl)} alt={entry.pageLabel} className="w-full h-full object-contain" />
                         ) : (
                           <span className="text-[9px] text-slate-500 text-center">لا توجد صورة</span>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-[10px] font-bold">
-                            الصورة #{idx + 1} في MindAR
+                            ترتيب #{entry.globalTargetIndex + 1}
                           </span>
                           <span className="text-[10px] font-mono text-slate-400">
-                            (Target {idx})
+                            (Target {entry.globalTargetIndex})
                           </span>
+                          {!entry.isPrimary && (
+                            <span className="px-1 py-0.2 rounded bg-indigo-500/30 text-indigo-200 text-[9px]">
+                              صفحة إضافية
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs font-bold text-white truncate mt-1">
-                          {lesson.title}
+                          {entry.pageLabel}
                         </p>
                       </div>
                     </div>

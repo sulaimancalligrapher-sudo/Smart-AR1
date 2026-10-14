@@ -38,10 +38,14 @@ export interface LessonModel3D {
   url: string;
   title?: string;
   autoRotate?: boolean;
+  soundUrl?: string; // رابط ملف صوتي مخصص للمجسم يعمل تلقائياً مع ظهوره
+  soundEnabled?: boolean; // تفعيل أو كتم الصوت التلقائي (افتراضياً مفعّل إذا وُجد رابط)
 }
 
 export interface LessonData {
   targetIndex: number;
+  additionalTargetIndices?: number[]; // فهارس صفحات وأهداف إضافية لنفس الدرس في targets.mind
+  additionalTargetImages?: string[]; // روابط أو مسارات صور الصفحات الإضافية لنفس الدرس
   targetId: string;
   title: string;
   subtitle: string;
@@ -57,27 +61,80 @@ export interface LessonData {
 }
 
 /**
+ * دالة ذكية لإرجاع ملف الصوت المخصص للمجسم:
+ * تفحص المجسم المخصص للـ AR، ثم المجسم المشترك 3D Model لضمان عدم ضياع الصوت أبداً!
+ */
+export function getLessonModelSound(lesson?: LessonData | null): { soundUrl: string; soundEnabled: boolean } | null {
+  if (!lesson) return null;
+
+  // 1. فحص arModel3d
+  if (lesson.arModel3d?.soundUrl && lesson.arModel3d.soundUrl.trim() !== '') {
+    return {
+      soundUrl: lesson.arModel3d.soundUrl.trim(),
+      soundEnabled: lesson.arModel3d.soundEnabled !== false
+    };
+  }
+
+  // 2. فحص model3d المشترك
+  if (lesson.model3d?.soundUrl && lesson.model3d.soundUrl.trim() !== '') {
+    return {
+      soundUrl: lesson.model3d.soundUrl.trim(),
+      soundEnabled: lesson.model3d.soundEnabled !== false
+    };
+  }
+
+  // 3. فحص صوت الدرس العام audio.url كبديل ذكي لضمان تشغيل الصوت دائماً
+  if (lesson.audio?.url && lesson.audio.url.trim() !== '') {
+    return {
+      soundUrl: lesson.audio.url.trim(),
+      soundEnabled: true
+    };
+  }
+
+  return null;
+}
+
+/**
  * دالة ذكية ومرنة ترجع المجسم الفعال لأي درس:
  * إذا لم يُحدد مجسم خاص بالـ AR (النوع الأول)، يتم استخدام مجسم الدرس المشترك (النوع الثاني) تلقائياً دون تكرار!
  */
 export function getActiveLessonModel(lesson?: LessonData | null, preferAR: boolean = true): LessonModel3D | null {
   if (!lesson) return null;
 
+  let chosen: LessonModel3D | null = null;
+
   if (preferAR) {
     if (lesson.arModel3d?.url && lesson.arModel3d.url.trim() !== '') {
-      return lesson.arModel3d;
+      chosen = { ...lesson.arModel3d };
     }
   }
 
-  if (lesson.model3d?.url && lesson.model3d.url.trim() !== '') {
-    return lesson.model3d;
+  if (!chosen && lesson.model3d?.url && lesson.model3d.url.trim() !== '') {
+    chosen = { ...lesson.model3d };
   }
 
-  if (lesson.arModel3d?.url && lesson.arModel3d.url.trim() !== '') {
-    return lesson.arModel3d;
+  if (!chosen && lesson.arModel3d?.url && lesson.arModel3d.url.trim() !== '') {
+    chosen = { ...lesson.arModel3d };
   }
 
-  return null;
+  // إذا لم يكن هناك مجسم بملف ولكن هناك صوت مسجل
+  if (!chosen && (lesson.model3d?.soundUrl || lesson.arModel3d?.soundUrl)) {
+    chosen = {
+      url: '',
+      title: lesson.model3d?.title || lesson.title,
+      autoRotate: false
+    };
+  }
+
+  if (chosen) {
+    const soundInfo = getLessonModelSound(lesson);
+    if (soundInfo) {
+      chosen.soundUrl = soundInfo.soundUrl;
+      chosen.soundEnabled = soundInfo.soundEnabled;
+    }
+  }
+
+  return chosen;
 }
 
 export type ARActionType =
