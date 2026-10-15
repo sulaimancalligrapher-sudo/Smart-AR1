@@ -83,8 +83,14 @@ export default function App() {
 
   useEffect(() => {
     fetchLessons().then((loadedLessons) => {
-      if (loadedLessons) {
+      if (loadedLessons && loadedLessons.length > 0) {
         setLessons(loadedLessons);
+        setActiveLesson((prev) => {
+          if (!prev) return null;
+          return loadedLessons.find(
+            (l, idx) => l.targetId === prev.targetId || (l.targetIndex ?? idx) === (prev.targetIndex ?? -1)
+          ) || prev;
+        });
       }
     });
   }, []);

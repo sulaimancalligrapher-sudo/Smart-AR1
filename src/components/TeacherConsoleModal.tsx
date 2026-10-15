@@ -852,7 +852,22 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
 
   const handleCopyLessonsTsCode = () => {
     const { updatedLessons } = buildMultiTargetMap(editableLessons);
-    const code = `import { LessonData } from '../types/ar';\n\nexport const DEFAULT_LESSONS: LessonData[] = ${JSON.stringify(updatedLessons, null, 2)};\n`;
+    const sanitized = updatedLessons.map((l) => {
+      const vList = Array.isArray(l.videos)
+        ? l.videos.filter((v) => v && (v.url?.trim() || v.embedUrl?.trim()))
+        : (l.video?.url?.trim() ? [l.video] : []);
+      const aList = Array.isArray(l.audios)
+        ? l.audios.filter((a) => a && a.url?.trim())
+        : (l.audio?.url?.trim() ? [l.audio] : []);
+      return {
+        ...l,
+        videos: vList,
+        video: vList.length > 0 ? vList[0] : undefined,
+        audios: aList,
+        audio: aList.length > 0 ? aList[0] : undefined
+      };
+    });
+    const code = `import { LessonData } from '../types/ar';\n\nexport const DEFAULT_LESSONS: LessonData[] = ${JSON.stringify(sanitized, null, 2)};\n`;
     navigator.clipboard.writeText(code).then(() => {
       setCopiedLessonsTs(true);
       setTimeout(() => setCopiedLessonsTs(false), 4000);
@@ -877,8 +892,22 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
           url: `/models/lesson_${idx + 1}_ar.glb`
         };
       }
+
+      // تنظيف كامل للفيديوهات والصوتيات: إذا حُذفت، لا تُصدر بتاتاً لـ content.json
+      const validVideos = Array.isArray(l.videos)
+        ? l.videos.filter((v) => v && (v.url?.trim() || v.embedUrl?.trim()))
+        : (l.video?.url?.trim() ? [l.video] : []);
+
+      const validAudios = Array.isArray(l.audios)
+        ? l.audios.filter((a) => a && a.url?.trim())
+        : (l.audio?.url?.trim() ? [l.audio] : []);
+
       return {
         ...l,
+        videos: validVideos,
+        video: validVideos.length > 0 ? validVideos[0] : undefined,
+        audios: validAudios,
+        audio: validAudios.length > 0 ? validAudios[0] : undefined,
         model3d: cleanModel,
         arModel3d: cleanAR
       };

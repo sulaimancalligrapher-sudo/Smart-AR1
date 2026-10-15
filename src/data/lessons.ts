@@ -424,10 +424,24 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
       const data = await res.json();
       const serverLessons = Array.isArray(data) ? data : data?.lessons;
       if (Array.isArray(serverLessons) && serverLessons.length > 0) {
-        const normalized: LessonData[] = serverLessons.map((l: any, idx: number) => ({
-          ...l,
-          targetIndex: typeof l.targetIndex === 'number' ? l.targetIndex : idx
-        }));
+        const normalized: LessonData[] = serverLessons.map((l: any, idx: number) => {
+          const vList = Array.isArray(l.videos)
+            ? l.videos.filter((v: any) => v && (v.url?.trim() || v.embedUrl?.trim()))
+            : (l.video?.url?.trim() ? [l.video] : []);
+
+          const aList = Array.isArray(l.audios)
+            ? l.audios.filter((a: any) => a && a.url?.trim())
+            : (l.audio?.url?.trim() ? [l.audio] : []);
+
+          return {
+            ...l,
+            targetIndex: typeof l.targetIndex === 'number' ? l.targetIndex : idx,
+            videos: vList,
+            video: vList.length > 0 ? vList[0] : undefined,
+            audios: aList,
+            audio: aList.length > 0 ? aList[0] : undefined
+          };
+        });
 
         saveStoredLessons(normalized);
         if (forceRefreshServer) {
