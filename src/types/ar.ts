@@ -57,10 +57,10 @@ export interface LessonData {
   subject: string;
   grade: string;
   targetImage: string;
-  video: LessonVideo;
+  video?: LessonVideo;
   videos?: LessonVideo[]; // قائمة الفيديوهات المتعددة للدرس الواحد
   images: LessonImage[];
-  audio: LessonAudio;
+  audio?: LessonAudio;
   audios?: LessonAudio[]; // قائمة التسجيلات الصوتية المتعددة للدرس الواحد
   description: LessonDescription;
   model3d?: LessonModel3D;
@@ -68,40 +68,99 @@ export interface LessonData {
 }
 
 /**
+ * دالة ذكية لمعالجة وتصحيح روابط الوسائط (الصوت والفيديو والمجسمات)
+ * 1. تحويل روابط GitHub من نمط صفحة العرض (blob/main/...) إلى الرابط المباشر الخام raw.githubusercontent.com
+ * 2. معالجة المسارات النسبية لتتوافق مع بيئة النشر (GitHub Pages / النطاقات الفرعية) عبر BASE_URL
+ * 3. تنظيف الرابط من علامات التنصيص والمسافات الزائدة
+ */
+export function resolveAssetUrl(rawUrl?: string | null): string {
+  if (!rawUrl) return '';
+  let url = rawUrl.trim().replace(/^["']|["']$/g, '');
+
+  if (!url || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+
+  // 1. تحويل روابط GitHub من صفحات العرض (blob) إلى المحتوى الخام المباشر للتشغيل
+  const ghBlobMatch = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:blob|raw)\/([^/]+)\/(.+)$/i);
+  if (ghBlobMatch) {
+    const [, owner, repo, branch, path] = ghBlobMatch;
+    url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+  }
+
+  // 2. معالجة المسارات النسبية المحلية مع BASE_URL
+  if (url.startsWith('/') && !url.startsWith('//')) {
+    const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    url = `${cleanBase}${url}`;
+  } else if (url.startsWith('./')) {
+    const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    url = `${cleanBase}${url.slice(2)}`;
+  }
+
+  return url;
+}
+
+/**
  * استخراج قائمة جميع الفيديوهات للدرس (يدعم الفيديوهات المتعددة أو المفردة القديمة)
+ * يضمن عدم إعادة إحياء الفيديوهات المحذوفة إذا كانت المصفوفة فارغة عمداً!
  */
 export function getLessonVideos(lesson?: LessonData | null): LessonVideo[] {
   if (!lesson) return [];
-  if (Array.isArray(lesson.videos) && lesson.videos.length > 0) {
-    const valid = lesson.videos.filter((v) => v && (v.url?.trim() || v.embedUrl?.trim()));
-    if (valid.length > 0) return valid;
+  // إذا كانت مصفوفة الفيديوهات معرفة (حتى لو كانت فارغة لأن المعلم حذف جميع الفيديوهات)، نحترم رغبة المستخدم
+  if (Array.isArray(lesson.videos)) {
+    return lesson.videos
+      .filter((v) => v && (v.url?.trim() || v.embedUrl?.trim()))
+      .map((v) => ({
+        ...v,
+        url: resolveAssetUrl(v.url),
+        embedUrl: v.embedUrl ? resolveAssetUrl(v.embedUrl) : v.embedUrl
+      }));
   }
+  // التوافق القديم فقط إذا لم تكن خاصية videos موجودة كـ مصفوفة
   if (lesson.video?.url?.trim() || lesson.video?.embedUrl?.trim()) {
-    return [lesson.video];
+    return [{
+      ...lesson.video,
+      url: resolveAssetUrl(lesson.video.url),
+      embedUrl: lesson.video.embedUrl ? resolveAssetUrl(lesson.video.embedUrl) : lesson.video.embedUrl
+    }];
   }
   return [];
 }
 
 /**
  * استخراج قائمة جميع التسجيلات الصوتية للدرس (يدعم الصوتيات المتعددة أو المفردة القديمة)
+ * يضمن عدم إعادة إحياء الصوتيات المحذوفة إذا كانت المصفوفة فارغة عمداً!
  */
 export function getLessonAudios(lesson?: LessonData | null): LessonAudio[] {
   if (!lesson) return [];
-  if (Array.isArray(lesson.audios) && lesson.audios.length > 0) {
-    const valid = lesson.audios.filter((a) => a && a.url?.trim());
-    if (valid.length > 0) return valid;
+  // إذا كانت مصفوفة الصوتيات معرفة (حتى لو كانت فارغة لأن المعلم حذف جميع الصوتيات)، نحترم رغبة المستخدم
+  if (Array.isArray(lesson.audios)) {
+    return lesson.audios
+      .filter((a) => a && a.url?.trim())
+      .map((a) => ({
+        ...a,
+        url: resolveAssetUrl(a.url),
+        embedUrl: a.embedUrl ? resolveAssetUrl(a.embedUrl) : a.embedUrl
+      }));
   }
+  // التوافق القديم فقط إذا لم تكن خاصية audios موجودة كـ مصفوفة
   if (lesson.audio?.url?.trim()) {
-    return [lesson.audio];
+    return [{
+      ...lesson.audio,
+      url: resolveAssetUrl(lesson.audio.url),
+      embedUrl: lesson.audio.embedUrl ? resolveAssetUrl(lesson.audio.embedUrl) : lesson.audio.embedUrl
+    }];
   }
   return [];
 }
 
 /**
- * تطبيع وفحص روابط الفيديو من يوتيوب، فيميو، جوجل درايف، أو الروابط المباشرة والمخصصة
+ * تطبيع وفحص روابط الفيديو من يوتيوب، فيميو، جوجل درايف، جيت هب، أو الروابط المباشرة والمخصصة
  */
 export function normalizeVideoData(rawUrl: string, title?: string): LessonVideo {
-  const url = (rawUrl || '').trim();
+  const url = resolveAssetUrl(rawUrl);
   let embedUrl = url;
   let type: VideoSourceType = 'mp4';
 
@@ -127,7 +186,14 @@ export function normalizeVideoData(rawUrl: string, title?: string): LessonVideo 
       embedUrl = `https://drive.google.com/file/d/${gdriveMatch[1]}/preview`;
       type = 'gdrive';
     }
-  } else if (url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.includes('/gtv-videos-bucket/')) {
+  } else if (
+    url.endsWith('.mp4') ||
+    url.endsWith('.webm') ||
+    url.endsWith('.mov') ||
+    url.endsWith('.m4v') ||
+    url.includes('/gtv-videos-bucket/') ||
+    url.includes('raw.githubusercontent.com')
+  ) {
     type = 'mp4';
     embedUrl = url;
   } else {
@@ -144,10 +210,10 @@ export function normalizeVideoData(rawUrl: string, title?: string): LessonVideo 
 }
 
 /**
- * تطبيع وفحص روابط الصوت: ملفات مباشرة، جوجل درايف، يوتيوب، ساوندكلاود، أو روابط مخصصة
+ * تطبيع وفحص روابط الصوت: ملفات مباشرة، جوجل درايف، يوتيوب، ساوندكلاود، جيت هب، أو روابط مخصصة
  */
 export function normalizeAudioData(rawUrl: string, title?: string): LessonAudio {
-  const url = (rawUrl || '').trim();
+  const url = resolveAssetUrl(rawUrl);
   let type: AudioSourceType = 'audio';
   let embedUrl: string | undefined = undefined;
   let streamUrl = url;
@@ -160,6 +226,7 @@ export function normalizeAudioData(rawUrl: string, title?: string): LessonAudio 
   const gdriveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (gdriveMatch && gdriveMatch[1]) {
     streamUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
+    embedUrl = `https://drive.google.com/file/d/${gdriveMatch[1]}/preview`;
     type = 'gdrive';
   } else if (url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)) {
     const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -191,7 +258,7 @@ export function getLessonModelSound(lesson?: LessonData | null): { soundUrl: str
   // 1. فحص arModel3d
   if (lesson.arModel3d?.soundUrl && lesson.arModel3d.soundUrl.trim() !== '') {
     return {
-      soundUrl: lesson.arModel3d.soundUrl.trim(),
+      soundUrl: resolveAssetUrl(lesson.arModel3d.soundUrl.trim()),
       soundEnabled: lesson.arModel3d.soundEnabled !== false
     };
   }
@@ -199,7 +266,7 @@ export function getLessonModelSound(lesson?: LessonData | null): { soundUrl: str
   // 2. فحص model3d المشترك
   if (lesson.model3d?.soundUrl && lesson.model3d.soundUrl.trim() !== '') {
     return {
-      soundUrl: lesson.model3d.soundUrl.trim(),
+      soundUrl: resolveAssetUrl(lesson.model3d.soundUrl.trim()),
       soundEnabled: lesson.model3d.soundEnabled !== false
     };
   }
@@ -241,6 +308,7 @@ export function getActiveLessonModel(lesson?: LessonData | null, preferAR: boole
   }
 
   if (chosen) {
+    chosen.url = resolveAssetUrl(chosen.url);
     const soundInfo = getLessonModelSound(lesson);
     if (soundInfo) {
       chosen.soundUrl = soundInfo.soundUrl;

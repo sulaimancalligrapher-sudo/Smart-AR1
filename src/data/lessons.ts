@@ -71,7 +71,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
         title: '١. التسجيل الصوتي النموذجي'
       },
       {
-        url: 'https://commondatastorage.googleapis.com/codeskulptor-assets/Epoq-Lepidoptera.ogg',
+        url: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/win.mp3',
         title: '٢. قراءة وتلاوة النص التعليمي'
       }
     ],
@@ -397,7 +397,11 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4500);
 
-    const res = await fetch(`/data/content.json?t=${Date.now()}`, {
+    const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    const contentUrl = `${cleanBase}/data/content.json?t=${Date.now()}`;
+
+    let res = await fetch(contentUrl, {
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -405,6 +409,15 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
       },
       signal: controller.signal
     });
+
+    if (!res.ok) {
+      // Try root content.json fallback
+      res = await fetch(`${cleanBase}/content.json?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+    }
+
     clearTimeout(timeoutId);
 
     if (res.ok) {
@@ -424,7 +437,7 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
       }
     }
   } catch (err) {
-    console.warn('Could not fetch /data/content.json from server:', err);
+    console.warn('Could not fetch content.json from server:', err);
   }
 
   // Fallback to local storage if available

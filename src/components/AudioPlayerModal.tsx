@@ -339,6 +339,22 @@ export const AudioPlayerModal: React.FC<AudioPlayerModalProps> = ({
                 />
               </div>
             </div>
+          ) : activeTrack?.type === 'gdrive' && activeTrack.embedUrl ? (
+            <div className="w-full space-y-3">
+              <div className="w-full h-36 rounded-xl overflow-hidden border border-slate-700 bg-black">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  className="w-full h-full border-0"
+                  allow="autoplay"
+                  src={activeTrack.embedUrl}
+                  title={activeTrack.title || 'Google Drive Audio'}
+                />
+              </div>
+              <p className="text-center text-xs text-slate-400">
+                يتم تشغيل هذا التسجيل الصوتي عبر مشغل Google Drive المباشر.
+              </p>
+            </div>
           ) : (
             /* Direct HTML5 Audio Player UI */
             <>

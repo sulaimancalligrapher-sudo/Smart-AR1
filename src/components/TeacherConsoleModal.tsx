@@ -3,7 +3,7 @@ import {
   X, Database, Send, Trash2, CheckCircle2, AlertCircle, Copy, Check, 
   FileSpreadsheet, ExternalLink, BookOpen, Edit3, Image, Video, Music, 
   HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
-  Volume2, VolumeX, Play, Pause, Disc
+  Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
 import {
@@ -17,13 +17,15 @@ import {
   getLessonVideos,
   getLessonAudios,
   normalizeVideoData,
-  normalizeAudioData
+  normalizeAudioData,
+  resolveAssetUrl
 } from '../types/ar';
 import { saveStoredLessons, fetchLessons, setHasLocalDrafts } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
 import { normalizeImageUrl, normalizeAudioUrl, getAlternativeImageUrls } from '../services/urlHelpers';
 import { buildMultiTargetMap } from '../services/targetCompiler';
 import { optimizeImageFile } from '../services/imageOptimizer';
+import { ConfirmModal } from './ConfirmModal';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -188,6 +190,26 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [audioNotice, setAudioNotice] = useState<string | null>(null);
   const [playingLessonAudioUrl, setPlayingLessonAudioUrl] = useState<string | null>(null);
   const lessonAudioTestRef = useRef<HTMLAudioElement | null>(null);
+
+  // In-App Confirmation Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'تأكيد الحذف',
+    isDestructive: true,
+    onConfirm: () => {}
+  });
+
+  const [copiedLessonsTs, setCopiedLessonsTs] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -445,9 +467,10 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     setTimeout(() => setImageNotice(null), 3500);
   };
 
-  // وظائف إدارة الفيديوهات المتعددة للدرس
+  // وظائف إدارة الفيديوهات المتعددة للدرس وترتيبها
   const handleAddVideo = () => {
-    if (!newVideoUrl.trim()) {
+    const cleanUrl = newVideoUrl.trim().replace(/^["']|["']$/g, '');
+    if (!cleanUrl) {
       setVideoNotice('⚠️ يرجى إدخال رابط الفيديو (YouTube، MP4، Drive، أو أي رابط آخر)');
       return;
     }
@@ -456,14 +479,25 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
 
     const currentVideos = getLessonVideos(curLesson);
     const norm = normalizeVideoData(
-      newVideoUrl.trim(),
+      cleanUrl,
       newVideoTitle.trim() || `فيديو ${currentVideos.length + 1}: ${curLesson.title}`
     );
     const updated = [...currentVideos, norm];
-    handleFieldChange('videos', updated);
+    
+    // حفظ التحديث في مصفوفة الفيديوهات والفيديو الرئيسي
+    const nextLessons = [...editableLessons];
+    nextLessons[selectedLessonIndex] = {
+      ...curLesson,
+      videos: updated,
+      video: updated[0]
+    };
+    setEditableLessons(nextLessons);
+    if (onUpdateLessons) onUpdateLessons(nextLessons);
+    saveStoredLessons(nextLessons);
+
     setNewVideoUrl('');
     setNewVideoTitle('');
-    setVideoNotice('✓ تمت إضافة الفيديو بنجاح!');
+    setVideoNotice('✓ تمت إضافة الفيديو لقائمة الدرس بنجاح!');
     setTimeout(() => setVideoNotice(null), 3500);
   };
 
@@ -471,8 +505,54 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     const curLesson = editableLessons[selectedLessonIndex];
     if (!curLesson) return;
     const currentVideos = getLessonVideos(curLesson);
-    const updated = currentVideos.filter((_, i) => i !== idx);
-    handleFieldChange('videos', updated);
+    const targetVideo = currentVideos[idx];
+    const videoTitle = targetVideo?.title || `الفيديو رقم ${idx + 1}`;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'تأكيد حذف الفيديو التعليمي',
+      message: `هل أنت متأكد من حذف "${videoTitle}" نهائياً من هذا الدرس؟`,
+      confirmText: 'نعم، حذف الفيديو',
+      isDestructive: true,
+      onConfirm: () => {
+        const updated = currentVideos.filter((_, i) => i !== idx);
+        const nextLessons = [...editableLessons];
+        nextLessons[selectedLessonIndex] = {
+          ...curLesson,
+          videos: updated,
+          // تنظيف الحقل القديم لضمان عدم عودة الفيديو عند الحذف
+          video: updated.length > 0 ? updated[0] : undefined
+        };
+        setEditableLessons(nextLessons);
+        if (onUpdateLessons) onUpdateLessons(nextLessons);
+        saveStoredLessons(nextLessons);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        setVideoNotice('✓ تم حذف الفيديو بنجاح!');
+        setTimeout(() => setVideoNotice(null), 3000);
+      }
+    });
+  };
+
+  const handleMoveVideo = (idx: number, direction: 'up' | 'down') => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentVideos = [...getLessonVideos(curLesson)];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentVideos.length) return;
+
+    const temp = currentVideos[idx];
+    currentVideos[idx] = currentVideos[targetIdx];
+    currentVideos[targetIdx] = temp;
+
+    const nextLessons = [...editableLessons];
+    nextLessons[selectedLessonIndex] = {
+      ...curLesson,
+      videos: currentVideos,
+      video: currentVideos[0]
+    };
+    setEditableLessons(nextLessons);
+    if (onUpdateLessons) onUpdateLessons(nextLessons);
+    saveStoredLessons(nextLessons);
   };
 
   const handleUpdateVideo = (idx: number, patch: Partial<LessonVideo>) => {
@@ -486,13 +566,22 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       } else {
         currentVideos[idx] = merged;
       }
-      handleFieldChange('videos', currentVideos);
+      const nextLessons = [...editableLessons];
+      nextLessons[selectedLessonIndex] = {
+        ...curLesson,
+        videos: currentVideos,
+        video: currentVideos[0]
+      };
+      setEditableLessons(nextLessons);
+      if (onUpdateLessons) onUpdateLessons(nextLessons);
+      saveStoredLessons(nextLessons);
     }
   };
 
-  // وظائف إدارة الصوتيات المتعددة للدرس
+  // وظائف إدارة الصوتيات المتعددة للدرس وترتيبها
   const handleAddAudio = () => {
-    if (!newAudioUrl.trim()) {
+    const cleanUrl = newAudioUrl.trim().replace(/^["']|["']$/g, '');
+    if (!cleanUrl) {
       setAudioNotice('⚠️ يرجى إدخال رابط أو رفع ملف صوتي');
       return;
     }
@@ -501,11 +590,21 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
 
     const currentAudios = getLessonAudios(curLesson);
     const norm = normalizeAudioData(
-      newAudioUrl.trim(),
+      cleanUrl,
       newAudioTitle.trim() || `تسجيل صوتي ${currentAudios.length + 1}: ${curLesson.title}`
     );
     const updated = [...currentAudios, norm];
-    handleFieldChange('audios', updated);
+
+    const nextLessons = [...editableLessons];
+    nextLessons[selectedLessonIndex] = {
+      ...curLesson,
+      audios: updated,
+      audio: updated[0]
+    };
+    setEditableLessons(nextLessons);
+    if (onUpdateLessons) onUpdateLessons(nextLessons);
+    saveStoredLessons(nextLessons);
+
     setNewAudioUrl('');
     setNewAudioTitle('');
     setAudioNotice('✓ تم حفظ التسجيل الصوتي بنجاح!');
@@ -516,14 +615,60 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     const curLesson = editableLessons[selectedLessonIndex];
     if (!curLesson) return;
     const currentAudios = getLessonAudios(curLesson);
-    if (playingLessonAudioUrl === currentAudios[idx]?.url) {
-      if (lessonAudioTestRef.current) {
-        lessonAudioTestRef.current.pause();
+    const targetAudio = currentAudios[idx];
+    const audioTitle = targetAudio?.title || `التسجيل رقم ${idx + 1}`;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'تأكيد حذف التسجيل الصوتي',
+      message: `هل أنت متأكد من حذف "${audioTitle}" نهائياً من هذا الدرس؟`,
+      confirmText: 'نعم، حذف التسجيل',
+      isDestructive: true,
+      onConfirm: () => {
+        if (playingLessonAudioUrl === currentAudios[idx]?.url) {
+          if (lessonAudioTestRef.current) {
+            lessonAudioTestRef.current.pause();
+          }
+          setPlayingLessonAudioUrl(null);
+        }
+        const updated = currentAudios.filter((_, i) => i !== idx);
+        const nextLessons = [...editableLessons];
+        nextLessons[selectedLessonIndex] = {
+          ...curLesson,
+          audios: updated,
+          // تنظيف الحقل القديم لضمان عدم عودة الصوت عند الحذف
+          audio: updated.length > 0 ? updated[0] : undefined
+        };
+        setEditableLessons(nextLessons);
+        if (onUpdateLessons) onUpdateLessons(nextLessons);
+        saveStoredLessons(nextLessons);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        setAudioNotice('✓ تم حذف التسجيل الصوتي بنجاح!');
+        setTimeout(() => setAudioNotice(null), 3000);
       }
-      setPlayingLessonAudioUrl(null);
-    }
-    const updated = currentAudios.filter((_, i) => i !== idx);
-    handleFieldChange('audios', updated);
+    });
+  };
+
+  const handleMoveAudio = (idx: number, direction: 'up' | 'down') => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentAudios = [...getLessonAudios(curLesson)];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentAudios.length) return;
+
+    const temp = currentAudios[idx];
+    currentAudios[idx] = currentAudios[targetIdx];
+    currentAudios[targetIdx] = temp;
+
+    const nextLessons = [...editableLessons];
+    nextLessons[selectedLessonIndex] = {
+      ...curLesson,
+      audios: currentAudios,
+      audio: currentAudios[0]
+    };
+    setEditableLessons(nextLessons);
+    if (onUpdateLessons) onUpdateLessons(nextLessons);
+    saveStoredLessons(nextLessons);
   };
 
   const handleUpdateAudio = (idx: number, patch: Partial<LessonAudio>) => {
@@ -537,7 +682,15 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       } else {
         currentAudios[idx] = merged;
       }
-      handleFieldChange('audios', currentAudios);
+      const nextLessons = [...editableLessons];
+      nextLessons[selectedLessonIndex] = {
+        ...curLesson,
+        audios: currentAudios,
+        audio: currentAudios[0]
+      };
+      setEditableLessons(nextLessons);
+      if (onUpdateLessons) onUpdateLessons(nextLessons);
+      saveStoredLessons(nextLessons);
     }
   };
 
@@ -633,32 +786,77 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     saveStoredLessons(updatedLessons);
   };
 
-  const handleDeleteLesson = (indexToDelete: number) => {
-    const lessonTitle = editableLessons[indexToDelete]?.title || 'هذا الدرس';
-    if (!window.confirm(`هل أنت متأكد من حذف "${lessonTitle}" نهائياً من قائمة الدروس؟`)) {
-      return;
-    }
-    const filtered = editableLessons.filter((_, idx) => idx !== indexToDelete);
-    const { updatedLessons } = buildMultiTargetMap(filtered);
-    
+  const handleMoveLesson = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= editableLessons.length) return;
+
+    const nextLessons = [...editableLessons];
+    const temp = nextLessons[index];
+    nextLessons[index] = nextLessons[targetIndex];
+    nextLessons[targetIndex] = temp;
+
+    const { updatedLessons } = buildMultiTargetMap(nextLessons);
     setEditableLessons(updatedLessons);
-    setSelectedLessonIndex((prev) => Math.max(0, Math.min(prev, updatedLessons.length - 1)));
+    setSelectedLessonIndex(targetIndex);
     if (onUpdateLessons) {
       onUpdateLessons(updatedLessons);
     }
     saveStoredLessons(updatedLessons);
   };
 
+  const handleDeleteLesson = (indexToDelete: number) => {
+    const lessonTitle = editableLessons[indexToDelete]?.title || 'هذا الدرس';
+    setConfirmModal({
+      isOpen: true,
+      title: 'تأكيد حذف الدرس نهائياً',
+      message: `هل أنت متأكد من حذف "${lessonTitle}" وجميع وسائطه من قائمة الدروس؟`,
+      confirmText: 'نعم، حذف الدرس',
+      isDestructive: true,
+      onConfirm: () => {
+        const filtered = editableLessons.filter((_, idx) => idx !== indexToDelete);
+        const { updatedLessons } = buildMultiTargetMap(filtered);
+        
+        setEditableLessons(updatedLessons);
+        setSelectedLessonIndex((prev) => Math.max(0, Math.min(prev, updatedLessons.length - 1)));
+        if (onUpdateLessons) {
+          onUpdateLessons(updatedLessons);
+        }
+        saveStoredLessons(updatedLessons);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        setStatusNotice({ type: 'success', text: `✓ تم حذف "${lessonTitle}" بنجاح.` });
+        setTimeout(() => setStatusNotice(null), 3000);
+      }
+    });
+  };
+
   const handleClearAllLessons = () => {
-    if (!window.confirm('⚠️ تحذير: هل أنت متأكد من مسح جميع الدروس الحالية والبدء من الصفر؟')) {
-      return;
-    }
-    setEditableLessons([]);
-    setSelectedLessonIndex(0);
-    if (onUpdateLessons) {
-      onUpdateLessons([]);
-    }
-    saveStoredLessons([]);
+    setConfirmModal({
+      isOpen: true,
+      title: 'تأكيد مسح كافة الدروس',
+      message: '⚠️ تحذير: هل أنت متأكد من رغبتك في مسح كافة الدروس والبدء من الصفر؟ لن تتمكن من استرجاعها إلا باستيراد ملف احتياطي أو إعادة التعيين.',
+      confirmText: 'نعم، مسح كافة الدروس',
+      isDestructive: true,
+      onConfirm: () => {
+        setEditableLessons([]);
+        setSelectedLessonIndex(0);
+        if (onUpdateLessons) {
+          onUpdateLessons([]);
+        }
+        saveStoredLessons([]);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        setStatusNotice({ type: 'info', text: 'تم تفريغ قائمة الدروس.' });
+        setTimeout(() => setStatusNotice(null), 3000);
+      }
+    });
+  };
+
+  const handleCopyLessonsTsCode = () => {
+    const { updatedLessons } = buildMultiTargetMap(editableLessons);
+    const code = `import { LessonData } from '../types/ar';\n\nexport const DEFAULT_LESSONS: LessonData[] = ${JSON.stringify(updatedLessons, null, 2)};\n`;
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedLessonsTs(true);
+      setTimeout(() => setCopiedLessonsTs(false), 4000);
+    });
   };
 
   const handleDownloadContentJson = () => {
@@ -947,16 +1145,44 @@ function doPost(e) {
                   return (
                     <div
                       key={l.targetId}
-                      className={`relative group rounded-xl border transition-all flex items-stretch ${
+                      className={`relative group rounded-xl border transition-all flex items-stretch overflow-hidden ${
                         isSelected
                           ? 'bg-sky-950/60 border-sky-500 text-white shadow-md'
                           : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
                       }`}
                     >
+                      {/* Reorder Up/Down for Lesson */}
+                      <div className="flex flex-col justify-center gap-1 py-1 px-1 border-l border-slate-800/80 bg-slate-900/50 flex-shrink-0">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveLesson(idx, 'up');
+                          }}
+                          className="text-slate-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed p-0.5 rounded hover:bg-slate-800 transition-colors"
+                          title="تحريك الدرس للأعلى (تقديم الترتيب)"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === editableLessons.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveLesson(idx, 'down');
+                          }}
+                          className="text-slate-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed p-0.5 rounded hover:bg-slate-800 transition-colors"
+                          title="تحريك الدرس للأسفل (تأخير الترتيب)"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
                       <button
                         type="button"
                         onClick={() => setSelectedLessonIndex(idx)}
-                        className="flex-1 p-2.5 text-right flex flex-col justify-between cursor-pointer truncate"
+                        className="flex-1 p-2 text-right flex flex-col justify-between cursor-pointer truncate min-w-0"
                       >
                         <span className="text-[10px] font-mono text-sky-400 font-bold block">
                           Target #{l.targetIndex}
@@ -973,7 +1199,7 @@ function doPost(e) {
                           e.stopPropagation();
                           handleDeleteLesson(idx);
                         }}
-                        className="px-2 text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 rounded-l-xl transition-colors cursor-pointer"
+                        className="px-2 text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 border-r border-slate-800/80 transition-colors cursor-pointer flex-shrink-0 flex items-center justify-center"
                         title="حذف هذا الدرس"
                         aria-label={`حذف ${l.title}`}
                       >
@@ -1166,6 +1392,26 @@ function doPost(e) {
                             </div>
 
                             <div className="flex items-center gap-1.5 self-end md:self-center flex-shrink-0">
+                              {/* Video Reordering Buttons */}
+                              <button
+                                type="button"
+                                disabled={vidIdx === 0}
+                                onClick={() => handleMoveVideo(vidIdx, 'up')}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
+                                title="تحريك الفيديو للأعلى (تقديم الترتيب)"
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={vidIdx === getLessonVideos(currentLesson).length - 1}
+                                onClick={() => handleMoveVideo(vidIdx, 'down')}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
+                                title="تحريك الفيديو للأسفل (تأخير الترتيب)"
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+
                               {vid.url && (
                                 <a
                                   href={vid.url}
@@ -1323,6 +1569,26 @@ function doPost(e) {
                               >
                                 {isThisPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                                 <span>{isThisPlaying ? 'إيقاف' : 'تجربة الصوت'}</span>
+                              </button>
+
+                              {/* Audio Reordering Buttons */}
+                              <button
+                                type="button"
+                                disabled={audIdx === 0}
+                                onClick={() => handleMoveAudio(audIdx, 'up')}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
+                                title="تحريك التسجيل للأعلى (تقديم الترتيب)"
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={audIdx === getLessonAudios(currentLesson).length - 1}
+                                onClick={() => handleMoveAudio(audIdx, 'down')}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
+                                title="تحريك التسجيل للأسفل (تأخير الترتيب)"
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" />
                               </button>
 
                               {!isData && aud.url && (
@@ -1635,9 +1901,17 @@ function doPost(e) {
                         <button
                           type="button"
                           onClick={() => {
-                            if (window.confirm('هل أنت متأكد من رغبتك في حذف كافة صور هذا الدرس؟')) {
-                              handleFieldChange('images', []);
-                            }
+                            setConfirmModal({
+                              isOpen: true,
+                              title: 'مسح كافة صور الدرس',
+                              message: 'هل أنت متأكد من رغبتك في حذف كافة صور هذا الدرس؟ سيتم الاعتماد على صورة الكتاب تلقائياً.',
+                              confirmText: 'نعم، مسح كافة الصور',
+                              isDestructive: true,
+                              onConfirm: () => {
+                                handleFieldChange('images', []);
+                                setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+                              }
+                            });
                           }}
                           className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
                           title="حذف كافة صور الشرح والاعتماد على صورة الكتاب تلقائياً"
@@ -2428,6 +2702,17 @@ function doPost(e) {
                       <span>💾 تنزيل content.json لـ GitHub</span>
                     </button>
 
+                    {/* زر نسخ كود TypeScript لتحديث lessons.ts في المستودع مباشرة */}
+                    <button
+                      type="button"
+                      onClick={handleCopyLessonsTsCode}
+                      className="px-3.5 py-2 rounded-xl bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                      title="نسخ كود TypeScript لتحديث ملف src/data/lessons.ts في المستودع حتى تظهر الدروس للجميع بعد النشر"
+                    >
+                      {copiedLessonsTs ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-indigo-300" />}
+                      <span>{copiedLessonsTs ? '✓ تم نسخ الكود!' : '📋 نسخ كود lessons.ts للمستودع'}</span>
+                    </button>
+
                     {/* 3. استيراد ملف content.json من الجهاز */}
                     <label className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 border border-slate-700 active:scale-95">
                       <Upload className="w-3.5 h-3.5 text-sky-400" />
@@ -2817,6 +3102,18 @@ function doPost(e) {
             ✕ إغلاق
           </button>
         </div>
+
+        {/* In-app custom confirmation modal */}
+        <ConfirmModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText={confirmModal.confirmText}
+          cancelText={confirmModal.cancelText}
+          isDestructive={confirmModal.isDestructive}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+        />
       </div>
     </div>
   );
