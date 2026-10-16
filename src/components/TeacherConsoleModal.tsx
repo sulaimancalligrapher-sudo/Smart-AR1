@@ -237,6 +237,9 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [submissions, setSubmissions] = useState<StudentSubmission[]>(() => getStoredSubmissions());
   const [submissionFilterLesson, setSubmissionFilterLesson] = useState<string>('all');
   const [showMindARDetails, setShowMindARDetails] = useState<boolean>(false);
+  const [showPublishingGuide, setShowPublishingGuide] = useState<boolean>(false);
+  const [showSequenceTable, setShowSequenceTable] = useState<boolean>(false);
+  const [selectedSequenceTargetIndex, setSelectedSequenceTargetIndex] = useState<number>(0);
 
   useEffect(() => {
     return () => {
@@ -1523,64 +1526,65 @@ function doPost(e) {
             {/* التبويبات الأفقية الأربعة للدرس المحدد */}
             {currentLesson && (
               <div className="space-y-4">
-                {/* شريط التبويبات الأفقية الأربعة الأنيق */}
+                {/* شريط التبويبات الأفقية الأربعة الأنيق والمختصر */}
                 <div className="flex items-center gap-1.5 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto shadow-lg">
+                  {/* 1. بيانات */}
                   <button
                     type="button"
                     onClick={() => setLessonSubTab('general')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                       lessonSubTab === 'general'
                         ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
                         : 'text-slate-400 hover:text-white hover:bg-slate-900'
                     }`}
                   >
                     <BookOpen className="w-4 h-4" />
-                    <span>📝 البيانات والصفحات</span>
+                    <span>بيانات</span>
                   </button>
 
+                  {/* 2. وسائط */}
                   <button
                     type="button"
                     onClick={() => setLessonSubTab('media')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                       lessonSubTab === 'media'
                         ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
                         : 'text-slate-400 hover:text-white hover:bg-slate-900'
                     }`}
                   >
                     <Video className="w-4 h-4" />
-                    <span>🎬 الوسائط والشرح</span>
-                    <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 text-[10px]">
-                      {getLessonVideos(currentLesson).length + getLessonAudios(currentLesson).length}
-                    </span>
+                    <span>وسائط</span>
                   </button>
 
+                  {/* 3. (3D & AR) مع أيقونتين */}
                   <button
                     type="button"
                     onClick={() => setLessonSubTab('model3d')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                       lessonSubTab === 'model3d'
                         ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
                         : 'text-slate-400 hover:text-white hover:bg-slate-900'
                     }`}
                   >
-                    <Box className="w-4 h-4" />
-                    <span>🧊 المجسم التفاعلي (3D & AR)</span>
+                    <div className="flex items-center gap-1">
+                      <Box className="w-4 h-4" />
+                      <Layers className="w-3.5 h-3.5 opacity-85" />
+                    </div>
+                    <span>(3D & AR)</span>
                   </button>
 
+                  {/* 4. أسئلة */}
                   <button
                     type="button"
                     onClick={() => setLessonSubTab('questions')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                       lessonSubTab === 'questions'
                         ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
                         : 'text-slate-400 hover:text-white hover:bg-slate-900'
                     }`}
                   >
                     <HelpCircle className="w-4 h-4" />
-                    <span>❓ بنك الأسئلة وتسجيل الإجابات</span>
-                    <span className="px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 text-[10px] font-bold">
-                      {getLessonQuestions(currentLesson).length}
-                    </span>
+                    <span>أسئلة</span>
                   </button>
                 </div>
 
@@ -2766,177 +2770,285 @@ function doPost(e) {
                   )}
                 </div>
 
-            {/* Project Export & MindAR Publishing Hub */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            {/* زر دليل النشر وتحديث ملفات المشروع الموحد (زر واحد أنيق قابل للفتح والإغلاق) */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowPublishingGuide((prev) => !prev)}
+                className="w-full py-3 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 border border-sky-500/30 hover:border-sky-400 transition-all cursor-pointer flex items-center justify-between shadow-lg group active:scale-[0.99]"
+              >
                 <div className="flex items-center gap-2.5">
-                  <span className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
-                    <Download className="w-5 h-5" />
+                  <span className="p-2 rounded-lg bg-sky-500/15 text-sky-400 group-hover:bg-sky-500/25 transition-colors">
+                    <Download className="w-4 h-4" />
                   </span>
-                  <div>
-                    <h4 className="text-sm sm:text-base font-bold text-white">
-                      دليل نشر وتحديث ملفات المشروع لـ Vercel
+                  <div className="text-right">
+                    <h4 className="text-xs sm:text-sm font-bold text-white group-hover:text-sky-200 transition-colors">
+                      🚀 زر دليل نشر وتحديث ملفات المشروع (Vercel & GitHub)
                     </h4>
-                    <p className="text-xs text-slate-400">
-                      خطوتان سهلتان لتفعيل تحديثات الدروس وقراءة الكاميرا لجميع الطلاب في التطبيق
-                    </p>
                   </div>
                 </div>
-              </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-300 font-medium border border-sky-500/20">
+                    {showPublishingGuide ? 'إخفاء الدليل ▲' : 'فتح الدليل والملفات ▼'}
+                  </span>
+                  <div className="p-1 rounded-md bg-slate-800 text-sky-400">
+                    {showPublishingGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </div>
+                </div>
+              </button>
+            </div>
 
-              {/* 🎯 Visual Sequence Mapping Table for MindAR */}
-              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-sky-500/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-lg bg-sky-500/20 text-sky-400">
-                      <Layers className="w-4 h-4" />
+            {/* محتوى دليل النشر عند النقر على الزر أعلاه */}
+            {showPublishingGuide && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4 animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
+                      <Download className="w-5 h-5" />
                     </span>
                     <div>
-                      <h5 className="text-xs sm:text-sm font-bold text-white">
-                        🎯 جدول الترتيب الإلزامي لصور صفحات الكتاب في موقع MindAR
-                      </h5>
-                      <p className="text-[11px] text-slate-300">
-                        يجب سحب الصور في موقع MindAR بنفس هذا الترتيب تماماً لضمان قراءة الدرس الصحيح:
+                      <h4 className="text-sm sm:text-base font-bold text-white">
+                        دليل نشر وتحديث ملفات المشروع لـ Vercel
+                      </h4>
+                      <p className="text-xs text-slate-400">
+                        خطوتان سهلتان لتفعيل تحديثات الدروس وقراءة الكاميرا لجميع الطلاب في التطبيق
                       </p>
                     </div>
                   </div>
-                  <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-slate-800 text-sky-300 border border-slate-700">
-                    إجمالي الدروس: {editableLessons.length}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {buildMultiTargetMap(editableLessons).entries.map((entry) => (
-                    <div 
-                      key={`entry_${entry.globalTargetIndex}_${entry.lessonId}`} 
-                      className={`p-2.5 rounded-lg border flex items-center gap-2.5 ${
-                        entry.isPrimary ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/70 border-indigo-500/30'
-                      }`}
-                    >
-                      <div className="w-12 h-12 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {entry.imageUrl ? (
-                          <img src={normalizeImageUrl(entry.imageUrl)} alt={entry.pageLabel} className="w-full h-full object-contain" />
-                        ) : (
-                          <span className="text-[9px] text-slate-500 text-center">لا توجد صورة</span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-[10px] font-bold">
-                            ترتيب #{entry.globalTargetIndex + 1}
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400">
-                            (Target {entry.globalTargetIndex})
-                          </span>
-                          {!entry.isPrimary && (
-                            <span className="px-1 py-0.2 rounded bg-indigo-500/30 text-indigo-200 text-[9px]">
-                              صفحة إضافية
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs font-bold text-white truncate mt-1">
-                          {entry.pageLabel}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Step 1: content.json */}
-                <div className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/30 flex flex-col justify-between space-y-3">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-emerald-400">الملف الأساسي (محتوى الدروس)</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
-                        content.json
-                      </span>
-                    </div>
-                    <h5 className="text-sm font-bold text-white">تصدير ملف بيانات ومحتوى الدروس</h5>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      يحفظ عناوين كل الدروس، وروابط فيديوهات اليوتيوب، والتسجيل الصوتي، وروابط صور الشرح ومعرض الدرس، وأسماء المجسمات وأسئلة الاختبار.
-                    </p>
-                    <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-[11px] text-emerald-200 leading-relaxed">
-                      💡 <strong>لتحديث الجوال والتابلت:</strong> نزّل هذا الملف وضعه في <code className="text-emerald-300 font-bold font-mono">public/data/content.json</code> ثم ارفعه لمستودعك على GitHub لينشر تلقائياً لـ Vercel.
-                    </div>
-                  </div>
-
                   <button
                     type="button"
-                    onClick={handleDownloadContentJson}
-                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+                    onClick={() => setShowPublishingGuide(false)}
+                    className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1"
                   >
-                    <Download className="w-4 h-4" />
-                    <span>💾 تنزيل ملف content.json الآن</span>
+                    <span>إغلاق الدليل</span>
+                    <ChevronUp className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                {/* Step 2: MindAR Official Tool */}
-                <div className="p-4 rounded-xl bg-slate-900/90 border border-sky-500/30 flex flex-col justify-between space-y-3">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-sky-400">ملف الكاميرا فقط (اختياري)</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
-                        targets.mind
-                      </span>
-                    </div>
-                    <h5 className="text-sm font-bold text-white">بصمات تعرّف الكاميرا البصرية</h5>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      هذا الملف خاص بكاميرا الهاتف للتعرف على الورقة المطبوعة. <strong>لا تحتاجه</strong> إذا كنت فقط تعدل الروابط أو الصور الإضافية أو المجسمات؛ تحتاجه فقط إذا غيرت صورة صفحة الكتاب المطبوعة ذاتها.
-                    </p>
-                    <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-500/30 text-[11px] text-sky-200 leading-relaxed">
-                      📁 مسار الحفظ إذا استخرجته: <code className="text-sky-300 font-bold font-mono">public/targets/targets.mind</code>
-                    </div>
-                  </div>
+                {/* 🎯 Visual Sequence Mapping for MindAR - Dropdown List */}
+                {(() => {
+                  const targetMap = buildMultiTargetMap(editableLessons);
+                  const entries = targetMap.entries;
+                  const activeEntry = entries.find((e) => e.globalTargetIndex === selectedSequenceTargetIndex) || entries[0];
 
-                  <div className="flex flex-col gap-2">
+                  return (
+                    <div className="p-3.5 rounded-xl bg-slate-900/90 border border-sky-500/30 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <label className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-sky-400" />
+                          <span>🎯 قائمة الترتيب الإلزامي لصور صفحات الكتاب في موقع MindAR</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono font-bold">
+                            {entries.length} صفحة
+                          </span>
+                        </label>
+                        <span className="text-[10px] text-amber-300 bg-amber-950/60 px-2.5 py-0.5 rounded-md border border-amber-500/20 font-medium self-start sm:self-auto">
+                          ⚠️ يجب سحب الصور في MindAR بنفس هذا الترتيب
+                        </span>
+                      </div>
+
+                      {/* القائمة المنسدلة لاختيار ومعاينة ترتيب أي صفحة دون أخذ مساحة من الصفحة */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={activeEntry ? activeEntry.globalTargetIndex : 0}
+                            onChange={(e) => setSelectedSequenceTargetIndex(Number(e.target.value))}
+                            className="flex-1 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs sm:text-sm text-sky-200 font-medium focus:outline-none focus:border-sky-400 cursor-pointer shadow-inner"
+                          >
+                            {entries.map((entry) => (
+                              <option key={`entry_opt_${entry.globalTargetIndex}_${entry.lessonId}`} value={entry.globalTargetIndex}>
+                                ترتيب #{entry.globalTargetIndex + 1} (Target {entry.globalTargetIndex}): {entry.pageLabel} {entry.isPrimary ? '— (صفحة الدرس الأساسية)' : '— (صفحة إضافية)'}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowSequenceTable((prev) => !prev)}
+                            className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold whitespace-nowrap border border-slate-700 cursor-pointer transition-colors flex items-center gap-1.5"
+                            title="عرض أو إخفاء الجدول الشبكي المصغر للكل"
+                          >
+                            <span>{showSequenceTable ? 'إخفاء الشبكة ▲' : 'عرض الكل كجدول ▼'}</span>
+                          </button>
+                        </div>
+
+                        {/* كرت معاينة الصفحة المحددة من القائمة المنسدلة فقط (موجز وموفر للمساحة) */}
+                        {activeEntry && !showSequenceTable && (
+                          <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 ${
+                            activeEntry.isPrimary ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/80 border-indigo-500/30'
+                          }`}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-12 h-12 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                {activeEntry.imageUrl ? (
+                                  <img src={normalizeImageUrl(activeEntry.imageUrl)} alt={activeEntry.pageLabel} className="w-full h-full object-contain" />
+                                ) : (
+                                  <span className="text-[9px] text-slate-500 text-center">لا توجد صورة</span>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 font-mono text-[11px] font-bold">
+                                    ترتيب #{activeEntry.globalTargetIndex + 1}
+                                  </span>
+                                  <span className="text-[11px] font-mono text-slate-400">
+                                    (Target {activeEntry.globalTargetIndex})
+                                  </span>
+                                  <span className={`px-1.5 py-0.2 rounded text-[10px] ${
+                                    activeEntry.isPrimary ? 'bg-emerald-500/20 text-emerald-300' : 'bg-indigo-500/25 text-indigo-300'
+                                  }`}>
+                                    {activeEntry.isPrimary ? 'صفحة رئيسية' : 'صفحة إضافية'}
+                                  </span>
+                                </div>
+                                <p className="text-xs sm:text-sm font-bold text-white truncate mt-1">
+                                  {activeEntry.pageLabel}
+                                </p>
+                              </div>
+                            </div>
+
+                            <span className="text-[11px] text-slate-400 hidden sm:inline-block">
+                              اختر أي صفحة من القائمة أعلاه لمعاينتها
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* القائمة الشبكية الكاملة (تفتح فقط عند طلب المعلم لعرض الكل) */}
+                      {showSequenceTable && (
+                        <div className="space-y-2 pt-2 border-t border-slate-800 animate-fadeIn">
+                          <p className="text-[11px] text-amber-300 bg-amber-950/40 p-2 rounded-lg border border-amber-500/20">
+                            ⚠️ يجب سحب الصور في موقع MindAR بنفس هذا الترتيب التسلسلي تماماً لضمان قراءة الدرس الصحيح للكاميرا:
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
+                            {entries.map((entry) => (
+                              <div 
+                                key={`entry_${entry.globalTargetIndex}_${entry.lessonId}`} 
+                                className={`p-2.5 rounded-lg border flex items-center gap-2.5 ${
+                                  entry.isPrimary ? 'bg-slate-950 border-slate-800' : 'bg-slate-950/70 border-indigo-500/30'
+                                }`}
+                              >
+                                <div className="w-12 h-12 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                  {entry.imageUrl ? (
+                                    <img src={normalizeImageUrl(entry.imageUrl)} alt={entry.pageLabel} className="w-full h-full object-contain" />
+                                  ) : (
+                                    <span className="text-[9px] text-slate-500 text-center">لا توجد صورة</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-[10px] font-bold">
+                                      ترتيب #{entry.globalTargetIndex + 1}
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      (Target {entry.globalTargetIndex})
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-bold text-white truncate mt-1">
+                                    {entry.pageLabel}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Step 1: content.json */}
+                  <div className="p-4 rounded-xl bg-slate-900/90 border border-emerald-500/30 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-emerald-400">الملف الأساسي (محتوى الدروس)</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                          content.json
+                        </span>
+                      </div>
+                      <h5 className="text-sm font-bold text-white">تصدير ملف بيانات ومحتوى الدروس</h5>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        يحفظ عناوين كل الدروس، وروابط فيديوهات اليوتيوب، والتسجيل الصوتي، وروابط صور الشرح ومعرض الدرس، وأسماء المجسمات وأسئلة الاختبار.
+                      </p>
+                      <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-[11px] text-emerald-200 leading-relaxed">
+                        💡 <strong>لتحديث الجوال والتابلت:</strong> نزّل هذا الملف وضعه في <code className="text-emerald-300 font-bold font-mono">public/data/content.json</code> ثم ارفعه لمستودعك على GitHub لينشر تلقائياً لـ Vercel.
+                      </div>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={handleDownloadFixedTargetsMind}
-                      className="w-full py-2.5 px-4 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-bold text-xs shadow-lg shadow-sky-700/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 text-center"
+                      onClick={handleDownloadContentJson}
+                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
                     >
                       <Download className="w-4 h-4" />
-                      <span>⚡ تنزيل ملف targets.mind للكاميرا</span>
+                      <span>💾 تنزيل ملف content.json الآن</span>
                     </button>
-                    <a
-                      href="https://hiukim.github.io/mind-ar-js-doc/tools/compile"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-all text-center border border-slate-700"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>أداة MindAR الرسمية (لإعادة التجميع يدوياً) ↗</span>
-                    </a>
+                  </div>
+
+                  {/* Step 2: MindAR Official Tool */}
+                  <div className="p-4 rounded-xl bg-slate-900/90 border border-sky-500/30 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-sky-400">ملف الكاميرا فقط (اختياري)</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
+                          targets.mind
+                        </span>
+                      </div>
+                      <h5 className="text-sm font-bold text-white">بصمات تعرّف الكاميرا البصرية</h5>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        هذا الملف خاص بكاميرا الهاتف للتعرف على الورقة المطبوعة. <strong>لا تحتاجه</strong> إذا كنت فقط تعدل الروابط أو الصور الإضافية أو المجسمات؛ تحتاجه فقط إذا غيرت صورة صفحة الكتاب المطبوعة ذاتها.
+                      </p>
+                      <div className="p-2 rounded-lg bg-sky-950/60 border border-sky-500/30 text-[11px] text-sky-200 leading-relaxed">
+                        📁 مسار الحفظ إذا استخرجته: <code className="text-sky-300 font-bold font-mono">public/targets/targets.mind</code>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadFixedTargetsMind}
+                        className="w-full py-2.5 px-4 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-bold text-xs shadow-lg shadow-sky-700/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 text-center"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>⚡ تنزيل ملف targets.mind للكاميرا</span>
+                      </button>
+                      <a
+                        href="https://hiukim.github.io/mind-ar-js-doc/tools/compile"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 font-medium text-xs flex items-center justify-center gap-2 cursor-pointer transition-all text-center border border-slate-700"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>أداة MindAR الرسمية (لإعادة التجميع يدوياً) ↗</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Solved diagnosis banner */}
+                <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 space-y-2 text-xs">
+                  <div className="flex items-center gap-2 text-emerald-300 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>حل مشكلة الترتيب (الصورة 1 تظهر درس 2، والصورة 2 تظهر درس 3، والصورة 3 لا تعمل):</span>
+                  </div>
+                  <p className="text-emerald-100/90 leading-relaxed text-[11px]">
+                    <strong>سبب المشكلة:</strong> ملف <code className="text-emerald-300">targets.mind</code> القديم في المستودع كان يحتوي على <strong>4 أهداف</strong> (حيث تم رفع صورة فارغة أو غلاف كهدف رقم 0 أولاً)، مما أدى لترحيل كتاب الرقعة للهدف 1 (الدرس الثاني)، وكتاب الديواني للهدف 2 (الدرس الثالث)، وكتاب النسخ للهدف 3 (غير موجود في قائمة الدروس).
+                  </p>
+                  <div className="p-2 rounded-lg bg-black/40 border border-emerald-500/20 text-[11px] text-emerald-200">
+                    ✅ <strong>الحل:</strong> حمّل ملف <strong>targets.mind</strong> المصحح بالزر أعلاه وضعه في <code className="text-emerald-300">public/targets/targets.mind</code> بمستودع GitHub لديك، وسيعمل كل درس مع صورته الصحيحة بنسبة 100%!
+                  </div>
+                </div>
+
+                {/* Tips for Best Image Quality & 3D / GIF notice */}
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-2.5 text-xs text-slate-400">
+                  <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-slate-200">إرشادات مفيدة لجودة الصور والمحتوى:</span>
+                    <p className="text-[11px] leading-relaxed">
+                      الدقة المثالية لصور صفحات الكتاب بين 600px و 1200px (JPG/PNG). وتدعم بطاقة الشرح الصور المتحركة (GIF) لشرح التجارب العلمية التفاعلية!
+                    </p>
                   </div>
                 </div>
               </div>
-
-              {/* Solved diagnosis banner */}
-              <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 space-y-2 text-xs">
-                <div className="flex items-center gap-2 text-emerald-300 font-bold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>حل مشكلة الترتيب (الصورة 1 تظهر درس 2، والصورة 2 تظهر درس 3، والصورة 3 لا تعمل):</span>
-                </div>
-                <p className="text-emerald-100/90 leading-relaxed text-[11px]">
-                  <strong>سبب المشكلة:</strong> ملف <code className="text-emerald-300">targets.mind</code> القديم في المستودع كان يحتوي على <strong>4 أهداف</strong> (حيث تم رفع صورة فارغة أو غلاف كهدف رقم 0 أولاً)، مما أدى لترحيل كتاب الرقعة للهدف 1 (الدرس الثاني)، وكتاب الديواني للهدف 2 (الدرس الثالث)، وكتاب النسخ للهدف 3 (غير موجود في قائمة الدروس).
-                </p>
-                <div className="p-2 rounded-lg bg-black/40 border border-emerald-500/20 text-[11px] text-emerald-200">
-                  ✅ <strong>الحل:</strong> حمّل ملف <strong>targets.mind</strong> المصحح بالزر أعلاه وضعه في <code className="text-emerald-300">public/targets/targets.mind</code> بمستودع GitHub لديك، وسيعمل كل درس مع صورته الصحيحة بنسبة 100%!
-                </div>
-              </div>
-
-              {/* Tips for Best Image Quality & 3D / GIF notice */}
-              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-2.5 text-xs text-slate-400">
-                <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <span className="font-bold text-slate-200">إرشادات مفيدة لجودة الصور والمحتوى:</span>
-                  <p className="text-[11px] leading-relaxed">
-                    الدقة المثالية لصور صفحات الكتاب بين 600px و 1200px (JPG/PNG). وتدعم بطاقة الشرح الصور المتحركة (GIF) لشرح التجارب العلمية التفاعلية!
-                  </p>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
