@@ -3,7 +3,8 @@ import {
   X, Database, Send, Trash2, CheckCircle2, AlertCircle, Copy, Check, 
   FileSpreadsheet, ExternalLink, BookOpen, Edit3, Image, Video, Music, 
   HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
-  Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown
+  Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown,
+  Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
 import {
@@ -13,9 +14,13 @@ import {
   LessonImage,
   LessonVideo,
   LessonAudio,
+  LessonQuestion,
+  QuestionType,
+  StudentSubmission,
   getActiveLessonModel,
   getLessonVideos,
   getLessonAudios,
+  getLessonQuestions,
   normalizeVideoData,
   normalizeAudioData,
   resolveAssetUrl
@@ -26,6 +31,8 @@ import { normalizeImageUrl, normalizeAudioUrl, getAlternativeImageUrls } from '.
 import { buildMultiTargetMap } from '../services/targetCompiler';
 import { optimizeImageFile } from '../services/imageOptimizer';
 import { ConfirmModal } from './ConfirmModal';
+import { getStoredSubmissions, clearAllSubmissions, recordStudentSubmission } from '../services/studentSubmissions';
+import { LessonQuestionsEditor } from './LessonQuestionsEditor';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -210,6 +217,26 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   });
 
   const [copiedLessonsTs, setCopiedLessonsTs] = useState(false);
+
+  // 4 Horizontal Tabs within Lesson Editor
+  const [lessonSubTab, setLessonSubTab] = useState<'general' | 'media' | 'model3d' | 'questions'>('general');
+  // Question Bank sub-tab
+  const [questionSubTab, setQuestionSubTab] = useState<'builder' | 'submissions'>('builder');
+
+  // Question Form State
+  const [newQType, setNewQType] = useState<QuestionType>('multiple_choice');
+  const [newQText, setNewQText] = useState<string>('');
+  const [newQOptions, setNewQOptions] = useState<string[]>(['', '', '', '']);
+  const [newQCorrectIndex, setNewQCorrectIndex] = useState<number>(0);
+  const [newQCorrectAnswerText, setNewQCorrectAnswerText] = useState<string>('');
+  const [newQExplanation, setNewQExplanation] = useState<string>('');
+  const [newQPoints, setNewQPoints] = useState<number>(1);
+  const [questionNotice, setQuestionNotice] = useState<string | null>(null);
+
+  // Student Submissions State
+  const [submissions, setSubmissions] = useState<StudentSubmission[]>(() => getStoredSubmissions());
+  const [submissionFilterLesson, setSubmissionFilterLesson] = useState<string>('all');
+  const [showMindARDetails, setShowMindARDetails] = useState<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -850,6 +877,232 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     });
   };
 
+  // Question Management Handlers
+  const handleAddQuestion = () => {
+    if (!newQText.trim()) {
+      setQuestionNotice('⚠️ يرجى كتابة نص السؤال أولاً');
+      return;
+    }
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+
+    const currentQuestions = getLessonQuestions(curLesson);
+    const qId = `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    let questionObj: LessonQuestion;
+    if (newQType === 'multiple_choice') {
+      const validOptions = newQOptions.map((o) => o.trim()).filter(Boolean);
+      if (validOptions.length < 2) {
+        setQuestionNotice('⚠️ يرجى إدخال خيارين على الأقل لسؤال الاختيار من متعدد');
+        return;
+      }
+      const safeCorrectIndex = Math.min(newQCorrectIndex, validOptions.length - 1);
+      questionObj = {
+        id: qId,
+        type: 'multiple_choice',
+        question: newQText.trim(),
+        options: validOptions,
+        correctIndex: safeCorrectIndex,
+        explanation: newQExplanation.trim() || undefined,
+        points: Number(newQPoints) || 1
+      };
+    } else {
+      if (!newQCorrectAnswerText.trim()) {
+        setQuestionNotice('⚠️ يرجى كتابة الإجابة النموذجية أو الكلمات المفتاحية للسؤال النصي');
+        return;
+      }
+      questionObj = {
+        id: qId,
+        type: 'text_answer',
+        question: newQText.trim(),
+        correctAnswerText: newQCorrectAnswerText.trim(),
+        explanation: newQExplanation.trim() || undefined,
+        points: Number(newQPoints) || 1
+      };
+    }
+
+    const updatedQuestions = [...currentQuestions, questionObj];
+    const nextLessons = [...editableLessons];
+    const cur = { ...curLesson, questions: updatedQuestions };
+    if (updatedQuestions[0]?.type === 'multiple_choice') {
+      cur.description = {
+        ...cur.description,
+        quiz: {
+          question: updatedQuestions[0].question,
+          options: updatedQuestions[0].options || [],
+          correctIndex: updatedQuestions[0].correctIndex ?? 0,
+          explanation: updatedQuestions[0].explanation || ''
+        }
+      };
+    }
+    nextLessons[selectedLessonIndex] = cur;
+    setEditableLessons(nextLessons);
+    if (onUpdateLessons) onUpdateLessons(nextLessons);
+    saveStoredLessons(nextLessons);
+
+    setNewQText('');
+    setNewQOptions(['', '', '', '']);
+    setNewQCorrectIndex(0);
+    setNewQCorrectAnswerText('');
+    setNewQExplanation('');
+    setNewQPoints(1);
+    setQuestionNotice('✓ تمت إضافة السؤال بنجاح إلى بنك أسئلة الدرس!');
+    setTimeout(() => setQuestionNotice(null), 3500);
+  };
+
+  const handleDeleteQuestion = (qIdx: number) => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentQuestions = getLessonQuestions(curLesson);
+    const targetQ = currentQuestions[qIdx];
+    const qTitle = targetQ?.question || `السؤال رقم ${qIdx + 1}`;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'تأكيد حذف السؤال',
+      message: `هل أنت متأكد من حذف السؤال "${qTitle.length > 50 ? qTitle.slice(0, 50) + '...' : qTitle}" من هذا الدرس؟`,
+      confirmText: 'نعم، حذف السؤال',
+      isDestructive: true,
+      onConfirm: () => {
+        const updated = currentQuestions.filter((_, i) => i !== qIdx);
+        const nextLessons = [...editableLessons];
+        const cur = { ...curLesson, questions: updated };
+        if (updated.length > 0 && updated[0]?.type === 'multiple_choice') {
+          cur.description = {
+            ...cur.description,
+            quiz: {
+              question: updated[0].question,
+              options: updated[0].options || [],
+              correctIndex: updated[0].correctIndex ?? 0,
+              explanation: updated[0].explanation || ''
+            }
+          };
+        } else if (updated.length === 0 && cur.description) {
+          cur.description = { ...cur.description, quiz: undefined };
+        }
+        nextLessons[selectedLessonIndex] = cur;
+        setEditableLessons(nextLessons);
+        if (onUpdateLessons) onUpdateLessons(nextLessons);
+        saveStoredLessons(nextLessons);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        setQuestionNotice('✓ تم حذف السؤال بنجاح!');
+        setTimeout(() => setQuestionNotice(null), 3000);
+      }
+    });
+  };
+
+  const handleMoveQuestion = (qIdx: number, direction: 'up' | 'down') => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentQuestions = [...getLessonQuestions(curLesson)];
+    const targetIdx = direction === 'up' ? qIdx - 1 : qIdx + 1;
+    if (targetIdx < 0 || targetIdx >= currentQuestions.length) return;
+
+    const temp = currentQuestions[qIdx];
+    currentQuestions[qIdx] = currentQuestions[targetIdx];
+    currentQuestions[targetIdx] = temp;
+
+    const nextLessons = [...editableLessons];
+    nextLessons[selectedLessonIndex] = {
+      ...curLesson,
+      questions: currentQuestions
+    };
+    setEditableLessons(nextLessons);
+    if (onUpdateLessons) onUpdateLessons(nextLessons);
+    saveStoredLessons(nextLessons);
+  };
+
+  const handleUpdateQuestion = (qIdx: number, patch: Partial<LessonQuestion>) => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    if (!curLesson) return;
+    const currentQuestions = [...getLessonQuestions(curLesson)];
+    if (!currentQuestions[qIdx]) return;
+
+    currentQuestions[qIdx] = {
+      ...currentQuestions[qIdx],
+      ...patch
+    };
+
+    const nextLessons = [...editableLessons];
+    nextLessons[selectedLessonIndex] = {
+      ...curLesson,
+      questions: currentQuestions
+    };
+    setEditableLessons(nextLessons);
+    if (onUpdateLessons) onUpdateLessons(nextLessons);
+    saveStoredLessons(nextLessons);
+  };
+
+  const handleRefreshSubmissions = () => {
+    setSubmissions(getStoredSubmissions());
+    setStatusNotice({ type: 'info', text: 'تم تحديث قائمة إجابات الطلاب.' });
+    setTimeout(() => setStatusNotice(null), 2500);
+  };
+
+  const handleClearSubmissions = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'مسح سجل إجابات الطلاب',
+      message: 'هل أنت متأكد من مسح جميع إجابات الطلاب المسجلة في هذا المتصفح؟',
+      confirmText: 'نعم، مسح السجل',
+      isDestructive: true,
+      onConfirm: () => {
+        clearAllSubmissions();
+        setSubmissions([]);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        setStatusNotice({ type: 'info', text: 'تم إفراغ سجل الإجابات.' });
+        setTimeout(() => setStatusNotice(null), 3000);
+      }
+    });
+  };
+
+  const handleAddSampleSubmission = () => {
+    const curLesson = editableLessons[selectedLessonIndex];
+    recordStudentSubmission({
+      studentName: 'أحمد سلطان (طالب تجريبي)',
+      studentPhone: '0551234567',
+      lessonId: curLesson?.targetId || 'lesson_001',
+      lessonTitle: curLesson?.title || 'درس تجريبي',
+      questionId: 'q_sample_1',
+      questionText: 'سؤال تجريبي لاختبار الربط وحفظ الإجابات في الشيت',
+      questionType: 'multiple_choice',
+      studentAnswer: 'الإجابة الأولى النموذجية',
+      isCorrect: true,
+      score: 1
+    });
+    setSubmissions(getStoredSubmissions());
+    setStatusNotice({
+      type: 'success',
+      text: '✓ تم تسجيل إجابة تجريبية بنجاح وإرسالها تلقائياً إلى Google Sheets!'
+    });
+    setTimeout(() => setStatusNotice(null), 4000);
+  };
+
+  const handleExportSubmissionsCsv = () => {
+    if (submissions.length === 0) {
+      alert('لا توجد إجابات مسجلة لتصديرها.');
+      return;
+    }
+    const headers = ['اسم الطالب', 'رقم الجوال / المشترك', 'الدرس', 'نوع السؤال', 'نص السؤال', 'إجابة الطالب', 'النتيجة', 'تاريخ ووقت الإرسال'];
+    const rows = submissions.map((s) => [
+      `"${s.studentName.replace(/"/g, '""')}"`,
+      `"${s.studentPhone.replace(/"/g, '""')}"`,
+      `"${s.lessonTitle.replace(/"/g, '""')}"`,
+      `"${s.questionType === 'multiple_choice' ? 'اختيار من متعدد' : 'إجابة نصية'}"`,
+      `"${s.questionText.replace(/"/g, '""')}"`,
+      `"${s.studentAnswer.replace(/"/g, '""')}"`,
+      `"${s.isCorrect ? 'صحيحة' : 'غير صحيحة'}"`,
+      `"${new Date(s.submittedAt).toLocaleString('ar-EG')}"`
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `student_answers_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  };
+
   const handleCopyLessonsTsCode = () => {
     const { updatedLessons } = buildMultiTargetMap(editableLessons);
     const sanitized = updatedLessons.map((l) => {
@@ -1159,95 +1412,91 @@ function doPost(e) {
               </div>
             </div>
 
-            {/* Lessons Selector Bar with Add & Delete */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-300">قائمة دروس كتابك المدرسي:</span>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {editableLessons.length === 0 ? 'لا توجد دروس حالياً' : `إجمالي الدروس: ${editableLessons.length}`}
-                </span>
-              </div>
+            {/* 1. شاشة البداية وشريط الاختيار العلوي الأنيق (بدون ازدحام) */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 min-w-0">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                      <span>اختر الدرس المراد تعديله:</span>
+                    </label>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      إجمالي الدروس: {editableLessons.length}
+                    </span>
+                  </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {editableLessons.map((l, idx) => {
-                  const isSelected = selectedLessonIndex === idx;
-                  return (
-                    <div
-                      key={l.targetId}
-                      className={`relative group rounded-xl border transition-all flex items-stretch overflow-hidden ${
-                        isSelected
-                          ? 'bg-sky-950/60 border-sky-500 text-white shadow-md'
-                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      {/* Reorder Up/Down for Lesson */}
-                      <div className="flex flex-col justify-center gap-1 py-1 px-1 border-l border-slate-800/80 bg-slate-900/50 flex-shrink-0">
-                        <button
-                          type="button"
-                          disabled={idx === 0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMoveLesson(idx, 'up');
-                          }}
-                          className="text-slate-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed p-0.5 rounded hover:bg-slate-800 transition-colors"
-                          title="تحريك الدرس للأعلى (تقديم الترتيب)"
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={idx === editableLessons.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMoveLesson(idx, 'down');
-                          }}
-                          className="text-slate-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed p-0.5 rounded hover:bg-slate-800 transition-colors"
-                          title="تحريك الدرس للأسفل (تأخير الترتيب)"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setSelectedLessonIndex(idx)}
-                        className="flex-1 p-2 text-right flex flex-col justify-between cursor-pointer truncate min-w-0"
+                  {editableLessons.length > 0 ? (
+                    <div className="relative">
+                      <select
+                        value={selectedLessonIndex}
+                        onChange={(e) => setSelectedLessonIndex(Number(e.target.value))}
+                        className="w-full pl-8 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 focus:border-sky-500 text-xs sm:text-sm font-bold text-white transition-all cursor-pointer focus:outline-none appearance-none shadow-sm"
                       >
-                        <span className="text-[10px] font-mono text-sky-400 font-bold block">
-                          Target #{l.targetIndex}
-                        </span>
-                        <span className="text-xs font-bold text-slate-100 truncate mt-1 block">
-                          {l.title || `درس ${idx + 1}`}
-                        </span>
-                      </button>
-
-                      {/* Delete Quick Button on Card */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteLesson(idx);
-                        }}
-                        className="px-2 text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 border-r border-slate-800/80 transition-colors cursor-pointer flex-shrink-0 flex items-center justify-center"
-                        title="حذف هذا الدرس"
-                        aria-label={`حذف ${l.title}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        {editableLessons.map((l, idx) => (
+                          <option key={l.targetId || idx} value={idx} className="bg-slate-950 text-white py-1">
+                            Target #{l.targetIndex}: {l.title || `درس ${idx + 1}`} {l.isFreePreview ? ' (🔓 تجربة مجانية)' : ' (🔒 للمشتركين)'}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-sky-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     </div>
-                  );
-                })}
+                  ) : (
+                    <div className="py-2 text-xs text-slate-500">
+                      لا توجد دروس حالياً، اضغط إضافة درس جديد للبدء.
+                    </div>
+                  )}
+                </div>
 
-                {/* Add New Lesson Button */}
-                <button
-                  type="button"
-                  onClick={handleAddNewLesson}
-                  className="p-3 rounded-xl border border-dashed border-sky-500/50 bg-sky-950/20 hover:bg-sky-950/40 text-sky-400 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ إضافة درس جديد</span>
-                </button>
+                {/* زر إضافة درس جديد بجانب القائمة المنسدلة */}
+                <div className="self-end sm:self-auto sm:pt-4">
+                  <button
+                    type="button"
+                    onClick={handleAddNewLesson}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-sky-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ إضافة درس جديد</span>
+                  </button>
+                </div>
               </div>
+
+              {/* أدوات سريعة للدرس المحدد (تقديم/تأخير/حذف) */}
+              {currentLesson && (
+                <div className="flex items-center justify-between sm:justify-end gap-2 border-t md:border-t-0 pt-2.5 md:pt-0 border-slate-800">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] text-slate-400 ml-1">ترتيب:</span>
+                    <button
+                      type="button"
+                      disabled={selectedLessonIndex === 0}
+                      onClick={() => handleMoveLesson(selectedLessonIndex, 'up')}
+                      className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed border border-slate-800 transition-colors"
+                      title="تحريك الدرس للأعلى (تقديم الترتيب)"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedLessonIndex === editableLessons.length - 1}
+                      onClick={() => handleMoveLesson(selectedLessonIndex, 'down')}
+                      className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed border border-slate-800 transition-colors"
+                      title="تحريك الدرس للأسفل (تأخير الترتيب)"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteLesson(selectedLessonIndex)}
+                    className="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="حذف هذا الدرس نهائياً"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>حذف الدرس</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Empty State when 0 lessons */}
@@ -1271,546 +1520,220 @@ function doPost(e) {
               </div>
             )}
 
-            {/* Current Lesson Edit Form */}
+            {/* التبويبات الأفقية الأربعة للدرس المحدد */}
             {currentLesson && (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Edit3 className="w-4 h-4 text-sky-400" />
-                    <span>تعديل بيانات: {currentLesson.title} (Target #{currentLesson.targetIndex})</span>
-                  </h4>
+              <div className="space-y-4">
+                {/* شريط التبويبات الأفقية الأربعة الأنيق */}
+                <div className="flex items-center gap-1.5 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => setLessonSubTab('general')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                      lessonSubTab === 'general'
+                        ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    <span>📝 البيانات والصفحات</span>
+                  </button>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-mono">
-                      ID: {currentLesson.targetId}
+                  <button
+                    type="button"
+                    onClick={() => setLessonSubTab('media')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                      lessonSubTab === 'media'
+                        ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <Video className="w-4 h-4" />
+                    <span>🎬 الوسائط والشرح</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 text-[10px]">
+                      {getLessonVideos(currentLesson).length + getLessonAudios(currentLesson).length}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteLesson(selectedLessonIndex)}
-                      className="px-2.5 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>حذف الدرس</span>
-                    </button>
-                  </div>
-                </div>
+                  </button>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Lesson Title */}
-                  <div className="space-y-1 md:col-span-1">
-                    <label className="text-xs font-bold text-slate-300">عنوان الدرس:</label>
-                    <input
-                      type="text"
-                      value={currentLesson.title}
-                      onChange={(e) => handleFieldChange('title', e.target.value)}
-                      placeholder="مثال: الخلية النباتية والبناء الضوئي"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLessonSubTab('model3d')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                      lessonSubTab === 'model3d'
+                        ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <Box className="w-4 h-4" />
+                    <span>🧊 المجسم التفاعلي (3D & AR)</span>
+                  </button>
 
-                  {/* Subject */}
-                  <div className="space-y-1 md:col-span-1">
-                    <label className="text-xs font-bold text-slate-300">المادة الدراسية:</label>
-                    <input
-                      type="text"
-                      value={currentLesson.subject}
-                      onChange={(e) => handleFieldChange('subject', e.target.value)}
-                      placeholder="العلوم / الفيزياء / الأحياء"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-
-                  {/* Grade */}
-                  <div className="space-y-1 md:col-span-1">
-                    <label className="text-xs font-bold text-slate-300">الصف الدراسي:</label>
-                    <input
-                      type="text"
-                      value={currentLesson.grade}
-                      onChange={(e) => handleFieldChange('grade', e.target.value)}
-                      placeholder="الصف الرابع الابتدائي"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-
-                  {/* Summary */}
-                  <div className="space-y-1 md:col-span-3">
-                    <label className="text-xs font-bold text-slate-300">ملخص وشرح الدرس:</label>
-                    <textarea
-                      rows={2}
-                      value={currentLesson.description.summary}
-                      onChange={(e) => handleFieldChange('summary', e.target.value)}
-                      placeholder="اكتب شرحاً ومعلومات مفيدة للطالب عند قراءة صفحة الدرس..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                    />
-                  </div>
-                </div>
-
-                {/* 🎬 بطاقة إدارة فيديوهات الدرس (دعم روابط متعددة: YouTube, MP4, Vimeo, Drive, مواقع أخرى) */}
-                <div className="p-3.5 rounded-xl bg-rose-950/20 border border-rose-500/40 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="p-1 rounded-lg bg-rose-500/20 text-rose-400">
-                        <Video className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>فيديوهات الدرس التعليمية (روابط متعددة)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono">
-                            {getLessonVideos(currentLesson).length} فيديو
-                          </span>
-                        </h5>
-                        <p className="text-[11px] text-slate-300">
-                          يمكنك إضافة أكثر من فيديو للدرس الواحد من YouTube أو Google Drive أو ملفات MP4 المباشرة أو أي موقع خارجي.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Notice for video */}
-                  {videoNotice && (
-                    <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-1.5 animate-fadeIn">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{videoNotice}</span>
-                    </div>
-                  )}
-
-                  {/* Existing Videos List */}
-                  {getLessonVideos(currentLesson).length > 0 ? (
-                    <div className="space-y-2">
-                      {getLessonVideos(currentLesson).map((vid, vidIdx) => {
-                        const platformBadge =
-                          vid.type === 'youtube'
-                            ? 'YouTube'
-                            : vid.type === 'vimeo'
-                            ? 'Vimeo'
-                            : vid.type === 'gdrive'
-                            ? 'Drive'
-                            : vid.type === 'mp4'
-                            ? 'MP4 مباشر'
-                            : 'رابط خارجي';
-
-                        return (
-                          <div
-                            key={vidIdx}
-                            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 text-xs"
-                          >
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="w-6 h-6 rounded-lg bg-rose-500/20 text-rose-300 font-bold flex items-center justify-center font-mono">
-                                #{vidIdx + 1}
-                              </span>
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">
-                                {platformBadge}
-                              </span>
-                            </div>
-
-                            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 min-w-0">
-                              <input
-                                type="text"
-                                value={vid.title}
-                                onChange={(e) => handleUpdateVideo(vidIdx, { title: e.target.value })}
-                                placeholder="عنوان المقطع (مثال: شرح الخطوات)"
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-rose-500"
-                              />
-                              <input
-                                type="url"
-                                value={vid.url}
-                                onChange={(e) => handleUpdateVideo(vidIdx, { url: e.target.value })}
-                                placeholder="رابط الفيديو (https://...)"
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-rose-500"
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-1.5 self-end md:self-center flex-shrink-0">
-                              {/* Video Reordering Buttons */}
-                              <button
-                                type="button"
-                                disabled={vidIdx === 0}
-                                onClick={() => handleMoveVideo(vidIdx, 'up')}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
-                                title="تحريك الفيديو للأعلى (تقديم الترتيب)"
-                              >
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={vidIdx === getLessonVideos(currentLesson).length - 1}
-                                onClick={() => handleMoveVideo(vidIdx, 'down')}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
-                                title="تحريك الفيديو للأسفل (تأخير الترتيب)"
-                              >
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              </button>
-
-                              {vid.url && (
-                                <a
-                                  href={vid.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-sky-400 hover:text-sky-300 transition-colors"
-                                  title="معاينة الرابط في تبويب جديد"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteVideo(vidIdx)}
-                                className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/30 transition-colors cursor-pointer"
-                                title="حذف هذا الفيديو"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="p-3 text-center text-xs text-slate-400 bg-slate-900/60 rounded-xl border border-dashed border-slate-800">
-                      لا توجد فيديوهات مضافة لهذا الدرس حتى الآن.
-                    </div>
-                  )}
-
-                  {/* Add New Video Form */}
-                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                      <Plus className="w-3.5 h-3.5 text-rose-400" />
-                      <span>إضافة فيديو جديد لهذا الدرس:</span>
+                  <button
+                    type="button"
+                    onClick={() => setLessonSubTab('questions')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                      lessonSubTab === 'questions'
+                        ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                    <span>❓ بنك الأسئلة وتسجيل الإجابات</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 text-[10px] font-bold">
+                      {getLessonQuestions(currentLesson).length}
                     </span>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        value={newVideoTitle}
-                        onChange={(e) => setNewVideoTitle(e.target.value)}
-                        placeholder="عنوان الفيديو (مثال: شرح المعلم للدرس)"
-                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
-                      />
-                      <input
-                        type="url"
-                        value={newVideoUrl}
-                        onChange={(e) => setNewVideoUrl(e.target.value)}
-                        placeholder="رابط الفيديو (YouTube، MP4، Drive، أو أي موقع آخر)"
-                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono focus:outline-none focus:border-rose-500"
-                      />
-                    </div>
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleAddVideo}
-                        className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-rose-600/20"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>إضافة الفيديو لقائمة الدرس</span>
-                      </button>
-                    </div>
-                  </div>
+                  </button>
                 </div>
 
-                {/* 🎵 بطاقة إدارة التسجيلات الصوتية للدرس (دعم ملفات متعددة: MP3, Drive, YouTube, رفع مباشر وتجربة الصوت) */}
-                <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/40 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400">
-                        <Music className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>التسجيلات الصوتية للدرس (روابط وملفات صوتية متعددة)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
-                            {getLessonAudios(currentLesson).length} تسجيل
-                          </span>
-                        </h5>
-                        <p className="text-[11px] text-slate-300">
-                          صوت الدرس منفصل تماماً عن صوت المجسم. يمكن للطالب الاستماع إليها عبر زر الصوت أو التنقل بين عدة مقاطع.
-                        </p>
-                      </div>
-                    </div>
+                {/* ========================================================================= */}
+                {/* 📝 التبويب 1: البيانات والصفحات ومستوى الوصول                             */}
+                {/* ========================================================================= */}
+                {lessonSubTab === 'general' && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4 animate-fadeIn">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Edit3 className="w-4 h-4 text-sky-400" />
+                        <span>بيانات الدرس والصفحات: {currentLesson.title} (Target #{currentLesson.targetIndex})</span>
+                      </h4>
 
-                    <label className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-700/20 transition-all flex-shrink-0 self-start sm:self-auto">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>📁 رفع ملف صوت من الجهاز (MP3)</span>
-                      <input
-                        type="file"
-                        accept="audio/*,.mp3,.wav,.ogg,.m4a"
-                        onChange={handleUploadLessonAudioLocal}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-
-                  {/* Notice for audio */}
-                  {audioNotice && (
-                    <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-1.5 animate-fadeIn">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{audioNotice}</span>
-                    </div>
-                  )}
-
-                  {/* Existing Audios List */}
-                  {getLessonAudios(currentLesson).length > 0 ? (
-                    <div className="space-y-2">
-                      {getLessonAudios(currentLesson).map((aud, audIdx) => {
-                        const isThisPlaying = playingLessonAudioUrl === aud.url;
-                        const isData = aud.url.startsWith('data:');
-                        return (
-                          <div
-                            key={audIdx}
-                            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 text-xs"
-                          >
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center font-mono">
-                                #{audIdx + 1}
-                              </span>
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">
-                                {isData ? 'ملف مرفوع' : aud.type || 'صوت'}
-                              </span>
-                            </div>
-
-                            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 min-w-0">
-                              <input
-                                type="text"
-                                value={aud.title}
-                                onChange={(e) => handleUpdateAudio(audIdx, { title: e.target.value })}
-                                placeholder="عنوان التسجيل (مثال: قراءة النص بصوت المعلم)"
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
-                              />
-                              <input
-                                type="url"
-                                value={isData ? 'ملف صوتي مرفوع محلياً (Data URL)' : aud.url}
-                                disabled={isData}
-                                onChange={(e) => handleUpdateAudio(audIdx, { url: e.target.value })}
-                                placeholder="رابط الصوت (https://.../audio.mp3)"
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60"
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-1.5 self-end md:self-center flex-shrink-0">
-                              {/* Test play button in console */}
-                              <button
-                                type="button"
-                                onClick={() => handleTestPlayLessonAudio(aud.url)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer border ${
-                                  isThisPlaying
-                                    ? 'bg-amber-500 text-slate-950 border-amber-400'
-                                    : 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border-emerald-500/30'
-                                }`}
-                                title={isThisPlaying ? 'إيقاف التجربة' : 'تجربة وتشغيل الصوت الآن للتأكد منه'}
-                              >
-                                {isThisPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                                <span>{isThisPlaying ? 'إيقاف' : 'تجربة الصوت'}</span>
-                              </button>
-
-                              {/* Audio Reordering Buttons */}
-                              <button
-                                type="button"
-                                disabled={audIdx === 0}
-                                onClick={() => handleMoveAudio(audIdx, 'up')}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
-                                title="تحريك التسجيل للأعلى (تقديم الترتيب)"
-                              >
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={audIdx === getLessonAudios(currentLesson).length - 1}
-                                onClick={() => handleMoveAudio(audIdx, 'down')}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-colors"
-                                title="تحريك التسجيل للأسفل (تأخير الترتيب)"
-                              >
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              </button>
-
-                              {!isData && aud.url && (
-                                <a
-                                  href={aud.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-sky-400 hover:text-sky-300 transition-colors"
-                                  title="فتح الرابط في تبويب جديد"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteAudio(audIdx)}
-                                className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/30 transition-colors cursor-pointer"
-                                title="حذف هذا التسجيل الصوتي"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="p-3 text-center text-xs text-slate-400 bg-slate-900/60 rounded-xl border border-dashed border-slate-800">
-                      لا توجد تسجيلات صوتية مضافة لهذا الدرس. يمكنك إضافة رابط أو رفع ملف صوتي.
-                    </div>
-                  )}
-
-                  {/* Add New Audio Form */}
-                  <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                      <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>إضافة تسجيل صوتي جديد للدرس عبر الرابط:</span>
-                    </span>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        value={newAudioTitle}
-                        onChange={(e) => setNewAudioTitle(e.target.value)}
-                        placeholder="عنوان التسجيل (مثال: الشرح التوضيحي)"
-                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
-                      />
-                      <input
-                        type="url"
-                        value={newAudioUrl}
-                        onChange={(e) => setNewAudioUrl(e.target.value)}
-                        placeholder="رابط الصوت (MP3 مباشر، Google Drive، YouTube، أو موقع صوتي)"
-                        className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
-                      />
-                    </div>
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={handleAddAudio}
-                        className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-600/20"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>إضافة التسجيل لقائمة الدرس</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 📷 Card 1: Book Page Scan Target Image */}
-                <div className="p-3.5 rounded-xl bg-sky-950/30 border border-sky-500/40 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="p-1 rounded-lg bg-sky-500/20 text-sky-400">
-                        <Camera className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>١. صورة صفحة الكتاب المطبوعة (هدف المسح بالكاميرا)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
-                            Target #{currentLesson.targetIndex}
-                          </span>
-                        </h5>
-                        <p className="text-[11px] text-slate-300">
-                          هذه هي صفحة كتاب الطالب التي ستتعرف عليها الكاميرا عند توجيه الهاتف نحوها.
-                        </p>
-                      </div>
-                    </div>
-
-                    <label className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-sky-600/20 transition-all flex-shrink-0">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>📁 رفع صورة صفحة الكتاب</span>
-                      <input
-                        key={`book_scan_${currentLesson.targetId}`}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            const file = e.target.files[0];
-                            try {
-                              const optimized = await optimizeImageFile(file, 1024, 1024, 0.85);
-                              handleFieldChange('targetImage', optimized);
-                              setStatusNotice({ type: 'success', text: '✓ تم رفع وضغط صورة كتاب الدرس بنجاح!' });
-                              setTimeout(() => setStatusNotice(null), 3000);
-                            } catch (err: any) {
-                              setStatusNotice({ type: 'error', text: 'تعذر معالجة الصورة: ' + (err.message || String(err)) });
-                            }
-                          }
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
-                      {currentLesson.targetImage ? (
-                        <img
-                          src={currentLesson.targetImage}
-                          alt={currentLesson.title}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-[10px] text-slate-500 text-center px-1">لم يتم رفع صورة الكتاب بعد</span>
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <label className="text-[11px] font-bold text-slate-300">رابط أو مسار صورة الكتاب:</label>
-                      <input
-                        type="text"
-                        value={currentLesson.targetImage}
-                        onChange={(e) => handleFieldChange('targetImage', e.target.value)}
-                        placeholder="اضغط (رفع صورة صفحة الكتاب) أو الصق الرابط هنا"
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* ⭐ Multi-Target Mapping: إضافة صفحات وبطاقات مسح إضافية لنفس الدرس ⭐ */}
-                  <div className="p-3 rounded-lg bg-slate-900/90 border border-sky-500/30 space-y-2.5 mt-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-sky-400 flex-shrink-0" />
-                        <div>
-                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <span>صفحات وأهداف مسح إضافية لنفس الدرس (Multi-Target Mapping)</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono font-bold">
-                              {currentLesson.additionalTargetImages?.length || 0} إضافية
-                            </span>
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-[10px] text-slate-400">
-                        التعرف على أي صفحة منها يفتح نفس الدرس ومجسمه
+                      <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-mono">
+                        ID: {currentLesson.targetId}
                       </span>
                     </div>
 
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
-                      إذا كان الدرس يمتد عبر عدة صفحات في الكتاب (مثلاً صفحة ١٤ وصفحة ١٥)، أو يحتوي على أكثر من بطاقة ورقية، أضف صور الصفحات الأخرى هنا. سيتعرف نظام الكاميرا على أي صفحة منها فوراً ويفتح نفس الدرس ومجسمه ثلاثي الأبعاد!
-                    </p>
-
-                    {/* حقل إضافة رابط أو رفع صفحة إضافية */}
-                    <div className="flex flex-col sm:flex-row gap-2 items-center">
-                      <div className="flex-1 w-full">
-                        <input
-                          type="url"
-                          value={newAdditionalTargetUrl}
-                          onChange={(e) => setNewAdditionalTargetUrl(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddAdditionalTargetImage();
-                            }
-                          }}
-                          placeholder="الصق رابط صورة صفحة إضافية (قوقل درايف أو رابط مباشر)..."
-                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
-                        />
+                    {/* مستوى الوصول للدرس (Free vs Locked) */}
+                    <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                          {currentLesson.isFreePreview ? (
+                            <Unlock className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <Lock className="w-4 h-4 text-amber-400" />
+                          )}
+                          <span>مستوى صلاحية الوصول لهذا الدرس:</span>
+                        </label>
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                          currentLesson.isFreePreview 
+                            ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                            : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                        }`}>
+                          {currentLesson.isFreePreview ? '🔓 متاح مجاناً للتجربة (Free Preview)' : '🔒 مقفل للأعضاء المشتركين فقط'}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
+
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        حدد ما إذا كان هذا الدرس مفتوحاً للجميع (كنموذج دعائي وتجريبي للكتاب المدرسي)، أو يتطلب اشتراكاً وتسجيل دخول.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                         <button
                           type="button"
-                          onClick={handleAddAdditionalTargetImage}
-                          disabled={!newAdditionalTargetUrl.trim()}
-                          className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                          onClick={() => handleFieldChange('isFreePreview', true)}
+                          className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
+                            currentLesson.isFreePreview
+                              ? 'bg-emerald-950/80 border-emerald-500 text-white font-bold ring-2 ring-emerald-500/30'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                          }`}
                         >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>إضافة الرابط</span>
+                          <Unlock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          <div>
+                            <div className="font-bold text-white text-xs">متاح مجاناً للجميع (تجربة ومعاينة)</div>
+                            <div className="text-[10px] text-slate-400">يمكن لأي طالب فتحه واستكشاف المجسم والوسائط دون تسجيل</div>
+                          </div>
                         </button>
 
-                        <label className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold cursor-pointer border border-slate-700 transition-colors flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleFieldChange('isFreePreview', false)}
+                          className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
+                            !currentLesson.isFreePreview
+                              ? 'bg-amber-950/80 border-amber-500 text-white font-bold ring-2 ring-amber-500/30'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                          <div>
+                            <div className="font-bold text-white text-xs">مقفل للمشتركين فقط (تسجيل الدخول)</div>
+                            <div className="text-[10px] text-slate-400">يتطلب الاسم ورقم الاشتراك المسجل في قاعدة البيانات</div>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Lesson Title */}
+                      <div className="space-y-1 md:col-span-1">
+                        <label className="text-xs font-bold text-slate-300">عنوان الدرس:</label>
+                        <input
+                          type="text"
+                          value={currentLesson.title}
+                          onChange={(e) => handleFieldChange('title', e.target.value)}
+                          placeholder="مثال: الخلية النباتية والبناء الضوئي"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      {/* Subject */}
+                      <div className="space-y-1 md:col-span-1">
+                        <label className="text-xs font-bold text-slate-300">المادة الدراسية:</label>
+                        <input
+                          type="text"
+                          value={currentLesson.subject}
+                          onChange={(e) => handleFieldChange('subject', e.target.value)}
+                          placeholder="العلوم / الفيزياء / الأحياء"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      {/* Grade */}
+                      <div className="space-y-1 md:col-span-1">
+                        <label className="text-xs font-bold text-slate-300">الصف الدراسي:</label>
+                        <input
+                          type="text"
+                          value={currentLesson.grade}
+                          onChange={(e) => handleFieldChange('grade', e.target.value)}
+                          placeholder="الصف الرابع الابتدائي"
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      {/* Summary */}
+                      <div className="space-y-1 md:col-span-3">
+                        <label className="text-xs font-bold text-slate-300">ملخص وشرح الدرس السريع:</label>
+                        <textarea
+                          rows={2}
+                          value={currentLesson.description.summary}
+                          onChange={(e) => handleFieldChange('summary', e.target.value)}
+                          placeholder="اكتب شرحاً ومعلومات مفيدة للطالب عند قراءة صفحة الدرس..."
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 📷 بطاقة صورة صفحة الكتاب المطبوعة (هدف المسح بالكاميرا) */}
+                    <div className="p-3.5 rounded-xl bg-sky-950/30 border border-sky-500/40 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-sky-500/20 text-sky-400">
+                            <Camera className="w-4 h-4" />
+                          </span>
+                          <div>
+                            <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                              <span>صورة صفحة الكتاب المطبوعة (هدف المسح بالكاميرا)</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
+                                Target #{currentLesson.targetIndex}
+                              </span>
+                            </h5>
+                            <p className="text-[11px] text-slate-300">
+                              هذه هي صفحة كتاب الطالب التي ستتعرف عليها الكاميرا عند توجيه الهاتف نحوها.
+                            </p>
+                          </div>
+                        </div>
+
+                        <label className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-sky-600/20 transition-all flex-shrink-0">
                           <Upload className="w-3.5 h-3.5" />
-                          <span>📁 رفع صفحة</span>
+                          <span>📁 رفع صورة صفحة الكتاب</span>
                           <input
+                            key={`book_scan_${currentLesson.targetId}`}
                             type="file"
                             accept="image/*"
                             className="hidden"
@@ -1819,13 +1742,677 @@ function doPost(e) {
                                 const file = e.target.files[0];
                                 try {
                                   const optimized = await optimizeImageFile(file, 1024, 1024, 0.85);
-                                  const curLesson = editableLessons[selectedLessonIndex];
-                                  const existing = curLesson?.additionalTargetImages || [];
-                                  handleFieldChange('additionalTargetImages', [...existing, optimized]);
-                                  setMultiTargetNotice('✓ تمت إضافة صورة المسح الإضافية للدرس بنجاح وبدقة عالية!');
-                                  setTimeout(() => setMultiTargetNotice(null), 3500);
+                                  handleFieldChange('targetImage', optimized);
+                                  setStatusNotice({ type: 'success', text: '✓ تم رفع وضغط صورة كتاب الدرس بنجاح!' });
+                                  setTimeout(() => setStatusNotice(null), 3000);
                                 } catch (err: any) {
-                                  setMultiTargetNotice('تعذر معالجة الصورة: ' + (err.message || String(err)));
+                                  setStatusNotice({ type: 'error', text: 'تعذر معالجة الصورة: ' + (err.message || String(err)) });
+                                }
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-3 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0">
+                          {currentLesson.targetImage ? (
+                            <img
+                              src={currentLesson.targetImage}
+                              alt={currentLesson.title}
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-[10px] text-slate-500 text-center px-1">لم يتم رفع صورة الكتاب بعد</span>
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[11px] font-bold text-slate-300">رابط أو مسار صورة الكتاب:</label>
+                          <input
+                            type="text"
+                            value={currentLesson.targetImage}
+                            onChange={(e) => handleFieldChange('targetImage', e.target.value)}
+                            placeholder="اضغط (رفع صورة صفحة الكتاب) أو الصق الرابط هنا"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* ⭐ Multi-Target Mapping: إضافة صفحات وبطاقات مسح إضافية لنفس الدرس ⭐ */}
+                      <div className="p-3 rounded-lg bg-slate-900/90 border border-sky-500/30 space-y-2.5 mt-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                            <div>
+                              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                                <span>صفحات وأهداف مسح إضافية لنفس الدرس (Multi-Target Mapping)</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono font-bold">
+                                  {currentLesson.additionalTargetImages?.length || 0} إضافية
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-slate-400">
+                            التعرف على أي صفحة منها يفتح نفس الدرس ومجسمه
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          إذا كان الدرس يمتد عبر عدة صفحات في الكتاب (مثلاً صفحة ١٤ وصفحة ١٥)، أضف صور الصفحات الأخرى هنا. سيتعرف نظام الكاميرا على أي صفحة منها فوراً ويفتح نفس الدرس ومجسمه!
+                        </p>
+
+                        {/* حقل إضافة رابط أو رفع صفحة إضافية */}
+                        <div className="flex flex-col sm:flex-row gap-2 items-center">
+                          <div className="flex-1 w-full">
+                            <input
+                              type="url"
+                              value={newAdditionalTargetUrl}
+                              onChange={(e) => setNewAdditionalTargetUrl(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddAdditionalTargetImage();
+                                }
+                              }}
+                              placeholder="الصق رابط صورة صفحة إضافية (قوقل درايف أو رابط مباشر)..."
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={handleAddAdditionalTargetImage}
+                              disabled={!newAdditionalTargetUrl.trim()}
+                              className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>إضافة الرابط</span>
+                            </button>
+
+                            <label className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold cursor-pointer border border-slate-700 transition-colors flex items-center justify-center gap-1">
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>📁 رفع صفحة</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    const file = e.target.files[0];
+                                    try {
+                                      const optimized = await optimizeImageFile(file, 1024, 1024, 0.85);
+                                      const curLesson = editableLessons[selectedLessonIndex];
+                                      const existing = curLesson?.additionalTargetImages || [];
+                                      handleFieldChange('additionalTargetImages', [...existing, optimized]);
+                                      setMultiTargetNotice('✓ تمت إضافة صورة المسح الإضافية للدرس بنجاح وبدقة عالية!');
+                                      setTimeout(() => setMultiTargetNotice(null), 3500);
+                                    } catch (err: any) {
+                                      setMultiTargetNotice('تعذر معالجة الصورة: ' + (err.message || String(err)));
+                                    }
+                                  }
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+
+                        {multiTargetNotice && (
+                          <p className="text-[11px] text-emerald-400 font-medium bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
+                            {multiTargetNotice}
+                          </p>
+                        )}
+
+                        {/* شبكة معاينة صور صفحات المسح المسجلة لهذا الدرس */}
+                        {(currentLesson.additionalTargetImages || []).length > 0 && (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 pt-1">
+                            {(currentLesson.additionalTargetImages || []).map((imgUrl, addIdx) => (
+                              <div
+                                key={`target_add_${addIdx}_${imgUrl.slice(0, 30)}`}
+                                className="p-2 rounded-lg bg-slate-950/80 border border-slate-700/80 space-y-1.5 flex flex-col items-center relative group"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const filtered = (currentLesson.additionalTargetImages || []).filter((_, i) => i !== addIdx);
+                                    handleFieldChange('additionalTargetImages', filtered);
+                                  }}
+                                  className="absolute top-1 left-1 p-1 rounded-md bg-rose-950/90 hover:bg-rose-900 text-rose-300 border border-rose-500/50 transition-all cursor-pointer z-10"
+                                  title="حذف هذه الصفحة الإضافية"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                                <div className="w-full h-20 rounded bg-black/60 border border-slate-700 overflow-hidden flex items-center justify-center">
+                                  <img
+                                    src={normalizeImageUrl(imgUrl)}
+                                    alt={`هدف إضافي #${addIdx + 1}`}
+                                    className="w-full h-full object-contain"
+                                  />
+                                </div>
+                                <div className="w-full flex items-center justify-between text-[10px]">
+                                  <span className="font-bold text-slate-300">صفحة إضافية #{addIdx + 2}</span>
+                                  <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-200 text-[9px] font-mono">
+                                    Multi-Target
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ========================================================================= */}
+                {/* 🎬 التبويب 2: الوسائط والشرح (فيديوهات + صوتيات + معرض الصور)               */}
+                {/* ========================================================================= */}
+                {lessonSubTab === 'media' && (
+                  <div className="space-y-4 animate-fadeIn">
+                    {/* 🎬 إدارة فيديوهات الدرس */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-rose-500/20 text-rose-400">
+                            <Video className="w-4 h-4" />
+                          </span>
+                          <div>
+                            <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                              <span>فيديوهات الدرس التعليمية (إضافة وترتيب وحذف)</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono">
+                                {getLessonVideos(currentLesson).length} فيديو
+                              </span>
+                            </h5>
+                            <p className="text-[11px] text-slate-400">
+                              دعم روابط YouTube أو Google Drive أو ملفات MP4 المباشرة أو أي موقع خارجي.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {videoNotice && (
+                        <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>{videoNotice}</span>
+                        </div>
+                      )}
+
+                      {/* قائمة الفيديوهات */}
+                      {getLessonVideos(currentLesson).length > 0 ? (
+                        <div className="space-y-2">
+                          {getLessonVideos(currentLesson).map((vid, vidIdx) => (
+                            <div
+                              key={vidIdx}
+                              className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 text-xs"
+                            >
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="w-6 h-6 rounded-lg bg-rose-500/20 text-rose-300 font-bold flex items-center justify-center font-mono">
+                                  #{vidIdx + 1}
+                                </span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">
+                                  {vid.type === 'youtube' ? 'YouTube' : vid.type === 'vimeo' ? 'Vimeo' : vid.type === 'gdrive' ? 'Drive' : vid.type === 'mp4' ? 'MP4 مباشر' : 'رابط'}
+                                </span>
+                              </div>
+
+                              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 min-w-0">
+                                <input
+                                  type="text"
+                                  value={vid.title}
+                                  onChange={(e) => handleUpdateVideo(vidIdx, { title: e.target.value })}
+                                  placeholder="عنوان المقطع"
+                                  className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-rose-500"
+                                />
+                                <input
+                                  type="url"
+                                  value={vid.url}
+                                  onChange={(e) => handleUpdateVideo(vidIdx, { url: e.target.value })}
+                                  placeholder="رابط الفيديو (https://...)"
+                                  className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-rose-500"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-1.5 self-end md:self-center flex-shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={vidIdx === 0}
+                                  onClick={() => handleMoveVideo(vidIdx, 'up')}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer"
+                                  title="تحريك للأعلى"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={vidIdx === getLessonVideos(currentLesson).length - 1}
+                                  onClick={() => handleMoveVideo(vidIdx, 'down')}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer"
+                                  title="تحريك للأسفل"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+
+                                {vid.url && (
+                                  <a
+                                    href={vid.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-sky-400 hover:text-sky-300"
+                                    title="معاينة الرابط"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteVideo(vidIdx)}
+                                  className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/30 cursor-pointer"
+                                  title="حذف الفيديو"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-3 text-center text-xs text-slate-400 bg-slate-900/60 rounded-xl border border-dashed border-slate-800">
+                          لا توجد فيديوهات مضافة لهذا الدرس حتى الآن.
+                        </div>
+                      )}
+
+                      {/* إضافة فيديو جديد */}
+                      <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                        <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                          <Plus className="w-3.5 h-3.5 text-rose-400" />
+                          <span>إضافة فيديو جديد للدرس:</span>
+                        </span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={newVideoTitle}
+                            onChange={(e) => setNewVideoTitle(e.target.value)}
+                            placeholder="عنوان الفيديو (مثال: شرح المعلم للدرس)"
+                            className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                          />
+                          <input
+                            type="url"
+                            value={newVideoUrl}
+                            onChange={(e) => setNewVideoUrl(e.target.value)}
+                            placeholder="رابط الفيديو (YouTube، MP4، Drive، أو أي موقع آخر)"
+                            className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono focus:outline-none focus:border-rose-500"
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleAddVideo}
+                            className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-rose-600/20"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>إضافة الفيديو لقائمة الدرس</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 🎵 إدارة المقاطع الصوتية للدرس */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400">
+                            <Music className="w-4 h-4" />
+                          </span>
+                          <div>
+                            <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                              <span>التسجيلات الصوتية للدرس (رفع/رابط، تجربة الصوت، وترتيب)</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                                {getLessonAudios(currentLesson).length} تسجيل
+                              </span>
+                            </h5>
+                            <p className="text-[11px] text-slate-400">
+                              صوت الدرس منفصل عن صوت المجسم. يمكن للطلاب الاستماع إليه عبر زر الصوت.
+                            </p>
+                          </div>
+                        </div>
+
+                        <label className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-700/20 transition-all flex-shrink-0 self-start sm:self-auto">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>📁 رفع ملف صوت من الجهاز (MP3)</span>
+                          <input
+                            type="file"
+                            accept="audio/*,.mp3,.wav,.ogg,.m4a"
+                            onChange={handleUploadLessonAudioLocal}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {audioNotice && (
+                        <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>{audioNotice}</span>
+                        </div>
+                      )}
+
+                      {/* قائمة الصوتيات */}
+                      {getLessonAudios(currentLesson).length > 0 ? (
+                        <div className="space-y-2">
+                          {getLessonAudios(currentLesson).map((aud, audIdx) => {
+                            const isThisPlaying = playingLessonAudioUrl === aud.url;
+                            const isData = aud.url.startsWith('data:');
+                            return (
+                              <div
+                                key={audIdx}
+                                className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 text-xs"
+                              >
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center font-mono">
+                                    #{audIdx + 1}
+                                  </span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">
+                                    {isData ? 'ملف مرفوع' : aud.type || 'صوت'}
+                                  </span>
+                                </div>
+
+                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 min-w-0">
+                                  <input
+                                    type="text"
+                                    value={aud.title}
+                                    onChange={(e) => handleUpdateAudio(audIdx, { title: e.target.value })}
+                                    placeholder="عنوان التسجيل"
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                                  />
+                                  <input
+                                    type="url"
+                                    value={isData ? 'ملف صوتي مرفوع محلياً (Data URL)' : aud.url}
+                                    disabled={isData}
+                                    onChange={(e) => handleUpdateAudio(audIdx, { url: e.target.value })}
+                                    placeholder="رابط الصوت (https://.../audio.mp3)"
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-emerald-500 disabled:opacity-60"
+                                  />
+                                </div>
+
+                                <div className="flex items-center gap-1.5 self-end md:self-center flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTestPlayLessonAudio(aud.url)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer border ${
+                                      isThisPlaying
+                                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                                        : 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border-emerald-500/30'
+                                    }`}
+                                    title={isThisPlaying ? 'إيقاف التجربة' : 'تجربة وتشغيل الصوت الآن للتأكد منه'}
+                                  >
+                                    {isThisPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                                    <span>{isThisPlaying ? 'إيقاف' : 'تجربة الصوت'}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={audIdx === 0}
+                                    onClick={() => handleMoveAudio(audIdx, 'up')}
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer"
+                                    title="تحريك للأعلى"
+                                  >
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={audIdx === getLessonAudios(currentLesson).length - 1}
+                                    onClick={() => handleMoveAudio(audIdx, 'down')}
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-20 cursor-pointer"
+                                    title="تحريك للأسفل"
+                                  >
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAudio(audIdx)}
+                                    className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/30 cursor-pointer"
+                                    title="حذف التسجيل"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-3 text-center text-xs text-slate-400 bg-slate-900/60 rounded-xl border border-dashed border-slate-800">
+                          لا توجد تسجيلات صوتية مضافة لهذا الدرس.
+                        </div>
+                      )}
+
+                      {/* إضافة تسجيل صوتي عبر الرابط */}
+                      <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                        <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                          <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>إضافة تسجيل صوتي جديد للدرس عبر الرابط:</span>
+                        </span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={newAudioTitle}
+                            onChange={(e) => setNewAudioTitle(e.target.value)}
+                            placeholder="عنوان التسجيل (مثال: قراءة النص بصوت المعلم)"
+                            className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                          />
+                          <input
+                            type="url"
+                            value={newAudioUrl}
+                            onChange={(e) => setNewAudioUrl(e.target.value)}
+                            placeholder="رابط الصوت (MP3 مباشر، Google Drive، أو موقع صوتي)"
+                            className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleAddAudio}
+                            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-600/20"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>إضافة التسجيل لقائمة الدرس</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 🖼️ معرض صور الشرح واللوحات التعليمية */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400">
+                            <Image className="w-4 h-4" />
+                          </span>
+                          <div>
+                            <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                              <span>معرض صور الشرح واللوحات التعليمية</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
+                                {currentLesson.images?.length || 0} صور مضافة
+                              </span>
+                            </h5>
+                            <p className="text-[11px] text-slate-400">
+                              تظهر للطالب عند النقر على زر 🖼️ "الصور". تقبل رفع صور متعددة أو روابط مباشرة أو Google Drive.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
+                          <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all flex-shrink-0">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>📁 رفع صور من جهازك</span>
+                            <input
+                              key={`explanation_img_${currentLesson.targetId}`}
+                              type="file"
+                              multiple
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files.length > 0) {
+                                  const files = Array.from(e.target.files);
+                                  Promise.all(files.map((file, idx) => new Promise<LessonImage>((resolve) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (uploadEv) => {
+                                      const base64 = uploadEv.target?.result as string;
+                                      resolve({
+                                        url: base64,
+                                        title: file.name.replace(/\.[^/.]+$/, ''),
+                                        caption: `لوحة تعليمية: ${currentLesson.title} (${idx + 1})`
+                                      });
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }))).then((newUploadedImages) => {
+                                    const existing = currentLesson.images || [];
+                                    handleFieldChange('images', [...existing, ...newUploadedImages]);
+                                    setImageNotice(`✓ تم رفع وإضافة ${newUploadedImages.length} صور بنجاح!`);
+                                    setTimeout(() => setImageNotice(null), 4000);
+                                  });
+                                }
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* إضافة رابط صورة */}
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                        <div className="sm:col-span-6">
+                          <input
+                            type="url"
+                            value={newImageUrl}
+                            onChange={(e) => setNewImageUrl(e.target.value)}
+                            placeholder="الصق رابط صورة Google Drive أو رابط مباشر..."
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+                        <div className="sm:col-span-4">
+                          <input
+                            type="text"
+                            value={newImageTitle}
+                            onChange={(e) => setNewImageTitle(e.target.value)}
+                            placeholder="عنوان الصورة..."
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <button
+                            type="button"
+                            onClick={handleAddImageLink}
+                            disabled={!newImageUrl.trim()}
+                            className="w-full h-full py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-xs transition-colors cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1 shadow-sm active:scale-95"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>إضافة الرابط</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* شبكة الصور */}
+                      {currentLesson.images && currentLesson.images.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto p-1 pt-2">
+                          {currentLesson.images.map((img, imgIdx) => (
+                            <LessonImageCard
+                              key={`${currentLesson.targetId}_${imgIdx}_${img.url}`}
+                              img={img}
+                              imgIdx={imgIdx}
+                              lessonId={currentLesson.targetId}
+                              onUpdateTitle={(newTitle) => {
+                                const updatedImages = (currentLesson.images || []).map((im, i) =>
+                                  i === imgIdx ? { ...im, title: newTitle } : im
+                                );
+                                handleFieldChange('images', updatedImages);
+                              }}
+                              onDelete={() => {
+                                const filtered = (currentLesson.images || []).filter((_, idx) => idx !== imgIdx);
+                                handleFieldChange('images', filtered);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-center text-xs text-slate-400">
+                          لم يتم إضافة صور توضيحية لهذا الدرس بعد.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ========================================================================= */}
+                {/* 🧊 التبويب 3: المجسم التفاعلي (3D & AR)                                     */}
+                {/* ========================================================================= */}
+                {lessonSubTab === 'model3d' && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
+                          <Box className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                            <span>ملف المجسم ثلاثي الأبعاد المشترك (.glb / .gltf)</span>
+                          </h5>
+                          <p className="text-[11px] text-slate-400">
+                            نفس الملف يعمل تلقائياً في الواقع المعزز (AR) فوق صفحة الكتاب، وكذلك في العرض التفاعلي 360°.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        {currentLesson.model3d?.url && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleFieldChange('model3d', undefined);
+                              setUploadedModelFileName(null);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
+                            title="إلغاء المجسم"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>إلغاء المجسم</span>
+                          </button>
+                        )}
+
+                        <label className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-cyan-600/20 transition-all flex-shrink-0">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>📁 اختيار ملف .glb من جهازك</span>
+                          <input
+                            key={`model3d_upload_${currentLesson.targetId}`}
+                            type="file"
+                            accept=".glb,model/gltf-binary,.gltf"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                const objectUrl = URL.createObjectURL(file);
+                                const cleanName = file.name.replace(/\.[^/.]+$/, '');
+                                setUploadedModelFileName(`${file.name} (${Math.round(file.size / 1024)} KB)`);
+                                
+                                const newModel: LessonModel3D = {
+                                  url: objectUrl,
+                                  title: currentLesson.model3d?.title || `مجسم: ${cleanName}`,
+                                  autoRotate: true
+                                };
+                                handleFieldChange('model3d', newModel);
+
+                                if (file.size < 6 * 1024 * 1024) {
+                                  const reader = new FileReader();
+                                  reader.onload = (uploadEv) => {
+                                    const dataUrl = uploadEv.target?.result as string;
+                                    if (dataUrl) {
+                                      handleFieldChange('model3d', {
+                                        ...newModel,
+                                        url: dataUrl
+                                      });
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
                                 }
                               }
                               e.target.value = '';
@@ -1835,683 +2422,125 @@ function doPost(e) {
                       </div>
                     </div>
 
-                    {multiTargetNotice && (
-                      <p className="text-[11px] text-emerald-400 font-medium bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
-                        {multiTargetNotice}
-                      </p>
-                    )}
-
-                    {/* شبكة معاينة صور صفحات المسح المسجلة لهذا الدرس */}
-                    <div className="space-y-1.5 pt-1">
-                      <div className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <span>خريطة أهداف المسح البصري المعتمدة لهذا الدرس:</span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                        {/* الهدف الأساسي */}
-                        <div className="p-2 rounded-lg bg-sky-950/50 border border-sky-500/40 space-y-1.5 flex flex-col items-center">
-                          <div className="w-full h-20 rounded bg-black/60 border border-slate-700 overflow-hidden flex items-center justify-center">
-                            {currentLesson.targetImage ? (
-                              <img
-                                src={normalizeImageUrl(currentLesson.targetImage)}
-                                alt="الهدف الرئيسي"
-                                className="w-full h-full object-contain"
-                              />
-                            ) : (
-                              <span className="text-[9px] text-slate-500 text-center">لا توجد صورة</span>
-                            )}
-                          </div>
-                          <div className="w-full flex items-center justify-between text-[10px]">
-                            <span className="font-bold text-sky-300">الهدف الأساسي #1</span>
-                            <span className="px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-200 text-[9px] font-mono">
-                              Target #{currentLesson.targetIndex}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* الأهداف الإضافية */}
-                        {(currentLesson.additionalTargetImages || []).map((imgUrl, addIdx) => (
-                          <div
-                            key={`target_add_${addIdx}_${imgUrl.slice(0, 30)}`}
-                            className="p-2 rounded-lg bg-slate-950/80 border border-slate-700/80 space-y-1.5 flex flex-col items-center relative group"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const filtered = (currentLesson.additionalTargetImages || []).filter((_, i) => i !== addIdx);
-                                handleFieldChange('additionalTargetImages', filtered);
-                              }}
-                              className="absolute top-1 left-1 p-1 rounded-md bg-rose-950/90 hover:bg-rose-900 text-rose-300 border border-rose-500/50 transition-all cursor-pointer z-10"
-                              title="حذف هذه الصفحة الإضافية"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                            <div className="w-full h-20 rounded bg-black/60 border border-slate-700 overflow-hidden flex items-center justify-center">
-                              <img
-                                src={normalizeImageUrl(imgUrl)}
-                                alt={`هدف إضافي #${addIdx + 1}`}
-                                className="w-full h-full object-contain"
-                              />
-                            </div>
-                            <div className="w-full flex items-center justify-between text-[10px]">
-                              <span className="font-bold text-slate-300">صفحة إضافية #{addIdx + 2}</span>
-                              <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-200 text-[9px] font-mono">
-                                Multi-Target
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 🖼️ Card 2: Educational Explanation / Diagram Images */}
-                <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
-                        <Image className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>٢. معرض صور الشرح واللوحات (التي يراها الطالب في التطبيق)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
-                            {currentLesson.images?.length || 0} صور مضافة
-                          </span>
-                        </h5>
-                        <p className="text-[11px] text-slate-300">
-                          اللوحات والرسوم التي تظهر للطالب عند النقر على زر 🖼️ "الصور". يمكنك إضافة أي عدد من روابط Google Drive، أو روابط مباشرة، أو رفع صور من جهازك!
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
-                      {currentLesson.images && currentLesson.images.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirmModal({
-                              isOpen: true,
-                              title: 'مسح كافة صور الدرس',
-                              message: 'هل أنت متأكد من رغبتك في حذف كافة صور هذا الدرس؟ سيتم الاعتماد على صورة الكتاب تلقائياً.',
-                              confirmText: 'نعم، مسح كافة الصور',
-                              isDestructive: true,
-                              onConfirm: () => {
-                                handleFieldChange('images', []);
-                                setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                              }
-                            });
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
-                          title="حذف كافة صور الشرح والاعتماد على صورة الكتاب تلقائياً"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>مسح كافة الصور</span>
-                        </button>
-                      )}
-
-                      <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all flex-shrink-0">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>📁 رفع صور من جهازك (اختيار عدة صور)</span>
-                        <input
-                          key={`explanation_img_${currentLesson.targetId}`}
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files.length > 0) {
-                              const files = Array.from(e.target.files);
-                              Promise.all(files.map((file, idx) => new Promise<LessonImage>((resolve) => {
-                                const reader = new FileReader();
-                                reader.onload = (uploadEv) => {
-                                  const base64 = uploadEv.target?.result as string;
-                                  resolve({
-                                    url: base64,
-                                    title: file.name.replace(/\.[^/.]+$/, ''),
-                                    caption: `لوحة تعليمية: ${currentLesson.title} (${idx + 1})`
-                                  });
-                                };
-                                reader.readAsDataURL(file);
-                              }))).then((newUploadedImages) => {
-                                const existing = currentLesson.images || [];
-                                handleFieldChange('images', [...existing, ...newUploadedImages]);
-                                setImageNotice(`✓ تم رفع وإضافة ${newUploadedImages.length} صور من جهازك بنجاح!`);
-                                setTimeout(() => setImageNotice(null), 4000);
-                              });
-                            }
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* صندوق إضافة رابط صورة خارجي (Google Drive أو أي رابط ويب) */}
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <Plus className="w-3.5 h-3.5 text-sky-400" />
-                        <span>إضافة رابط صورة جديد (Google Drive أو أي رابط مباشر):</span>
-                      </label>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 font-semibold border border-sky-500/30">
-                        ✨ تحويل ذكي لروابط Google Drive
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                      <div className="sm:col-span-6">
-                        <input
-                          type="url"
-                          value={newImageUrl}
-                          onChange={(e) => setNewImageUrl(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddImageLink();
-                            }
-                          }}
-                          placeholder="الصق رابط صورة Google Drive أو رابط صورة مباشر هنا..."
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-sky-500"
-                        />
-                      </div>
-                      <div className="sm:col-span-4">
-                        <input
-                          type="text"
-                          value={newImageTitle}
-                          onChange={(e) => setNewImageTitle(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddImageLink();
-                            }
-                          }}
-                          placeholder="عنوان الصورة (مثال: دورة الماء / مخطط الدرس)..."
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <button
-                          type="button"
-                          onClick={handleAddImageLink}
-                          disabled={!newImageUrl.trim()}
-                          className="w-full h-full py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-xs transition-colors cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1 shadow-sm active:scale-95"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>إضافة الرابط</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {imageNotice && (
-                      <p className="text-[11px] text-emerald-400 font-medium bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
-                        {imageNotice}
-                      </p>
-                    )}
-
-                    {/* صندوق إرشادات وشروط قبول الروابط */}
-                    <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
-                      <div className="font-bold text-sky-400 flex items-center gap-1.5">
-                        <span>💡 شروط وضمان عمل روابط الصور بنجاح:</span>
-                      </div>
-                      <ul className="space-y-1 text-slate-300 pr-3 list-disc">
-                        <li>
-                          <strong className="text-amber-300">لروابط Google Drive:</strong> يجب أن تكون صلاحية الملف مضبوطة على{' '}
-                          <span className="text-white underline font-semibold">«أي شخص لديه الرابط» (عارض)</span>. إذا كان الملف مضبوطاً على «حصري/خاص» تمنع قوقل ظهوره خارج حسابك.
-                        </li>
-                        <li>
-                          <strong className="text-emerald-300">الصيغ المدعومة:</strong> يقبل النظام كافة أنواع الصور بدون استثناء:{' '}
-                          <span className="text-white font-mono">PNG, JPG, JPEG, GIF (المتحركة بالكامل), WebP, SVG</span>.
-                        </li>
-                        <li>
-                          <strong className="text-sky-300">طريقة التحويل التلقائي:</strong> انسخ رابط المشاركة العادي من درايف وسيقوم النظام فوراً بتهيئته وعرضه بجودة فائقة.
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  {/* قائمة الصور المضافة لهذا الدرس */}
-                  {currentLesson.images && currentLesson.images.length > 0 ? (
-                    <div className="space-y-2 pt-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-emerald-300">
-                          الصور المعتمدة لهذا الدرس في المعرض ({currentLesson.images.length} صورة):
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          يمكنك تعديل عنوان أي صورة أو حذفها بنقرة واحدة
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto p-1">
-                        {currentLesson.images.map((img, imgIdx) => (
-                          <LessonImageCard
-                            key={`${currentLesson.targetId}_${imgIdx}_${img.url}`}
-                            img={img}
-                            imgIdx={imgIdx}
-                            lessonId={currentLesson.targetId}
-                            onUpdateTitle={(newTitle) => {
-                              const updatedImages = (currentLesson.images || []).map((im, i) =>
-                                i === imgIdx ? { ...im, title: newTitle } : im
-                              );
-                              handleFieldChange('images', updatedImages);
-                            }}
-                            onDelete={() => {
-                              const filtered = (currentLesson.images || []).filter((_, idx) => idx !== imgIdx);
-                              handleFieldChange('images', filtered);
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-1">
-                      <p className="text-xs text-slate-400">
-                        لم يتم إضافة صور توضيحية لهذا الدرس بعد.
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        إذا لم تضف صوراً هنا، سيُعرض كتاب الدرس تلقائياً عند فتح زر 🖼️ "الصور"، أو يمكنك إضافة روابط من قوقل درايف أو رفع صور من جهازك أعلاه.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* 🧊 Card 3: 3D Model (GLB from Blender) */}
-                <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-500/40 space-y-3.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
-                        <Box className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>٣. المجسم ثلاثي الأبعاد المشترك (3D Model - .glb)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">
-                            .glb / .gltf
-                          </span>
-                        </h5>
-                        <p className="text-[11px] text-slate-300">
-                          نفس صيغة الملف القياسية تعمل تلقائياً في <strong className="text-cyan-300">النوعين معاً</strong>: (١) الواقع المعزز فوق صفحة الكتاب، و(٢) العرض التفاعلي باللمس والفأرة.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                      {currentLesson.model3d?.url && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleFieldChange('model3d', undefined);
-                            setUploadedModelFileName(null);
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
-                          title="حذف المجسم ثلاثي الأبعاد من هذا الدرس"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>إلغاء المجسم</span>
-                        </button>
-                      )}
-
-                      <label className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-cyan-600/20 transition-all flex-shrink-0">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>📁 اختيار ملف .glb من جهازك</span>
-                        <input
-                          key={`model3d_upload_${currentLesson.targetId}`}
-                          type="file"
-                          accept=".glb,model/gltf-binary,.gltf"
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              const file = e.target.files[0];
-                              const objectUrl = URL.createObjectURL(file);
-                              const cleanName = file.name.replace(/\.[^/.]+$/, '');
-                              setUploadedModelFileName(`${file.name} (${Math.round(file.size / 1024)} KB)`);
-                              
-                              const newModel: LessonModel3D = {
-                                url: objectUrl,
-                                title: currentLesson.model3d?.title || `مجسم: ${cleanName}`,
-                                autoRotate: true
-                              };
-                              handleFieldChange('model3d', newModel);
-
-                              // حفظ بصيغة Data URL للتخزين المحلي إذا كان الحجم ملائماً
-                              if (file.size < 6 * 1024 * 1024) {
-                                const reader = new FileReader();
-                                reader.onload = (uploadEv) => {
-                                  const dataUrl = uploadEv.target?.result as string;
-                                  if (dataUrl) {
-                                    handleFieldChange('model3d', {
-                                      ...newModel,
-                                      url: dataUrl
-                                    });
-                                  }
-                                };
-                                reader.readAsDataURL(file);
-                              }
-                            }
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* إشعار ذكي يوضح قاعدة عدم تكرار الملف */}
-                  <div className="p-2.5 rounded-lg bg-sky-950/40 border border-sky-500/20 text-sky-200 text-[11px] leading-relaxed flex items-start gap-2">
-                    <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <strong>قاعدة الاستخدام الموحد والمرن:</strong> امتداد المجسم المعتمد دائماً هو <code className="px-1 py-0.2 bg-black/40 rounded text-cyan-300 font-bold">.glb</code>. عند إضافة المجسم هنا، سيعمل تلقائياً في شاشة الواقع المعزز (AR) فوق الصورة، وكذلك عند النقر على زر التدوير 360° بالإصبع والفأرة دون الحاجة لإدخاله مرتين!
-                    </div>
-                  </div>
-
-                  {/* نماذج سريعة للتجربة الفورية بنقرة واحدة */}
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-300">
-                    <span className="text-[11px] text-slate-400">نماذج جاهزة للتجربة السريعة:</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleFieldChange('model3d', {
-                          url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
-                          title: 'رائد فضاء (نموذج تجريبي)',
-                          autoRotate: true
-                        });
-                        setUploadedModelFileName(null);
-                      }}
-                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
-                    >
-                      🚀 رائد الفضاء (Astronaut.glb)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleFieldChange('model3d', {
-                          url: 'https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb',
-                          title: 'مجسم تعليمي تجريبي',
-                          autoRotate: true
-                        });
-                        setUploadedModelFileName(null);
-                      }}
-                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
-                    >
-                      👨‍🚀 مجسم بديل تجريبي
-                    </button>
-                  </div>
-
-                  {/* Uploaded File Feedback Pill */}
-                  {uploadedModelFileName && (
-                    <div className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-2 text-cyan-200">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        <span className="font-bold">تم اختيار وتحميل الملف بنجاح:</span>
-                        <code className="px-1.5 py-0.5 rounded bg-black/40 text-cyan-300 font-mono text-[11px]">
-                          {uploadedModelFileName}
-                        </code>
-                      </div>
+                    {/* نماذج سريعة للتجربة */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-300">
+                      <span className="text-[11px] text-slate-400">نماذج جاهزة للتجربة السريعة:</span>
                       <button
                         type="button"
                         onClick={() => {
-                          const baseName = uploadedModelFileName.split(' ')[0] || 'model.glb';
                           handleFieldChange('model3d', {
-                            url: `/models/${baseName}`,
-                            title: currentLesson.model3d?.title || `مجسم: ${currentLesson.title}`,
-                            autoRotate: currentLesson.model3d?.autoRotate !== false
+                            url: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+                            title: 'رائد فضاء (نموذج تجريبي)',
+                            autoRotate: true
                           });
+                          setUploadedModelFileName(null);
                         }}
-                        className="px-2 py-1 rounded-md bg-cyan-800/80 hover:bg-cyan-700 text-cyan-100 text-[11px] font-semibold transition-colors cursor-pointer"
-                        title="ضبط المسار لمطابقة رفع الملف إلى مجلد public/models في GitHub"
+                        className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px] font-semibold border border-slate-700 cursor-pointer"
                       >
-                        استخدام المسار القياسي للنشر: /models/{uploadedModelFileName.split(' ')[0] || 'model.glb'}
+                        🚀 رائد الفضاء (Astronaut.glb)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleFieldChange('model3d', {
+                            url: 'https://modelviewer.dev/shared-assets/models/NeilArmstrong.glb',
+                            title: 'مجسم تعليمي تجريبي',
+                            autoRotate: true
+                          });
+                          setUploadedModelFileName(null);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-semibold border border-slate-700 cursor-pointer"
+                      >
+                        👨‍🚀 مجسم بديل تجريبي
                       </button>
                     </div>
-                  )}
 
-                  {/* Input Fields */}
-                  <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center justify-between">
+                    {/* حقول المجسم */}
+                    <div className="space-y-2 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                      <div className="space-y-1">
                         <label className="text-[11px] font-bold text-slate-300">
-                          رابط أو مسار ملف المجسم المشترك (3D Model URL .glb):
-                        </label>
-                        <span className="text-[10px] text-cyan-400 font-medium">📁 الأفضل حفظه في public/models/</span>
-                      </div>
-                      <input
-                        type="text"
-                        value={currentLesson.model3d?.url || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val.trim() === '') {
-                            handleFieldChange('model3d', undefined);
-                          } else {
-                            handleFieldChange('model3d', {
-                              url: val,
-                              title: currentLesson.model3d?.title || `مجسم: ${currentLesson.title}`,
-                              autoRotate: currentLesson.model3d?.autoRotate !== false
-                            });
-                          }
-                        }}
-                        placeholder="مثال: /models/calligraphy_word.glb أو رابط مباشر ينتهي بـ .glb"
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
-                      />
-                      <p className="text-[10px] text-slate-400">
-                        مستودع GitHub يوفر 1 جيجابايت مجاناً تتسع لـ 500-800 مجسم خفيف. ضع الملف في مجلد <code className="text-cyan-300">public/models/</code> واكتب مساره هنا.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div className="space-y-0.5">
-                        <label className="text-[11px] font-bold text-slate-300">
-                          عنوان المجسم المعروض للطالب:
+                          رابط أو مسار ملف المجسم (.glb):
                         </label>
                         <input
                           type="text"
-                          value={currentLesson.model3d?.title || ''}
+                          value={currentLesson.model3d?.url || ''}
                           onChange={(e) => {
-                            if (currentLesson.model3d) {
+                            const val = e.target.value;
+                            if (val.trim() === '') {
+                              handleFieldChange('model3d', undefined);
+                            } else {
                               handleFieldChange('model3d', {
-                                ...currentLesson.model3d,
-                                title: e.target.value
+                                url: val,
+                                title: currentLesson.model3d?.title || `مجسم: ${currentLesson.title}`,
+                                autoRotate: currentLesson.model3d?.autoRotate !== false
                               });
                             }
                           }}
-                          placeholder="مثال: مجسم خط الرقعة ثلاثي الأبعاد"
-                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+                          placeholder="مثال: /models/word.glb أو رابط مباشر"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
                         />
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-start gap-3 pt-4 sm:pt-4 px-1">
-                        <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-slate-300">عنوان المجسم المعروض للطالب:</label>
                           <input
-                            type="checkbox"
-                            checked={currentLesson.model3d?.autoRotate !== false}
+                            type="text"
+                            value={currentLesson.model3d?.title || ''}
                             onChange={(e) => {
                               if (currentLesson.model3d) {
                                 handleFieldChange('model3d', {
                                   ...currentLesson.model3d,
-                                  autoRotate: e.target.checked
+                                  title: e.target.value
                                 });
                               }
                             }}
-                            className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
+                            placeholder="عنوان المجسم"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
                           />
-                          <span>تدوير تلقائي انسيابي (Auto-Rotate)</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
+                        </div>
 
-                  {/* ⚡ خيار مخصص ذكي: تخصيص مجسم مختلف للواقع المعزز AR فقط (اختياري) */}
-                  <div className="p-3 rounded-lg bg-slate-900/90 border border-cyan-500/20 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-cyan-400" />
-                        <span className="text-xs font-bold text-white">
-                          تخصيص مجسم خاص بتتبع الواقع المعزز (AR Model) فقط (اختياري):
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowCustomARModelOverride(prev => !prev)}
-                        className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
-                      >
-                        {showCustomARModelOverride || currentLesson.arModel3d?.url
-                          ? 'إخفاء الإعداد المتقدم'
-                          : '+ تخصيص مجسم مختلف للـ AR'}
-                      </button>
-                    </div>
-
-                    {(showCustomARModelOverride || currentLesson.arModel3d?.url) && (
-                      <div className="space-y-2 pt-1 border-t border-slate-800 animate-fadeIn">
-                        <p className="text-[11px] text-slate-400 leading-relaxed">
-                          📌 <strong>ملاحظة مرنة:</strong> إذا تركت هذا الحقل فارغاً، سيعتمد نظام الواقع المعزز تلقائياً على المجسم الرئيسي أعلاه بدون تكرار! استخدم هذا الحقل فقط إذا أردت إظهار مجسم مختلف كلياً فوق صورة الكتاب.
-                        </p>
-
-                        <div className="flex flex-col sm:flex-row gap-2 items-center">
-                          <input
-                            type="text"
-                            value={currentLesson.arModel3d?.url || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val.trim() === '') {
-                                handleFieldChange('arModel3d', undefined);
-                              } else {
-                                handleFieldChange('arModel3d', {
-                                  url: val,
-                                  title: currentLesson.arModel3d?.title || `مجسم AR: ${currentLesson.title}`,
-                                  autoRotate: currentLesson.arModel3d?.autoRotate !== false
-                                });
-                              }
-                            }}
-                            placeholder="مسار أو رابط مجسم AR مخصص (.glb) - أو اتركه فارغاً"
-                            className="flex-1 w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
-                          />
-
-                          <label className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-200 text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5 border border-cyan-500/30 flex-shrink-0">
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>رفع .glb خاص بـ AR</span>
+                        <div className="flex items-center pt-4 px-1">
+                          <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
                             <input
-                              type="file"
-                              accept=".glb,model/gltf-binary,.gltf"
-                              className="hidden"
+                              type="checkbox"
+                              checked={currentLesson.model3d?.autoRotate !== false}
                               onChange={(e) => {
-                                if (e.target.files && e.target.files[0]) {
-                                  const file = e.target.files[0];
-                                  const objectUrl = URL.createObjectURL(file);
-                                  const cleanName = file.name.replace(/\.[^/.]+$/, '');
-                                  setUploadedARModelFileName(`${file.name} (${Math.round(file.size / 1024)} KB)`);
-                                  
-                                  const newARModel: LessonModel3D = {
-                                    url: objectUrl,
-                                    title: `مجسم AR: ${cleanName}`,
-                                    autoRotate: false
-                                  };
-                                  handleFieldChange('arModel3d', newARModel);
-
-                                  if (file.size < 6 * 1024 * 1024) {
-                                    const reader = new FileReader();
-                                    reader.onload = (uploadEv) => {
-                                      const dataUrl = uploadEv.target?.result as string;
-                                      if (dataUrl) {
-                                        handleFieldChange('arModel3d', {
-                                          ...newARModel,
-                                          url: dataUrl
-                                        });
-                                      }
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }
+                                if (currentLesson.model3d) {
+                                  handleFieldChange('model3d', {
+                                    ...currentLesson.model3d,
+                                    autoRotate: e.target.checked
+                                  });
                                 }
-                                e.target.value = '';
                               }}
+                              className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
                             />
+                            <span>تدوير تلقائي انسيابي (Auto-Rotate)</span>
                           </label>
-
-                          {currentLesson.arModel3d?.url && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleFieldChange('arModel3d', undefined);
-                                setUploadedARModelFileName(null);
-                              }}
-                              className="px-2 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs cursor-pointer"
-                              title="إلغاء التخصيص والعودة للمجسم الرئيسي المشترك"
-                            >
-                              إلغاء والعودة للمشترك
-                            </button>
-                          )}
-                        </div>
-
-                        {uploadedARModelFileName && (
-                          <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>تم رفع مجسم AR مخصص: {uploadedARModelFileName}</span>
-                          </div>
-                        )}
-
-                        {currentLesson.arModel3d?.url && (
-                          <div className="pt-1 flex items-center gap-2">
-                            <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                              <input
-                                type="checkbox"
-                                checked={currentLesson.arModel3d.autoRotate === true}
-                                onChange={(e) => {
-                                  if (currentLesson.arModel3d) {
-                                    handleFieldChange('arModel3d', {
-                                      ...currentLesson.arModel3d,
-                                      autoRotate: e.target.checked
-                                    });
-                                  }
-                                }}
-                                className="rounded border-slate-700 text-cyan-600 focus:ring-cyan-500"
-                              />
-                              <span>تدوير تلقائي للمجسم في الـ AR (أو اتركه بدون تفعيل ليبقى ثابتاً تماماً فوق صفحة الكتاب)</span>
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 🎵 صوت المجسم التلقائي (3D Model Sound Effect) */}
-                  <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/40 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300">
-                          <Music className="w-4 h-4" />
-                        </span>
-                        <div>
-                          <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-                            <span>صوت المجسم التلقائي (3D Model Sound)</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-bold">
-                              ينطلق فور ظهور المجسم
-                            </span>
-                          </h5>
-                          <p className="text-[11px] text-slate-300">
-                            صوت أو مؤثر خاص بالمجسم يعمل تلقائياً وبشكل فوري بمجرد توجيه الكاميرا إلى صفحة الكتاب.
-                          </p>
                         </div>
                       </div>
+                    </div>
 
-                      <div className="flex items-center gap-2 self-end sm:self-auto">
-                        {currentLesson.model3d?.soundUrl && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleUpdateModelSound('', false);
-                              if (isPlayingTestAudio && testAudioRef.current) {
-                                testAudioRef.current.pause();
-                                setIsPlayingTestAudio(false);
-                              }
-                              setAudioUploadFileName(null);
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-all"
-                            title="إلغاء صوت المجسم"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>إلغاء الصوت</span>
-                          </button>
-                        )}
+                    {/* 🎵 صوت المجسم التلقائي (3D Model Sound Effect) */}
+                    <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/40 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300">
+                            <Music className="w-4 h-4" />
+                          </span>
+                          <div>
+                            <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                              <span>حقل الصوت التلقائي المخصص للمجسم فقط (3D Model Sound)</span>
+                            </h5>
+                            <p className="text-[11px] text-slate-300">
+                              صوت مخصص للمجسم فقط ينطلق فور ظهور المجسم في الكاميرا أو المعاينة.
+                            </p>
+                          </div>
+                        </div>
 
-                        <label className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all flex-shrink-0">
+                        <label className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all flex-shrink-0 self-start sm:self-auto">
                           <Upload className="w-3.5 h-3.5" />
-                          <span>📁 رفع ملف صوتي (.mp3 / .wav)</span>
+                          <span>📁 رفع ملف صوت (.mp3)</span>
                           <input
                             key={`sound_upload_${currentLesson.targetId}`}
                             type="file"
@@ -2539,172 +2568,106 @@ function doPost(e) {
                           />
                         </label>
                       </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 items-center">
+                        <input
+                          type="text"
+                          value={currentLesson.model3d?.soundUrl || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handleUpdateModelSound(val, val.trim() !== '');
+                          }}
+                          placeholder="الصق رابط صوت مباشر أو قوقل درايف للمجسم..."
+                          className="flex-1 w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-purple-500"
+                        />
+
+                        {currentLesson.model3d?.soundUrl && (
+                          <button
+                            type="button"
+                            onClick={() => toggleTestAudio(currentLesson.model3d?.soundUrl)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0 ${
+                              isPlayingTestAudio
+                                ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse'
+                                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                            }`}
+                          >
+                            {isPlayingTestAudio ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                            <span>{isPlayingTestAudio ? 'إيقاف الصوت' : 'تجربة الصوت'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={currentLesson.model3d?.soundEnabled !== false}
+                          onChange={(e) => {
+                            handleUpdateModelSound(undefined, e.target.checked);
+                          }}
+                          className="rounded border-slate-700 text-purple-600 focus:ring-purple-500"
+                        />
+                        <span>تفعيل تشغيل الصوت تلقائياً مع ظهور المجسم ثلاثي الأبعاد</span>
+                      </label>
                     </div>
 
-                    {/* حقل الرابط واختبار الصوت */}
-                    <div className="space-y-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-bold text-slate-300">
-                            رابط ملف الصوت (Google Drive أو رابط مباشر MP3/OGG/WAV):
-                          </label>
-                          {currentLesson.model3d?.soundUrl && (
-                            <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>الصوت مخصص لهذا الدرس</span>
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-2 items-center">
-                          <input
-                            type="text"
-                            value={currentLesson.model3d?.soundUrl || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              handleUpdateModelSound(val, val.trim() !== '');
-                            }}
-                            placeholder="الصق رابط صوت قوقل درايف أو رابط مباشر (مثال: https://.../sound.mp3)"
-                            className="flex-1 w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 font-mono text-[11px] focus:outline-none focus:border-purple-500"
-                          />
-
-                          {currentLesson.model3d?.soundUrl && (
-                            <button
-                              type="button"
-                              onClick={() => toggleTestAudio(currentLesson.model3d?.soundUrl)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0 ${
-                                isPlayingTestAudio
-                                  ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse'
-                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
-                              }`}
-                              title={isPlayingTestAudio ? 'إيقاف التجربة' : 'استماع للصوت الآن'}
-                            >
-                              {isPlayingTestAudio ? (
-                                <>
-                                  <Pause className="w-3.5 h-3.5" />
-                                  <span>⏸ إيقاف الصوت</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Play className="w-3.5 h-3.5" />
-                                  <span>▶ استماع وتجربة</span>
-                                </>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* شريط تفعيل/كتم الصوت التلقائي */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
-                        <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                          <input
-                            type="checkbox"
-                            checked={currentLesson.model3d?.soundEnabled !== false}
-                            onChange={(e) => {
-                              handleUpdateModelSound(undefined, e.target.checked);
-                            }}
-                            className="rounded border-slate-700 text-purple-600 focus:ring-purple-500"
-                          />
-                          <span className="font-semibold">
-                            تفعيل انطلاق الصوت تلقائياً مع ظهور المجسم ثلاثي الأبعاد في الكاميرا
-                          </span>
-                        </label>
-                      </div>
-
-                      {/* نماذج مؤثرات صوتية سريعة بنقرة واحدة */}
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-xs text-slate-300">
-                        <span className="text-[10px] text-slate-400">أصوات جاهزة للتجربة السريعة:</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleUpdateModelSound('https://actions.google.com/sounds/v1/science_fiction/space_atmosphere.ogg', true);
-                            setAudioUploadFileName(null);
-                            setModelSoundNotice('✓ تم تعيين مؤثر الغلاف الجوي والفضاء للمجسم');
-                            setTimeout(() => setModelSoundNotice(null), 3000);
-                          }}
-                          className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-purple-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
-                        >
-                          🪐 مؤثر فضاء وكواكب
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleUpdateModelSound('https://actions.google.com/sounds/v1/science_fiction/teleport.ogg', true);
-                            setAudioUploadFileName(null);
-                            setModelSoundNotice('✓ تم تعيين نغمة الهولوجرام التقنية للمجسم');
-                            setTimeout(() => setModelSoundNotice(null), 3000);
-                          }}
-                          className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
-                        >
-                          ⚡ نغمة هولوجرام تقنية
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleUpdateModelSound('https://actions.google.com/sounds/v1/nature/wind_blowing_through_trees.ogg', true);
-                            setAudioUploadFileName(null);
-                            setModelSoundNotice('✓ تم تعيين مؤثر بيئي طبيعي للمجسم');
-                            setTimeout(() => setModelSoundNotice(null), 3000);
-                          }}
-                          className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-semibold border border-slate-700 cursor-pointer transition-colors"
-                        >
-                          🌿 مؤثر بيئي طبيعي
-                        </button>
-                      </div>
-
-                      {modelSoundNotice && (
-                        <p className="text-[11px] text-emerald-400 font-medium bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
-                          {modelSoundNotice}
-                        </p>
-                      )}
-
-                      {audioUploadFileName && (
-                        <div className="text-[10px] text-purple-300 font-semibold flex items-center gap-1.5 pt-0.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
-                          <span>الملف المرفوع: {audioUploadFileName}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 3D Interactive Live Preview Window */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                    {/* المعاينة الحية للمجسم */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                        <span>معاينة حية للمجسم (3D Preview) - جرّب التدوير بالفأرة أو اللمس:</span>
+                        <span>معاينة حية تفاعلية للمجسم (3D Preview) - جرّب التدوير بالفأرة أو اللمس:</span>
                       </span>
-                      {getActiveLessonModel(currentLesson, true)?.url && (
-                        <span className="text-[10px] text-emerald-400 font-bold">
-                          ✓ جاهز للنوعين (AR فوق الورقة و 360° باللمس)
-                        </span>
+
+                      {getActiveLessonModel(currentLesson, true)?.url ? (
+                        <Model3DViewer
+                          src={getActiveLessonModel(currentLesson, true)!.url}
+                          title={getActiveLessonModel(currentLesson, true)!.title || currentLesson.title}
+                          height="260px"
+                          autoRotate={getActiveLessonModel(currentLesson, true)!.autoRotate !== false}
+                          interactive={true}
+                        />
+                      ) : (
+                        <div className="h-44 rounded-2xl bg-slate-900 border border-dashed border-slate-800 flex flex-col items-center justify-center p-4 text-center text-slate-400 space-y-1">
+                          <Box className="w-8 h-8 text-slate-600 animate-pulse" />
+                          <p className="text-xs font-bold text-slate-300">لا يوجد مجسم ثلاثي أبعاد لهذا الدرس حالياً</p>
+                        </div>
                       )}
                     </div>
-
-                    {getActiveLessonModel(currentLesson, true)?.url ? (
-                      <Model3DViewer
-                        src={getActiveLessonModel(currentLesson, true)!.url}
-                        title={getActiveLessonModel(currentLesson, true)!.title || currentLesson.title}
-                        height="260px"
-                        autoRotate={getActiveLessonModel(currentLesson, true)!.autoRotate !== false}
-                        interactive={true}
-                      />
-                    ) : (
-                      <div className="h-44 rounded-2xl bg-slate-950/80 border border-dashed border-slate-800 flex flex-col items-center justify-center p-4 text-center text-slate-400 space-y-2">
-                        <Box className="w-8 h-8 text-slate-600 animate-pulse" />
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-bold text-slate-300">
-                            لا يوجد مجسم 3D مرتبط بهذا الدرس حالياً
-                          </p>
-                          <p className="text-[11px] text-slate-500 max-w-sm leading-relaxed">
-                            اضغط <strong>[ 📁 اختيار ملف .glb من جهازك ]</strong> أو اختر أحد النماذج الجاهزة أعلاه لتظهر لك المعاينة الحية فوراً هنا وتتحقق من شكله قبل الحفظ.
-                          </p>
-                        </div>
-                      </div>
-                    )}
                   </div>
-                </div>
+                )}
+
+                {/* ========================================================================= */}
+                {/* ❓ التبويب 4: بنك الأسئلة وتسجيل الإجابات                                  */}
+                {/* ========================================================================= */}
+                {lessonSubTab === 'questions' && (
+                  <div className="animate-fadeIn">
+                    <LessonQuestionsEditor
+                      currentLesson={currentLesson}
+                      allLessons={editableLessons}
+                      onUpdateQuestions={(newQuestions) => {
+                        const nextLessons = [...editableLessons];
+                        const cur = { ...currentLesson, questions: newQuestions };
+                        if (newQuestions[0]?.type === 'multiple_choice') {
+                          cur.description = {
+                            ...cur.description,
+                            quiz: {
+                              question: newQuestions[0].question,
+                              options: newQuestions[0].options || [],
+                              correctIndex: newQuestions[0].correctIndex ?? 0,
+                              explanation: newQuestions[0].explanation || ''
+                            }
+                          };
+                        }
+                        nextLessons[selectedLessonIndex] = cur;
+                        setEditableLessons(nextLessons);
+                        if (onUpdateLessons) onUpdateLessons(nextLessons);
+                        saveStoredLessons(nextLessons);
+                      }}
+                      onRequestConfirm={setConfirmModal}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
                 {/* Action Buttons for Lessons */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 border border-slate-800">
@@ -2802,8 +2765,6 @@ function doPost(e) {
                     </span>
                   )}
                 </div>
-              </div>
-            )}
 
             {/* Project Export & MindAR Publishing Hub */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">

@@ -24,6 +24,35 @@ export interface LessonAudio {
   embedUrl?: string;
 }
 
+export type QuestionType = 'multiple_choice' | 'text_answer';
+
+export interface LessonQuestion {
+  id: string;
+  type: QuestionType; // 'multiple_choice' أو 'text_answer'
+  question: string;
+  options?: string[]; // لأسئلة الاختيار من متعدد
+  correctIndex?: number; // رقم الإجابة الصحيحة (0, 1, 2, 3)
+  correctAnswerText?: string; // الإجابة النموذجية أو المفتاحية للسؤال النصي
+  explanation?: string; // تفسير وتعزيز الإجابة
+  points?: number; // نقاط أو درجات السؤال
+}
+
+export interface StudentSubmission {
+  id: string;
+  studentName: string;
+  studentPhone: string;
+  lessonId: string;
+  lessonTitle: string;
+  questionId: string;
+  questionText: string;
+  questionType: QuestionType;
+  studentAnswer: string;
+  isCorrect?: boolean;
+  score?: number;
+  submittedAt: string;
+  syncedToSheets?: boolean;
+}
+
 export interface LessonQuiz {
   question: string;
   options: string[];
@@ -65,6 +94,8 @@ export interface LessonData {
   description: LessonDescription;
   model3d?: LessonModel3D;
   arModel3d?: LessonModel3D; // مجسم مخصص اختياري للواقع المعزز (AR) - إذا لم يُحدد يستخدم model3d تلقائياً
+  isFreePreview?: boolean; // هل الدرس متاح للتجربة المجانية بدون تسجيل دخول؟ (true = مجاني، false = للمشتركين فقط)
+  questions?: LessonQuestion[]; // بنك الأسئلة المتعددة للدرس الواحد
 }
 
 /**
@@ -151,6 +182,31 @@ export function getLessonAudios(lesson?: LessonData | null): LessonAudio[] {
       ...lesson.audio,
       url: resolveAssetUrl(lesson.audio.url),
       embedUrl: lesson.audio.embedUrl ? resolveAssetUrl(lesson.audio.embedUrl) : lesson.audio.embedUrl
+    }];
+  }
+  return [];
+}
+
+/**
+ * استخراج بنك أسئلة الدرس (يدعم بنك الأسئلة المتعدد الجديد والسؤال الفردي القديم)
+ */
+export function getLessonQuestions(lesson?: LessonData | null): LessonQuestion[] {
+  if (!lesson) return [];
+  if (Array.isArray(lesson.questions) && lesson.questions.length > 0) {
+    return lesson.questions.filter((q) => q && q.question?.trim());
+  }
+  // التوافق القديم إذا وجد سؤال في description.quiz
+  if (lesson.description?.quiz?.question?.trim()) {
+    return [{
+      id: `${lesson.targetId || 'q'}_default_1`,
+      type: 'multiple_choice',
+      question: lesson.description.quiz.question,
+      options: Array.isArray(lesson.description.quiz.options) && lesson.description.quiz.options.length > 0
+        ? lesson.description.quiz.options
+        : ['الخيار 1', 'الخيار 2', 'الخيار 3', 'الخيار 4'],
+      correctIndex: lesson.description.quiz.correctIndex ?? 0,
+      explanation: lesson.description.quiz.explanation || '',
+      points: 1
     }];
   }
   return [];

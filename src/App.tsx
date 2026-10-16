@@ -19,7 +19,7 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminPortalView } from './components/AdminPortalView';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
-import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios } from './types/ar';
+import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios, getLessonQuestions } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
 import { soundService } from './services/soundService';
@@ -379,6 +379,7 @@ export default function App() {
           targetId={activeLesson.targetId}
           grade={activeLesson.grade}
           subject={activeLesson.subject}
+          questions={getLessonQuestions(activeLesson)}
           onClose={() => {
             setActiveModal('none');
             setShowFloatingModel(true);
