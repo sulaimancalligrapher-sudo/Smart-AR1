@@ -23,7 +23,8 @@ import {
   getLessonQuestions,
   normalizeVideoData,
   normalizeAudioData,
-  resolveAssetUrl
+  resolveAssetUrl,
+  isLessonRestricted
 } from '../types/ar';
 import { saveStoredLessons, fetchLessons, setHasLocalDrafts } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
@@ -33,6 +34,7 @@ import { optimizeImageFile } from '../services/imageOptimizer';
 import { ConfirmModal } from './ConfirmModal';
 import { getStoredSubmissions, clearAllSubmissions, recordStudentSubmission } from '../services/studentSubmissions';
 import { LessonQuestionsEditor } from './LessonQuestionsEditor';
+import { getSubscriptionExternalUrl, setSubscriptionExternalUrl } from '../services/subscriptionAuth';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -152,6 +154,8 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [subscriptionUrl, setSubscriptionUrl] = useState<string>(() => getSubscriptionExternalUrl());
+  const [subscriptionUrlSaved, setSubscriptionUrlSaved] = useState<boolean>(false);
 
   // Lesson Editor State
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
@@ -421,6 +425,8 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
         cur.description = { ...cur.description, summary: value };
       } else if (field === 'images') {
         cur.images = value;
+      } else if (field === 'isFreePreview') {
+        cur.isFreePreview = Boolean(value);
       } else {
         (cur as any)[field] = value;
       }
@@ -782,6 +788,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
       subtitle: 'اكتب وصفاً أو تمهيداً للدرس هنا',
       subject: 'العلوم العامة',
       grade: 'الصف الابتدائي',
+      isFreePreview: newIndex === 0 ? true : false,
       targetImage: '',
       video: {
         type: 'youtube',
@@ -1251,14 +1258,95 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
 
   const copyCodeSample = () => {
     const code = `// Google Apps Script - Code.gs
-var SHEET_NAME = "Events";
+// يدعم: التحقق من المشتركين (ورقة SubData)، تسجيل إجابات الطلاب (Submissions)، وأحداث الكاميرا (Events)
 
+var SUBSCRIBERS_SHEET = "SubData";
+var SUBMISSIONS_SHEET = "Submissions";
+var EVENTS_SHEET = "Events";
+
+// 1. معالجة طلبات التحقق السريع للمشتركين (GET) دون مشاكل CORS
+function doGet(e) {
+  try {
+    var action = e.parameter.action;
+
+    // فحص اشتراك الطالب في ورقة SubData
+    if (action === "verifySubscriber") {
+      var phone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+      var name = (e.parameter.name || "").toString().trim().toLowerCase();
+
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
+      if (!sheet) {
+        // إنشاء الورقة تلقائياً إذا لم تكن موجودة
+        sheet = ss.insertSheet(SUBSCRIBERS_SHEET);
+        sheet.appendRow(["رقم المشترك / الجوال", "اسم المشترك"]);
+        return createJsonResponse({
+          success: false,
+          message: "تم إنشاء ورقة SubData تلقائياً في الشيت، يرجى وضع أرقام المشتركين في العمود A وأسمائهم في العمود B."
+        });
+      }
+
+      var data = sheet.getDataRange().getValues();
+      // تخطي الصف الأول (عناوين الأعمدة)
+      for (var i = 1; i < data.length; i++) {
+        var rowPhone = (data[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var rowName = (data[i][1] || "").toString().trim().toLowerCase();
+
+        if (rowPhone && phone && rowPhone === phone) {
+          // تطابق في رقم المشترك
+          if (!name || rowName.indexOf(name) !== -1 || name.indexOf(rowName) !== -1) {
+            return createJsonResponse({
+              success: true,
+              name: data[i][1] || e.parameter.name,
+              phone: data[i][0] || e.parameter.phone
+            });
+          }
+        }
+      }
+
+      return createJsonResponse({
+        success: false,
+        message: "عذراً، هذا الاسم أو الرقم غير مسجل في ورقة المشتركين (SubData)."
+      });
+    }
+
+    return createJsonResponse({ status: "ready", app: "Smart AR Book Web App" });
+  } catch (err) {
+    return createJsonResponse({ success: false, error: err.toString() });
+  }
+}
+
+// 2. معالجة حفظ إجابات الطلاب وأحداث الكاميرا (POST)
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
-    sheet.appendRow([
+
+    // أ) تسجيل إجابة طالب على سؤال
+    if (data.action === "student_submission") {
+      var subSheet = ss.getSheetByName(SUBMISSIONS_SHEET) || ss.insertSheet(SUBMISSIONS_SHEET);
+      if (subSheet.getLastRow() === 0) {
+        subSheet.appendRow(["التاريخ والوقت", "اسم الطالب", "رقم الجوال", "اسم الدرس", "السؤال", "إجابة الطالب", "صحيحة؟", "النتيجة"]);
+      }
+      subSheet.appendRow([
+        data.submittedAt || new Date().toISOString(),
+        data.studentName || "",
+        data.studentPhone || "",
+        data.lessonTitle || "",
+        data.questionText || "",
+        data.studentAnswer || "",
+        data.isCorrect ? "نعم ✓" : "لا ✗",
+        data.score || 0
+      ]);
+      return createJsonResponse({ status: "success", type: "submission_recorded" });
+    }
+
+    // ب) تسجيل أحداث الكاميرا والدروس
+    var eventSheet = ss.getSheetByName(EVENTS_SHEET) || ss.insertSheet(EVENTS_SHEET);
+    if (eventSheet.getLastRow() === 0) {
+      eventSheet.appendRow(["التاريخ والوقت", "معرف الجلسة", "معرف الهدف", "عنوان الدرس", "الحدث", "الجهاز", "اللغة"]);
+    }
+    eventSheet.appendRow([
       data.timestamp || new Date().toISOString(),
       data.session_id || "session",
       data.target_id || "lesson",
@@ -1267,10 +1355,15 @@ function doPost(e) {
       data.device || "device",
       data.language || "ar"
     ]);
-    return ContentService.createTextOutput(JSON.stringify({status: "success"})).setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse({ status: "success", type: "event_recorded" });
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({status: "error", error: err.toString()})).setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse({ status: "error", error: err.toString() });
   }
+}
+
+function createJsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }`;
     navigator.clipboard.writeText(code);
     setCopiedCode(true);
@@ -1436,11 +1529,14 @@ function doPost(e) {
                         onChange={(e) => setSelectedLessonIndex(Number(e.target.value))}
                         className="w-full pl-8 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 focus:border-sky-500 text-xs sm:text-sm font-bold text-white transition-all cursor-pointer focus:outline-none appearance-none shadow-sm"
                       >
-                        {editableLessons.map((l, idx) => (
-                          <option key={l.targetId || idx} value={idx} className="bg-slate-950 text-white py-1">
-                            Target #{l.targetIndex}: {l.title || `درس ${idx + 1}`} {l.isFreePreview ? ' (🔓 تجربة مجانية)' : ' (🔒 للمشتركين)'}
-                          </option>
-                        ))}
+                        {editableLessons.map((l, idx) => {
+                          const isFree = !isLessonRestricted(l);
+                          return (
+                            <option key={l.targetId || idx} value={idx} className="bg-slate-950 text-white py-1">
+                              Target #{l.targetIndex}: {l.title || `درس ${idx + 1}`} {isFree ? ' (🔓 متاح مجاناً)' : ' (🔒 مقفل للمشتركين)'}
+                            </option>
+                          );
+                        })}
                       </select>
                       <ChevronDown className="w-4 h-4 text-sky-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     </div>
@@ -1605,63 +1701,68 @@ function doPost(e) {
                     </div>
 
                     {/* مستوى الوصول للدرس (Free vs Locked) */}
-                    <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                          {currentLesson.isFreePreview ? (
-                            <Unlock className="w-4 h-4 text-emerald-400" />
-                          ) : (
-                            <Lock className="w-4 h-4 text-amber-400" />
-                          )}
-                          <span>مستوى صلاحية الوصول لهذا الدرس:</span>
-                        </label>
-                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                          currentLesson.isFreePreview 
-                            ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-                            : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
-                        }`}>
-                          {currentLesson.isFreePreview ? '🔓 متاح مجاناً للتجربة (Free Preview)' : '🔒 مقفل للأعضاء المشتركين فقط'}
-                        </span>
-                      </div>
-
-                      <p className="text-[11px] text-slate-300 leading-relaxed">
-                        حدد ما إذا كان هذا الدرس مفتوحاً للجميع (كنموذج دعائي وتجريبي للكتاب المدرسي)، أو يتطلب اشتراكاً وتسجيل دخول.
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleFieldChange('isFreePreview', true)}
-                          className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
-                            currentLesson.isFreePreview
-                              ? 'bg-emerald-950/80 border-emerald-500 text-white font-bold ring-2 ring-emerald-500/30'
-                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          <Unlock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                          <div>
-                            <div className="font-bold text-white text-xs">متاح مجاناً للجميع (تجربة ومعاينة)</div>
-                            <div className="text-[10px] text-slate-400">يمكن لأي طالب فتحه واستكشاف المجسم والوسائط دون تسجيل</div>
+                    {(() => {
+                      const isRestricted = isLessonRestricted(currentLesson);
+                      return (
+                        <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                              {!isRestricted ? (
+                                <Unlock className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <Lock className="w-4 h-4 text-amber-400" />
+                              )}
+                              <span>مستوى صلاحية الوصول لهذا الدرس:</span>
+                            </label>
+                            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                              !isRestricted 
+                                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+                            }`}>
+                              {!isRestricted ? '🔓 متاح مجاناً للتجربة (Free Preview)' : '🔒 مقفل للأعضاء المشتركين فقط'}
+                            </span>
                           </div>
-                        </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleFieldChange('isFreePreview', false)}
-                          className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
-                            !currentLesson.isFreePreview
-                              ? 'bg-amber-950/80 border-amber-500 text-white font-bold ring-2 ring-amber-500/30'
-                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                          <div>
-                            <div className="font-bold text-white text-xs">مقفل للمشتركين فقط (تسجيل الدخول)</div>
-                            <div className="text-[10px] text-slate-400">يتطلب الاسم ورقم الاشتراك المسجل في قاعدة البيانات</div>
+                          <p className="text-[11px] text-slate-300 leading-relaxed">
+                            حدد ما إذا كان هذا الدرس مفتوحاً للجميع (كنموذج دعائي وتجريبي للكتاب المدرسي)، أو يتطلب اشتراكاً وتسجيل دخول.
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleFieldChange('isFreePreview', true)}
+                              className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
+                                !isRestricted
+                                  ? 'bg-emerald-950/80 border-emerald-500 text-white font-bold ring-2 ring-emerald-500/30'
+                                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <Unlock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                              <div>
+                                <div className="font-bold text-white text-xs">متاح مجاناً للجميع (تجربة ومعاينة)</div>
+                                <div className="text-[10px] text-slate-400">يمكن لأي طالب فتحه واستكشاف المجسم والوسائط دون تسجيل</div>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleFieldChange('isFreePreview', false)}
+                              className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
+                                isRestricted
+                                  ? 'bg-amber-950/80 border-amber-500 text-white font-bold ring-2 ring-amber-500/30'
+                                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                              <div>
+                                <div className="font-bold text-white text-xs">مقفل للمشتركين فقط (تسجيل الدخول)</div>
+                                <div className="text-[10px] text-slate-400">يتطلب الاسم ورقم الاشتراك المسجل في قاعدة البيانات</div>
+                              </div>
+                            </button>
                           </div>
-                        </button>
-                      </div>
-                    </div>
+                        </div>
+                      );
+                    })()}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {/* Lesson Title */}
@@ -3105,6 +3206,91 @@ function doPost(e) {
                   <span>{testResult}</span>
                 </div>
               )}
+            </div>
+
+            {/* 💎 بطاقة إعدادات رابط الاشتراك الخارجي وورقة SubData */}
+            <div className="p-4 rounded-xl bg-slate-950 border border-amber-500/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                    <Lock className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                      <span>إعدادات نظام المشتركين ورابط طلب الاشتراك الخارجي</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
+                        ورقة SubData
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      يتحكم في الرابط الذي يفتح للطلاب عند النقر على (طلب اشتراك) في الدروس المقيدة
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* حقل رابط الاشتراك الخارجي */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-200">
+                  رابط طلب الاشتراك الخارجي (واتساب، متجر إلكتروني، أو صفحة تسديد):
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="url"
+                    value={subscriptionUrl}
+                    onChange={(e) => setSubscriptionUrl(e.target.value)}
+                    placeholder="https://wa.me/966XXXXXXXXX أو رابط متجرك"
+                    className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs sm:text-sm text-sky-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubscriptionExternalUrl(subscriptionUrl);
+                      setSubscriptionUrlSaved(true);
+                      setTimeout(() => setSubscriptionUrlSaved(false), 3000);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs sm:text-sm transition-colors cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    {subscriptionUrlSaved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                    <span>{subscriptionUrlSaved ? 'تم الحفظ بنجاح!' : 'حفظ الرابط'}</span>
+                  </button>
+                  {subscriptionUrl && (
+                    <a
+                      href={subscriptionUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 border border-slate-700"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>تجربة الرابط ↗</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* إرشادات هيكل ورقة SubData للمشتركين */}
+              <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/20 text-xs text-amber-200/90 space-y-1.5">
+                <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>طريقة إضافة المشتركين في Google Sheets (ورقة SubData):</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  عند نسخ كود سكريبت Apps Script أعلاه، يتم إنشاء ورقة اسمها <code className="font-mono bg-black/40 px-1 rounded text-amber-300">SubData</code> تلقائياً في الشيت:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
+                  <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
+                    <span className="text-amber-400 font-bold block">العمود A:</span>
+                    رقم المشترك أو رقم الجوال (مثل: 0501234567)
+                  </div>
+                  <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
+                    <span className="text-amber-400 font-bold block">العمود B:</span>
+                    اسم المشترك (مثل: محمد خالد)
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 pt-0.5">
+                  💡 عند كتابة الطالب اسمه ورقمه لأول مرة في التطبيق، تتم مطابقتها في ثانية واحدة مع هذه الورقة وتفعيل حسابه تلقائياً لجميع الدروس المقيدة.
+                </p>
+              </div>
             </div>
 
             {/* Live Logs Table */}

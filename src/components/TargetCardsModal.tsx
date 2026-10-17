@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Printer, Eye, Play, Sparkles, Download, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
-import { LessonData } from '../types/ar';
+import { LessonData, isLessonRestricted } from '../types/ar';
 import { targetCompiler, CompileProgress } from '../services/targetCompiler';
 
 interface TargetCardsModalProps {
@@ -111,10 +111,13 @@ export const TargetCardsModal: React.FC<TargetCardsModalProps> = ({
                           : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-800'
                       }`}
                     >
-                      <span className="text-[10px] text-sky-400 font-mono block">
-                        Target #{lesson.targetIndex}
+                      <span className="text-[10px] text-sky-400 font-mono flex items-center justify-between">
+                        <span>Target #{lesson.targetIndex}</span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-sans ${isLessonRestricted(lesson) ? 'bg-amber-950/80 text-amber-300 border border-amber-500/30' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'}`}>
+                          {isLessonRestricted(lesson) ? '🔒 مقفل' : '🔓 مجاني'}
+                        </span>
                       </span>
-                      <span className="text-xs font-bold truncate block mt-0.5">
+                      <span className="text-xs font-bold truncate block mt-1">
                         {lesson.title}
                       </span>
                     </button>

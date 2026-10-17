@@ -13,15 +13,20 @@ import {
   ShieldCheck,
   LogOut,
   Scan,
-  Smartphone
+  Smartphone,
+  KeyRound
 } from 'lucide-react';
 import { LessonData } from '../types/ar';
 import { soundService } from '../services/soundService';
+import { SubscriberInfo } from '../services/subscriptionAuth';
 
 interface WelcomeScreenProps {
   onStartCamera: () => void;
   lessons: LessonData[];
   isAdmin: boolean;
+  subscriber?: SubscriberInfo | null;
+  onSubscriberLogout?: () => void;
+  onOpenSubscriberLogin?: () => void;
   onOpenAdminPortal?: () => void;
   onAdminLogout?: () => void;
 }
@@ -30,6 +35,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onStartCamera,
   lessons,
   isAdmin,
+  subscriber,
+  onSubscriberLogout,
+  onOpenSubscriberLogin,
   onOpenAdminPortal,
   onAdminLogout
 }) => {
@@ -76,6 +84,22 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </button>
               )}
             </div>
+          ) : subscriber ? (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold shadow-sm">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                <span>المشترك: {subscriber.name}</span>
+              </div>
+              {onSubscriberLogout && (
+                <button
+                  onClick={onSubscriberLogout}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer text-xs"
+                  title="تسجيل الخروج من الاشتراك"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                </button>
+              )}
+            </div>
           ) : (
             <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-300 text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -88,11 +112,56 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       {/* Main Student Experience */}
       <main className="relative z-10 max-w-xl mx-auto w-full py-8 sm:py-12 flex flex-col items-center text-center space-y-6">
         
-        {/* Child-Friendly Badge */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 text-xs font-semibold">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-          <span>يعمل مباشرة في المتصفح الآن بدون تثبيت أي تطبيق</span>
-        </div>
+        {/* كارت حالة المستخدم (مشترك مفعل مع زر خروج سريع للاختبار / أو زائر عادي مع زر تسجيل دخول) */}
+        {subscriber ? (
+          <div className="w-full max-w-md p-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/50 flex items-center justify-between gap-3 shadow-xl animate-fadeIn text-right">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-400/30 flex-shrink-0">
+                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>مرحباً، {subscriber.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-semibold">
+                    مشترك مفعل ✓
+                  </span>
+                </div>
+                <div className="text-[10px] text-emerald-300">
+                  جميع الدروس مفتوحة لك بالكامل الآن
+                </div>
+              </div>
+            </div>
+            {onSubscriberLogout && (
+              <button
+                onClick={onSubscriberLogout}
+                className="px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 shadow-sm active:scale-95 flex-shrink-0"
+                title="تسجيل الخروج والتحول لوضع الزائر المجاني لتجربة حظر الدروس المقيدة"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>خروج (تجربة زائر)</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="w-full max-w-md p-3 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between gap-3 shadow-lg text-right">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+              <div className="text-xs text-slate-300 font-medium">
+                <span className="text-amber-300 font-bold block sm:inline">أنت في وضع الزائر: </span>
+                <span>الدروس المقيدة ستطلب تسجيل الدخول.</span>
+              </div>
+            </div>
+            {onOpenSubscriberLogin && (
+              <button
+                onClick={onOpenSubscriberLogin}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 flex-shrink-0 active:scale-95 shadow-sm"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                <span>دخول المشترك</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Title */}
         <div className="space-y-2.5">

@@ -23,7 +23,7 @@ import {
   HelpCircle,
   Monitor
 } from 'lucide-react';
-import { LessonData } from '../types/ar';
+import { LessonData, isLessonRestricted } from '../types/ar';
 import { getAdminCredentials, saveAdminCredentials } from '../services/adminAuth';
 
 interface AdminPortalViewProps {
@@ -316,20 +316,28 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-            {lessons.map((lesson) => (
-              <button
-                key={lesson.targetId}
-                onClick={() => onSimulateLesson(lesson)}
-                className="p-3 rounded-2xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/50 text-right transition-colors cursor-pointer group flex flex-col justify-between"
-              >
-                <span className="text-[10px] text-amber-400 font-mono block">
-                  {lesson.targetId}
-                </span>
-                <span className="text-xs font-bold text-slate-200 group-hover:text-white truncate block mt-1">
-                  {lesson.title}
-                </span>
-              </button>
-            ))}
+            {lessons.map((lesson) => {
+              const isRestricted = isLessonRestricted(lesson);
+              return (
+                <button
+                  key={lesson.targetId}
+                  onClick={() => onSimulateLesson(lesson)}
+                  className="p-3 rounded-2xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/50 text-right transition-colors cursor-pointer group flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-amber-400 font-mono block">
+                      {lesson.targetId}
+                    </span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded font-sans ${isRestricted ? 'bg-amber-950/80 text-amber-300 border border-amber-500/30' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'}`}>
+                      {isRestricted ? '🔒 مقفل' : '🔓 مجاني'}
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-slate-200 group-hover:text-white truncate block mt-1.5">
+                    {lesson.title}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

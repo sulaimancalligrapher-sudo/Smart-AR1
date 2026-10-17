@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume1, Volume2, VolumeX, Music } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { LessonData, getActiveLessonModel, getLessonModelSound } from '../types/ar';
+import { LessonData, getActiveLessonModel, getLessonModelSound, isLessonRestricted } from '../types/ar';
 import { getStoredLessons, DEFAULT_LESSONS } from '../data/lessons';
 import { targetCompiler } from '../services/targetCompiler';
 import { normalizeAudioUrl } from '../services/urlHelpers';
 import { soundService } from '../services/soundService';
+
+import { SubscriberInfo, getStoredSubscriber } from '../services/subscriptionAuth';
 
 interface ARCameraViewProps {
   lessons: LessonData[];
@@ -18,6 +20,8 @@ interface ARCameraViewProps {
   onOpenTeacherConsole: () => void;
   showFloatingModel?: boolean;
   isAdmin?: boolean;
+  subscriber?: SubscriberInfo | null;
+  onSubscriberLogout?: () => void;
   hideScanReticle?: boolean;
 }
 
@@ -198,6 +202,8 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   onOpenTeacherConsole,
   showFloatingModel = true,
   isAdmin = false,
+  subscriber,
+  onSubscriberLogout,
   hideScanReticle = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -292,6 +298,27 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   useEffect(() => {
     lessonsRef.current = lessons;
   }, [lessons]);
+
+  const subscriberRef = useRef<SubscriberInfo | null | undefined>(subscriber);
+  useEffect(() => {
+    subscriberRef.current = subscriber;
+  }, [subscriber]);
+
+  const onTargetDetectedRef = useRef(onTargetDetected);
+  useEffect(() => {
+    onTargetDetectedRef.current = onTargetDetected;
+  }, [onTargetDetected]);
+
+  const onTargetLostRef = useRef(onTargetLost);
+  useEffect(() => {
+    onTargetLostRef.current = onTargetLost;
+  }, [onTargetLost]);
+
+  const showFloatingModelRef = useRef(showFloatingModel);
+  useEffect(() => {
+    showFloatingModelRef.current = showFloatingModel;
+  }, [showFloatingModel]);
+
   const modelEntriesRef = useRef<
     Map<
       number,
@@ -311,6 +338,17 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
       }
     });
   }, [showFloatingModel]);
+
+  // عند تسجيل دخول المشترك بنجاح، استعادة إظهار مجاميع الأهداف فوراً لجميع الدروس المقيدة
+  useEffect(() => {
+    if (subscriber) {
+      anchorContentGroupsRef.current.forEach((group) => {
+        if (group) {
+          group.visible = Boolean(showFloatingModel);
+        }
+      });
+    }
+  }, [subscriber, showFloatingModel]);
 
   // التحميل المسبق للمجسمات في الذاكرة لتكون جاهزة فوراً عند التعرف البصري (0 ثانية تأخير)
   useEffect(() => {
@@ -620,7 +658,27 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                   }) || lesson;
 
                 console.log(`🎯 تم التعرف على هدف مسح الدرس (Target #${targetIdx}): ${latestLesson.title}`);
-                onTargetDetected(latestLesson);
+
+                // فحص هل المستخدم مشترك مفعل (من الـ Ref أو الـ LocalStorage مباشرة لتفادي أي إغلاق قديم Stale Closure)
+                const activeSubscriber = subscriberRef.current || getStoredSubscriber();
+                const isRestrictedForVisitor = isLessonRestricted(latestLesson) && !activeSubscriber;
+
+                if (isRestrictedForVisitor) {
+                  // إخفاء المجسم فوراً لهذا الهدف وكتم أي صوت
+                  const group = anchorContentGroupsRef.current.get(targetIdx);
+                  if (group) group.visible = false;
+                  pauseModelSound();
+                  onTargetDetectedRef.current(latestLesson);
+                  return;
+                }
+
+                // مستخدم مشترك أو درس متاح مجاناً: نضمن إظهار المجسم فوق الكتاب وتشغيل الصوت
+                const group = anchorContentGroupsRef.current.get(targetIdx);
+                if (group) {
+                  group.visible = Boolean(showFloatingModelRef.current);
+                }
+
+                onTargetDetectedRef.current(latestLesson);
                 playModelSound(latestLesson);
               };
 
@@ -637,7 +695,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                         const adds = Array.isArray(l.additionalTargetIndices) ? l.additionalTargetIndices : [];
                         return pIdx === targetIdx || adds.includes(targetIdx);
                       }) || lesson;
-                    onTargetLost(latestLesson);
+                    onTargetLostRef.current(latestLesson);
                   }
                 }, 800);
               };
@@ -880,6 +938,28 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+          {/* شارة المشترك المفعل مع اسمه وزر تسجيل الخروج السريع للاختبار */}
+          {subscriber ? (
+            <div className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-[10px] sm:text-xs text-emerald-300 font-bold shadow-md animate-fadeIn">
+              <Sparkles className="w-3 h-3 text-amber-300 animate-pulse flex-shrink-0" />
+              <span className="truncate max-w-[70px] sm:max-w-[110px]">{subscriber.name}</span>
+              {onSubscriberLogout && (
+                <button
+                  type="button"
+                  onClick={onSubscriberLogout}
+                  className="mr-0.5 px-1.5 py-0.5 rounded-full bg-rose-500/30 hover:bg-rose-500/60 text-rose-200 text-[9px] font-bold border border-rose-400/40 cursor-pointer transition-all active:scale-95"
+                  title="تسجيل الخروج والتحول لوضع الزائر المجاني لتجربة حظر الدروس المقيدة"
+                >
+                  خروج ✕
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700 text-[10px] text-slate-300 font-medium shadow-md">
+              <span>👤 زائر مجاني</span>
+            </div>
+          )}
+
           {/* زر خفض ورفع صوت المجسم (أيقونة فقط بدون نص) - يظهر حصراً إذا كان للمجسم رابط صوت خاص */}
           {hasModelSound && (
             <div className="relative" ref={volumeControlRef}>

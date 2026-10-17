@@ -99,6 +99,24 @@ export interface LessonData {
 }
 
 /**
+ * دالة معيارية لفحص هل الدرس مقفل ومقيد للمشتركين فقط أم متاح مجاناً للجميع
+ */
+export function isLessonRestricted(lesson?: LessonData | null): boolean {
+  if (!lesson) return false;
+  // إذا حُدد صراحة كمعاينة مجانية (سواء boolean أو نص string)
+  if (lesson.isFreePreview === true || (lesson.isFreePreview as any) === 'true') {
+    return false;
+  }
+  // إذا حُدد صراحة كمقفل للمشتركين
+  if (lesson.isFreePreview === false || (lesson.isFreePreview as any) === 'false') {
+    return true;
+  }
+  // في حال لم يتم تحديد القيمة: الدرس الأول (Target #0) متاح مجاناً، وجميع الدروس التالية مقفلة للمشتركين
+  const pIdx = typeof lesson.targetIndex === 'number' ? lesson.targetIndex : 0;
+  return pIdx > 0;
+}
+
+/**
  * دالة ذكية لمعالجة وتصحيح روابط الوسائط (الصوت والفيديو والمجسمات)
  * 1. تحويل روابط GitHub من نمط صفحة العرض (blob/main/...) إلى الرابط المباشر الخام raw.githubusercontent.com
  * 2. معالجة المسارات النسبية لتتوافق مع بيئة النشر (GitHub Pages / النطاقات الفرعية) عبر BASE_URL

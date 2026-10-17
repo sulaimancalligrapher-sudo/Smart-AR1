@@ -33,6 +33,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
     subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
     subject: 'الخط واللغة العربية',
     grade: 'الصف الابتدائي',
+    isFreePreview: true,
     targetImage: '/targets/target_lesson_001.jpg',
     video: {
       type: 'mp4',
@@ -102,6 +103,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
     subtitle: 'درس استكشافي تفاعلي مدعوم بالواقع المعزز والمجسمات',
     subject: 'الخط واللغة العربية',
     grade: 'الصف الابتدائي',
+    isFreePreview: false,
     targetImage: '/targets/target_lesson_002.jpg',
     video: {
       type: 'mp4',
@@ -161,6 +163,7 @@ export const DEFAULT_LESSONS: LessonData[] = [
     subtitle: 'درس استكشافي تفاعلي مدعوم بمجسم كلمة الخط العربي والواقع المعزز',
     subject: 'الخط العربي والقرآن الكريم',
     grade: 'الصف الابتدائي',
+    isFreePreview: false,
     targetImage: '/targets/target_lesson_003.jpg',
     video: {
       type: 'mp4',
@@ -435,6 +438,7 @@ export async function fetchLessons(forceRefreshServer = false): Promise<LessonDa
 
           return {
             ...l,
+            isFreePreview: typeof l.isFreePreview === 'boolean' ? l.isFreePreview : (idx === 0),
             targetIndex: typeof l.targetIndex === 'number' ? l.targetIndex : idx,
             videos: vList,
             video: vList.length > 0 ? vList[0] : undefined,

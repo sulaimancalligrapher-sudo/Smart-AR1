@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { ARCameraView } from './components/ARCameraView';
 import { TransparentOverlay } from './components/TransparentOverlay';
@@ -19,11 +19,19 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminPortalView } from './components/AdminPortalView';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
-import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios, getLessonQuestions } from './types/ar';
+import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios, getLessonQuestions, isLessonRestricted } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
 import { soundService } from './services/soundService';
 import { getIsAdminLoggedIn, setAdminLoggedIn } from './services/adminAuth';
+import { SubscriberLockModal } from './components/SubscriberLockModal';
+import {
+  SubscriberInfo,
+  getStoredSubscriber,
+  saveStoredSubscriber,
+  clearStoredSubscriber,
+  getSubscriptionExternalUrl
+} from './services/subscriptionAuth';
 
 type ActiveModalType =
   | 'none'
@@ -68,6 +76,16 @@ export default function App() {
     return checkIsAdminUrl() ? 'admin' : 'student';
   });
 
+  // 💎 نظام المشتركين (الوضع المفتوح vs الوضع المقيد)
+  const [currentSubscriber, setCurrentSubscriber] = useState<SubscriberInfo | null>(() => getStoredSubscriber());
+  const currentSubscriberRef = useRef<SubscriberInfo | null>(currentSubscriber);
+  useEffect(() => {
+    currentSubscriberRef.current = currentSubscriber;
+  }, [currentSubscriber]);
+
+  const [lockedLessonTarget, setLockedLessonTarget] = useState<LessonData | null>(null);
+  const [isSubscriberLockModalOpen, setIsSubscriberLockModalOpen] = useState<boolean>(false);
+
   // كشف الدخول عبر الرابط الخاص بالإدارة
   useEffect(() => {
     if (checkIsAdminUrl()) {
@@ -109,28 +127,79 @@ export default function App() {
   };
 
   const handleTargetDetected = (lesson: LessonData) => {
-    setLessons((currentLessons) => {
-      const fresh =
-        currentLessons.find((l) => l.targetId === lesson.targetId) ||
-        currentLessons.find(
-          (l, idx) =>
-            (typeof l.targetIndex === 'number' ? l.targetIndex : idx) ===
-            (typeof lesson.targetIndex === 'number' ? lesson.targetIndex : -1)
-        ) ||
-        lesson;
-      setActiveLesson(fresh);
+    // 1. جلب أحدث بيانات للدرس الممسوح
+    const fresh =
+      lessons.find((l) => l.targetId === lesson.targetId) ||
+      lessons.find(
+        (l, idx) =>
+          (typeof l.targetIndex === 'number' ? l.targetIndex : idx) ===
+          (typeof lesson.targetIndex === 'number' ? lesson.targetIndex : -1)
+      ) ||
+      lesson;
+
+    // 2. فحص مستوى الوصول (الوضع المفتوح vs الوضع المقيد للمشتركين)
+    // نتحقق من State والـ Ref وأيضاً LocalStorage مباشرة لمنع أي stale closure
+    const isLocked = isLessonRestricted(fresh);
+    const activeSub = currentSubscriber || currentSubscriberRef.current || getStoredSubscriber();
+    const isSubscribed = Boolean(activeSub);
+
+    if (isLocked && !isSubscribed) {
+      // 🔒 الدرس مقفل للمشتركين فقط والزائر لم يسجل دخوله بعد
+      soundService.pauseModelSound();
+      setLockedLessonTarget(fresh);
+      setIsSubscriberLockModalOpen(true);
+      setActiveLesson(null);
+      setShowHologram3D(false);
+      setShowFloatingModel(false);
       analytics.trackEvent({
         targetId: fresh.targetId,
         lessonTitle: fresh.title,
         action: 'target_detected'
       });
-      return currentLessons;
-    });
+      return;
+    }
+
+    // 🔓 الدرس متاح مجاناً أو الزائر مشترك مفعل
+    setActiveLesson(fresh);
     setShowHologram3D(false);
-    setShowFloatingModel(true); // تفعيل مجسم الواقع المعزز على الصورة تلقائياً
+    setShowFloatingModel(true);
     if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
       setActiveModal('none');
     }
+    analytics.trackEvent({
+      targetId: fresh.targetId,
+      lessonTitle: fresh.title,
+      action: 'target_detected'
+    });
+  };
+
+  // نجاح تسجيل دخول المشترك
+  const handleSubscriberLoginSuccess = (subscriber: SubscriberInfo) => {
+    saveStoredSubscriber(subscriber);
+    setCurrentSubscriber(subscriber);
+    currentSubscriberRef.current = subscriber;
+    setIsSubscriberLockModalOpen(false);
+    if (lockedLessonTarget) {
+      setActiveLesson(lockedLessonTarget);
+      setShowFloatingModel(true);
+      setShowHologram3D(false);
+      if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
+        setActiveModal('none');
+      }
+      setLockedLessonTarget(null);
+    }
+  };
+
+  // تسجيل خروج المشترك
+  const handleSubscriberLogout = () => {
+    clearStoredSubscriber();
+    setCurrentSubscriber(null);
+    currentSubscriberRef.current = null;
+    setActiveLesson(null);
+    setShowHologram3D(false);
+    setShowFloatingModel(false);
+    setActiveModal('none');
+    soundService.pauseModelSound();
   };
 
   const handleTargetLost = (lesson: LessonData) => {
@@ -248,6 +317,13 @@ export default function App() {
           <WelcomeScreen
             lessons={lessons}
             isAdmin={isAdmin}
+            subscriber={currentSubscriber}
+            onSubscriberLogout={handleSubscriberLogout}
+            onOpenSubscriberLogin={() => {
+              const restricted = lessons.find((l) => isLessonRestricted(l)) || lessons[0] || null;
+              setLockedLessonTarget(restricted);
+              setIsSubscriberLockModalOpen(true);
+            }}
             onStartCamera={handleStartCamera}
             onOpenAdminPortal={() => setViewMode('admin')}
             onAdminLogout={handleAdminLogout}
@@ -258,6 +334,8 @@ export default function App() {
           lessons={lessons}
           activeLesson={activeLesson}
           isAdmin={isAdmin}
+          subscriber={currentSubscriber}
+          onSubscriberLogout={handleSubscriberLogout}
           onTargetDetected={handleTargetDetected}
           onTargetLost={handleTargetLost}
           onCloseCamera={handleCloseCamera}
@@ -418,6 +496,19 @@ export default function App() {
           onClose={() => setActiveModal('none')}
         />
       )}
+
+      {/* 6. نافذة قفل الدروس للمشتركين فقط وتسجيل الدخول / طلب الاشتراك */}
+      <SubscriberLockModal
+        isOpen={isSubscriberLockModalOpen}
+        lesson={lockedLessonTarget || lessons.find((l) => isLessonRestricted(l)) || lessons[0] || null}
+        webAppUrl={analytics.getWebAppUrl()}
+        subscriptionExternalUrl={getSubscriptionExternalUrl()}
+        onSuccessLogin={handleSubscriberLoginSuccess}
+        onClose={() => {
+          setIsSubscriberLockModalOpen(false);
+          setLockedLessonTarget(null);
+        }}
+      />
 
       <AdminLoginModal
         isOpen={isAdminLoginOpen}
