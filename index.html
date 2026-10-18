@@ -2,46 +2,18 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Smart-AR1 - كتابي الذكي للواقع المعزز</title>
-    <meta name="description" content="منصة تعليمية للواقع المعزز (WebAR) لعرض وتتبع المجسمات ثلاثية الأبعاد على صفحات وكتب المدارس" />
-    <meta property="og:title" content="Smart-AR1 - كتابي الذكي للواقع المعزز" />
-    <meta property="og:description" content="منصة تعليمية للواقع المعزز (WebAR) لعرض وتتبع المجسمات ثلاثية الأبعاد على صفحات وكتب المدارس" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>فيديو الدروس</title>
+    <meta name="description" content="تطبيق تفاعلي لتعليم القراءة ومتابعة أداء الطلاب عبر الفيديو والدروس التفاعلية." />
+    <meta property="og:title" content="فيديو الدروس" />
+    <meta property="og:description" content="تطبيق تفاعلي لتعليم القراءة ومتابعة أداء الطلاب عبر الفيديو والدروس التفاعلية." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#0f172a" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <!-- Three.js and MindAR for Image Tracking WebAR -->
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-      }
-    }
-    </script>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
-    <script type="module">
-      import * as THREE from 'three';
-      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-      if (THREE.Material) {
-        if (typeof THREE.Material.prototype.onBuild !== 'function') {
-          THREE.Material.prototype.onBuild = function() {};
-        }
-        if (typeof THREE.Material.prototype.onBeforeCompile !== 'function') {
-          THREE.Material.prototype.onBeforeCompile = function() {};
-        }
-      }
-      window.THREE = THREE;
-      window.GLTFLoader = GLTFLoader;
-    </script>
-    <!-- Google Model Viewer for fast 3D GLB inspection and interaction -->
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cairo:wght@400;600;700;800;900&family=Markazi+Text:wght@400;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
   </head>
-  <body class="bg-slate-950 text-slate-100 antialiased font-sans select-none overflow-hidden touch-manipulation">
+  <body class="bg-slate-900 selection:bg-amber-500/20 text-slate-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

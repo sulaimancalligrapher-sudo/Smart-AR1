@@ -1,79 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Markazi+Text:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Cairo:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    -webkit-tap-highlight-color: transparent;
-  }
+@variant dark (&:where(.dark, .dark *));
 
-  html, body {
-    min-height: 100%;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    background-color: #020617;
-    touch-action: manipulation;
-    overflow-x: hidden;
-    overflow-y: auto;
+@theme {
+  --font-sans: "Markazi Text", "Noto Naskh Arabic", "Cairo", "Tajawal", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+html, body {
+  font-family: var(--font-sans);
+}
+
+/* Custom subtle animation overrides */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* Ensure MindAR video is background and 3D WebGL canvas is in front */
-.mindar-container video {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+.animate-spin-hover:hover {
+  animation: spin-slow 2s linear infinite;
+}
+
+/* QR Code Reader responsive camera styles */
+#qr-reader, #live-student-qr-reader {
+  border: none !important;
+  width: 100% !important;
+}
+
+#qr-reader video, #live-student-qr-reader video {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
-  z-index: 1 !important;
+  border-radius: 1rem;
 }
 
-.mindar-container canvas {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-  z-index: 2 !important;
-  pointer-events: none !important;
-}
-
-/* Glassmorphism overlays */
-.ar-glass-panel {
-  background: rgba(15, 23, 42, 0.78);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.ar-glass-button {
-  background: rgba(30, 41, 59, 0.85);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.ar-glass-button:active {
-  transform: scale(0.96);
-  background: rgba(51, 65, 85, 0.95);
-}
-
-/* Scanning Reticle Pulse */
-@keyframes scan-glow {
-  0%, 100% {
-    opacity: 0.6;
-    transform: scale(0.98);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.02);
-  }
-}
-
-.animate-scan-glow {
-  animation: scan-glow 2.4s ease-in-out infinite;
+#qr-reader__scan_region, #live-student-qr-reader__scan_region {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
