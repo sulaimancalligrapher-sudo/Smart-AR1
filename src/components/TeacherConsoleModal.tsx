@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Database, Send, Trash2, CheckCircle2, AlertCircle, Copy, Check, 
   FileSpreadsheet, ExternalLink, BookOpen, Edit3, Image, Video, Music, 
-  HelpCircle, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
+  HelpCircle, Brain, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
   Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown,
-  Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User
+  Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User,
+  DownloadCloud, UploadCloud, Loader2
 } from 'lucide-react';
 import { analytics } from '../services/analytics';
 import {
@@ -35,6 +36,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { getStoredSubmissions, clearAllSubmissions, recordStudentSubmission } from '../services/studentSubmissions';
 import { LessonQuestionsEditor } from './LessonQuestionsEditor';
 import { getSubscriptionExternalUrl, setSubscriptionExternalUrl } from '../services/subscriptionAuth';
+import { fetchQuestionsFromSheet, exportQuestionsToSheet } from '../services/sheetsQuestionsSync';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -244,6 +246,49 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [showPublishingGuide, setShowPublishingGuide] = useState<boolean>(false);
   const [showSequenceTable, setShowSequenceTable] = useState<boolean>(false);
   const [selectedSequenceTargetIndex, setSelectedSequenceTargetIndex] = useState<number>(0);
+
+  // Google Sheets Questions & Answers Sync State
+  const [isSheetsQuestionsSyncing, setIsSheetsQuestionsSyncing] = useState<boolean>(false);
+  const [sheetQuestionsNotice, setSheetQuestionsNotice] = useState<string | null>(null);
+
+  const handleImportQuestionsFromSheet = async () => {
+    setIsSheetsQuestionsSyncing(true);
+    setSheetQuestionsNotice(null);
+    try {
+      const res = await fetchQuestionsFromSheet(editableLessons, webAppUrl);
+      if (res.success && res.lessonsWithQuestions) {
+        setEditableLessons(res.lessonsWithQuestions);
+        if (onUpdateLessons) onUpdateLessons(res.lessonsWithQuestions);
+        saveStoredLessons(res.lessonsWithQuestions);
+        setSheetQuestionsNotice(res.message);
+      } else {
+        setSheetQuestionsNotice(`⚠️ ${res.message}`);
+      }
+    } catch (err: any) {
+      setSheetQuestionsNotice(`⚠️ خطأ في الاستيراد: ${err?.message || err}`);
+    } finally {
+      setIsSheetsQuestionsSyncing(false);
+      setTimeout(() => setSheetQuestionsNotice(null), 5000);
+    }
+  };
+
+  const handleExportQuestionsToSheet = async () => {
+    setIsSheetsQuestionsSyncing(true);
+    setSheetQuestionsNotice(null);
+    try {
+      const res = await exportQuestionsToSheet(editableLessons, webAppUrl);
+      if (res.success) {
+        setSheetQuestionsNotice(res.message);
+      } else {
+        setSheetQuestionsNotice(`⚠️ ${res.message}`);
+      }
+    } catch (err: any) {
+      setSheetQuestionsNotice(`⚠️ خطأ في التصدير: ${err?.message || err}`);
+    } finally {
+      setIsSheetsQuestionsSyncing(false);
+      setTimeout(() => setSheetQuestionsNotice(null), 5000);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -1258,47 +1303,50 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
 
   const copyCodeSample = () => {
     const code = `// Google Apps Script - Code.gs
-// يدعم: التحقق من المشتركين (ورقة SubData)، تسجيل إجابات الطلاب (Submissions)، وأحداث الكاميرا (Events)
+// يدعم:
+// 1. ورقة SubData: التحقق من المشتركين والدروس المقيدة
+// 2. ورقة Questions-AR: قراءة وتحديث بنك الأسئلة أفقياً لكل درس
+// 3. ورقة Answers-AR: حفظ إجابات وتقييمات الطلاب لكل حصة
+// 4. ورقة Events: سجل أحداث الكاميرا المباشرة
 
 var SUBSCRIBERS_SHEET = "SubData";
-var SUBMISSIONS_SHEET = "Submissions";
+var QUESTIONS_SHEET = "Questions-AR";
+var ANSWERS_SHEET = "Answers-AR";
 var EVENTS_SHEET = "Events";
+var SUBMISSIONS_SHEET = "Submissions";
 
-// 1. معالجة طلبات التحقق السريع للمشتركين (GET) دون مشاكل CORS
+// 1. معالجة طلبات GET (فحص المشتركين + جلب الأسئلة)
 function doGet(e) {
   try {
-    var action = e.parameter.action;
+    var action = (e.parameter && e.parameter.action) ? e.parameter.action : "";
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    // فحص اشتراك الطالب في ورقة SubData
+    // أ) التحقق من المشترك في ورقة SubData
     if (action === "verifySubscriber") {
       var phone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
       var name = (e.parameter.name || "").toString().trim().toLowerCase();
 
-      var ss = SpreadsheetApp.getActiveSpreadsheet();
-      var sheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
-      if (!sheet) {
-        // إنشاء الورقة تلقائياً إذا لم تكن موجودة
-        sheet = ss.insertSheet(SUBSCRIBERS_SHEET);
-        sheet.appendRow(["رقم المشترك / الجوال", "اسم المشترك"]);
+      var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
+      if (!subSheet) {
+        subSheet = ss.insertSheet(SUBSCRIBERS_SHEET);
+        subSheet.appendRow(["رقم المشترك / الجوال", "اسم المشترك"]);
         return createJsonResponse({
           success: false,
           message: "تم إنشاء ورقة SubData تلقائياً في الشيت، يرجى وضع أرقام المشتركين في العمود A وأسمائهم في العمود B."
         });
       }
 
-      var data = sheet.getDataRange().getValues();
-      // تخطي الصف الأول (عناوين الأعمدة)
-      for (var i = 1; i < data.length; i++) {
-        var rowPhone = (data[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
-        var rowName = (data[i][1] || "").toString().trim().toLowerCase();
+      var subData = subSheet.getDataRange().getValues();
+      for (var i = 1; i < subData.length; i++) {
+        var rowPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var rowName = (subData[i][1] || "").toString().trim().toLowerCase();
 
         if (rowPhone && phone && rowPhone === phone) {
-          // تطابق في رقم المشترك
           if (!name || rowName.indexOf(name) !== -1 || name.indexOf(rowName) !== -1) {
             return createJsonResponse({
               success: true,
-              name: data[i][1] || e.parameter.name,
-              phone: data[i][0] || e.parameter.phone
+              name: subData[i][1] || e.parameter.name,
+              phone: subData[i][0] || e.parameter.phone
             });
           }
         }
@@ -1310,19 +1358,167 @@ function doGet(e) {
       });
     }
 
-    return createJsonResponse({ status: "ready", app: "Smart AR Book Web App" });
+    // ب) جلب بنك الأسئلة من ورقة Questions-AR
+    if (action === "getQuestions") {
+      var qSheet = ss.getSheetByName(QUESTIONS_SHEET);
+      if (!qSheet) {
+        qSheet = ss.insertSheet(QUESTIONS_SHEET);
+        qSheet.appendRow([
+          "عنوان الدرس",
+          "رابط صورة السؤال 1",
+          "نص السؤال 1",
+          "خيارات السؤال 1 أو «نص»",
+          "طريقة الإجابة / الإجابة الصحيحة 1",
+          "رابط صورة السؤال 2",
+          "نص السؤال 2",
+          "خيارات السؤال 2 أو «نص»",
+          "طريقة الإجابة / الإجابة الصحيحة 2"
+        ]);
+        return createJsonResponse({
+          success: true,
+          message: "تم إنشاء ورقة Questions-AR بنجاح وهي جاهزة لإضافة الأسئلة.",
+          rows: []
+        });
+      }
+
+      var rows = qSheet.getDataRange().getValues();
+      return createJsonResponse({
+        success: true,
+        rows: rows
+      });
+    }
+
+    // ج) تسجيل إجابات وتقييمات الطلاب في ورقة Answers-AR (يدعم الاستدعاء عبر GET أيضاً)
+    if (action === "submitAnswers") {
+      var ansSheet = ss.getSheetByName(ANSWERS_SHEET) || ss.insertSheet(ANSWERS_SHEET);
+      if (ansSheet.getLastRow() === 0) {
+        var headerRow = [
+          "تاريخ ووقت التسجيل",
+          "رقم الطالب",
+          "اسم المستخدم",
+          "موضوع الحصة"
+        ];
+        for (var q = 1; q <= 20; q++) {
+          headerRow.push("إجابة السؤال " + q);
+        }
+        ansSheet.appendRow(headerRow);
+      }
+
+      var ansCols = [];
+      try {
+        ansCols = JSON.parse(e.parameter.answerColumns || "[]");
+      } catch (err) {
+        ansCols = [];
+      }
+
+      var newRow = [
+        e.parameter.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT+3", "yyyy-MM-dd HH:mm:ss"),
+        e.parameter.studentPhone || "",
+        e.parameter.studentName || "طالب",
+        e.parameter.lessonTitle || ""
+      ].concat(ansCols);
+
+      ansSheet.appendRow(newRow);
+
+      return createJsonResponse({
+        success: true,
+        status: "success",
+        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+      });
+    }
+
+    return createJsonResponse({
+      status: "ready",
+      app: "Smart AR Book Web App",
+      sheets: [SUBSCRIBERS_SHEET, QUESTIONS_SHEET, ANSWERS_SHEET]
+    });
   } catch (err) {
     return createJsonResponse({ success: false, error: err.toString() });
   }
 }
 
-// 2. معالجة حفظ إجابات الطلاب وأحداث الكاميرا (POST)
+// 2. معالجة طلبات POST (تحديث ورقة Questions-AR + تسجيل إجابات الطلاب في Answers-AR + الأحداث)
 function doPost(e) {
   try {
-    var data = JSON.parse(e.postData.contents);
+    var data = {};
+    if (e && e.postData && e.postData.contents) {
+      try {
+        data = JSON.parse(e.postData.contents);
+      } catch (errP) {
+        data = {};
+      }
+    }
+    if ((!data || !data.action) && e && e.parameter && e.parameter.action) {
+      data = e.parameter;
+    }
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    // أ) تسجيل إجابة طالب على سؤال
+    // أ) تحديث وحفظ كافة الأسئلة في ورقة Questions-AR أفقياً
+    if (data.action === "syncQuestions") {
+      var qSheet = ss.getSheetByName(QUESTIONS_SHEET) || ss.insertSheet(QUESTIONS_SHEET);
+      qSheet.clearContents();
+
+      if (data.rows && data.rows.length > 0) {
+        var maxCols = 1;
+        for (var r = 0; r < data.rows.length; r++) {
+          if (data.rows[r].length > maxCols) maxCols = data.rows[r].length;
+        }
+
+        var paddedRows = data.rows.map(function(row) {
+          var copy = row.slice();
+          while (copy.length < maxCols) copy.push("");
+          return copy;
+        });
+
+        qSheet.getRange(1, 1, paddedRows.length, maxCols).setValues(paddedRows);
+      }
+
+      return createJsonResponse({
+        success: true,
+        message: "✓ تم تحديث ورقة Questions-AR في Google Sheets بنجاح!"
+      });
+    }
+
+    // ب) تسجيل إجابات وتقييمات الطالب في ورقة Answers-AR
+    if (data.action === "submitAnswers") {
+      var ansSheet = ss.getSheetByName(ANSWERS_SHEET) || ss.insertSheet(ANSWERS_SHEET);
+      var ansCols = data.answerColumns || [];
+      if (typeof ansCols === "string") {
+        try { ansCols = JSON.parse(ansCols); } catch (_) { ansCols = [ansCols]; }
+      }
+      if (!Array.isArray(ansCols)) ansCols = [];
+
+      if (ansSheet.getLastRow() === 0) {
+        var headerRow = [
+          "تاريخ ووقت التسجيل",
+          "رقم الطالب",
+          "اسم المستخدم",
+          "موضوع الحصة"
+        ];
+        var ansCount = ansCols.length ? ansCols.length : 10;
+        for (var q = 1; q <= Math.max(ansCount, 10); q++) {
+          headerRow.push("إجابة السؤال " + q);
+        }
+        ansSheet.appendRow(headerRow);
+      }
+
+      var newRow = [
+        data.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT+3", "yyyy-MM-dd HH:mm:ss"),
+        data.studentPhone || "",
+        data.studentName || "طالب",
+        data.lessonTitle || ""
+      ].concat(ansCols);
+
+      ansSheet.appendRow(newRow);
+
+      return createJsonResponse({
+        success: true,
+        status: "success",
+        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+      });
+    }
+
+    // ج) تسجيل إجابة فردية (دعم توافقي سابق)
     if (data.action === "student_submission") {
       var subSheet = ss.getSheetByName(SUBMISSIONS_SHEET) || ss.insertSheet(SUBMISSIONS_SHEET);
       if (subSheet.getLastRow() === 0) {
@@ -1341,7 +1537,7 @@ function doPost(e) {
       return createJsonResponse({ status: "success", type: "submission_recorded" });
     }
 
-    // ب) تسجيل أحداث الكاميرا والدروس
+    // د) تسجيل أحداث الكاميرا والدروس
     var eventSheet = ss.getSheetByName(EVENTS_SHEET) || ss.insertSheet(EVENTS_SHEET);
     if (eventSheet.getLastRow() === 0) {
       eventSheet.appendRow(["التاريخ والوقت", "معرف الجلسة", "معرف الهدف", "عنوان الدرس", "الحدث", "الجهاز", "اللغة"]);
@@ -2748,6 +2944,12 @@ function createJsonResponse(obj) {
                     <LessonQuestionsEditor
                       currentLesson={currentLesson}
                       allLessons={editableLessons}
+                      webAppUrl={webAppUrl}
+                      onUpdateAllLessons={(nextLessons) => {
+                        setEditableLessons(nextLessons);
+                        if (onUpdateLessons) onUpdateLessons(nextLessons);
+                        saveStoredLessons(nextLessons);
+                      }}
                       onUpdateQuestions={(newQuestions) => {
                         const nextLessons = [...editableLessons];
                         const cur = { ...currentLesson, questions: newQuestions };
@@ -3290,6 +3492,135 @@ function createJsonResponse(obj) {
                 <p className="text-[10px] text-slate-400 pt-0.5">
                   💡 عند كتابة الطالب اسمه ورقمه لأول مرة في التطبيق، تتم مطابقتها في ثانية واحدة مع هذه الورقة وتفعيل حسابه تلقائياً لجميع الدروس المقيدة.
                 </p>
+              </div>
+            </div>
+
+            {/* ❓ بطاقة ورقة الأسئلة Questions-AR وورقة الإجابات Answers-AR */}
+            <div className="p-4 rounded-xl bg-slate-950 border border-sky-500/40 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400">
+                    <Brain className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                      <span>نظام الأسئلة والإجابات المباشر (Questions-AR & Answers-AR)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
+                        ورقتين مخصصتين
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      إدارة الأسئلة أفقياً لكل درس، واستقبال سجل إجابات الطلاب وتقييماتهم
+                    </p>
+                  </div>
+                </div>
+
+                {/* أزرار المزامنة السريعة */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleImportQuestionsFromSheet}
+                    disabled={isSheetsQuestionsSyncing}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                    title="استيراد الأسئلة من ورقة Questions-AR وتحديث دروس التطبيق بها"
+                  >
+                    {isSheetsQuestionsSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5 text-sky-400" />}
+                    <span>استيراد الأسئلة من الشيت</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportQuestionsToSheet}
+                    disabled={isSheetsQuestionsSyncing}
+                    className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-50"
+                    title="تصدير بنك الأسئلة من التطبيق وحفظه في ورقة Questions-AR"
+                  >
+                    {isSheetsQuestionsSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                    <span>تحديث ورقة Questions-AR</span>
+                  </button>
+                </div>
+              </div>
+
+              {sheetQuestionsNotice && (
+                <div className="p-2.5 rounded-xl bg-sky-950/80 border border-sky-500/50 text-sky-200 text-xs flex items-center gap-2 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                  <span>{sheetQuestionsNotice}</span>
+                </div>
+              )}
+
+              {/* الشرح التوضيحي لهيكل ورقة Questions-AR */}
+              <div className="space-y-2 p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-xs">
+                <div className="font-bold text-sky-300 flex items-center justify-between">
+                  <span>أولاً: هيكل ورقة Questions-AR (حفظ الأسئلة أفقياً لكل درس في صف واحد):</span>
+                  <span className="text-[10px] text-slate-400">كل سؤال يشغل 4 أعمدة</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-[11px] border border-slate-800 rounded">
+                    <thead>
+                      <tr className="bg-slate-950 text-slate-300 border-b border-slate-800">
+                        <th className="p-2 border-l border-slate-800">العمود A</th>
+                        <th className="p-2 border-l border-slate-800">العمود B</th>
+                        <th className="p-2 border-l border-slate-800">العمود C</th>
+                        <th className="p-2 border-l border-slate-800">العمود D</th>
+                        <th className="p-2 border-l border-slate-800">العمود E</th>
+                        <th className="p-2 text-slate-400">الأعمدة F وما بعده</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-slate-300">
+                      <tr>
+                        <td className="p-2 border-l border-slate-800 font-bold text-amber-300">عنوان الدرس</td>
+                        <td className="p-2 border-l border-slate-800 text-slate-400">رابط صورة السؤال 1 (اختياري)</td>
+                        <td className="p-2 border-l border-slate-800 text-white font-medium">نص السؤال 1</td>
+                        <td className="p-2 border-l border-slate-800 text-cyan-300">خيارات السؤال 1 (مفصولة بفاصلة) أو كلمة «نص»</td>
+                        <td className="p-2 border-l border-slate-800 text-emerald-300">طريقة الإجابة (رقم الخيار / النص الصحيح / فارغ لحر)</td>
+                        <td className="p-2 text-slate-400">تكرار نفس البنية: صورة 2، نص 2، خيارات 2، إجابة 2...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-[10px] text-slate-400 space-y-0.5 pt-1">
+                  <p>• إذا كان السؤال لا يحتوي على صورة، يمكن ترك عمود الصورة فارغاً.</p>
+                  <p>• إذا تُرِك عمود طريقة الإجابة (E) فارغاً لسؤال نصي، يعتبر سؤالاً ذا «إجابة حرة» دون تصحيح صح/خطأ.</p>
+                  <p>• إذا كان الدرس لا يحتوي على أي سؤال في الورقة، يُخفى زر الأسئلة للطالب تلقائياً في شاشة الكاميرا.</p>
+                </div>
+              </div>
+
+              {/* الشرح التوضيحي لهيكل ورقة Answers-AR */}
+              <div className="space-y-2 p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-xs">
+                <div className="font-bold text-emerald-300 flex items-center justify-between">
+                  <span>ثانياً: هيكل ورقة Answers-AR (حفظ إجابات الطلاب لكل حصة):</span>
+                  <span className="text-[10px] text-slate-400">صف مستقل لكل طالب</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-[11px] border border-slate-800 rounded">
+                    <thead>
+                      <tr className="bg-slate-950 text-slate-300 border-b border-slate-800">
+                        <th className="p-2 border-l border-slate-800">A: التاريخ والوقت</th>
+                        <th className="p-2 border-l border-slate-800">B: رقم الطالب</th>
+                        <th className="p-2 border-l border-slate-800">C: اسم المستخدم</th>
+                        <th className="p-2 border-l border-slate-800">D: موضوع الحصة</th>
+                        <th className="p-2 border-l border-slate-800">E: إجابة السؤال 1</th>
+                        <th className="p-2 text-slate-400">F وما بعده: إجابة 2، 3...</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-slate-300">
+                      <tr>
+                        <td className="p-2 border-l border-slate-800 font-mono text-[10px]">2026-10-17 14:30</td>
+                        <td className="p-2 border-l border-slate-800 font-mono text-cyan-300">0501234567</td>
+                        <td className="p-2 border-l border-slate-800 font-bold text-white">محمد خالد</td>
+                        <td className="p-2 border-l border-slate-800 text-amber-300">دورة الماء في الطبيعة</td>
+                        <td className="p-2 border-l border-slate-800 font-bold text-emerald-400">صح</td>
+                        <td className="p-2 text-slate-300">«الخط العربي» (نص حر) / خطأ / فارغ</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-[10px] text-slate-400 space-y-0.5 pt-1">
+                  <p>• <span className="text-emerald-300 font-bold">صح:</span> إذا كانت إجابة الطالب مطابقة للخيار أو الإجابة النموذجية.</p>
+                  <p>• <span className="text-rose-300 font-bold">خطأ:</span> إذا كانت إجابة الطالب خاطئة.</p>
+                  <p>• <span className="text-sky-300 font-bold">نص الإجابة الحرة نفسه:</span> مثل «الخط العربي» دون تقييد بصح أو خطأ.</p>
+                  <p>• <span className="text-slate-400 font-bold">فارغ:</span> إذا لم يُسجل الطالب إجابة عن هذا السؤال.</p>
+                </div>
               </div>
             </div>
 

@@ -19,12 +19,14 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminPortalView } from './components/AdminPortalView';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
+import { QuestionsModal } from './components/QuestionsModal';
 import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios, getLessonQuestions, isLessonRestricted } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
 import { soundService } from './services/soundService';
 import { getIsAdminLoggedIn, setAdminLoggedIn } from './services/adminAuth';
 import { SubscriberLockModal } from './components/SubscriberLockModal';
+import { fetchQuestionsFromSheet } from './services/sheetsQuestionsSync';
 import {
   SubscriberInfo,
   getStoredSubscriber,
@@ -39,6 +41,7 @@ type ActiveModalType =
   | 'images'
   | 'audio'
   | 'explanation'
+  | 'questions'
   | 'model3d'
   | 'target_cards'
   | 'teacher_console'
@@ -100,7 +103,7 @@ export default function App() {
   const [showFloatingModel, setShowFloatingModel] = useState<boolean>(true);
 
   useEffect(() => {
-    fetchLessons().then((loadedLessons) => {
+    fetchLessons().then(async (loadedLessons) => {
       if (loadedLessons && loadedLessons.length > 0) {
         setLessons(loadedLessons);
         setActiveLesson((prev) => {
@@ -109,6 +112,18 @@ export default function App() {
             (l, idx) => l.targetId === prev.targetId || (l.targetIndex ?? idx) === (prev.targetIndex ?? -1)
           ) || prev;
         });
+
+        // مزامنة ذكية وهادئة في الخلفية لجلب أحدث الأسئلة من ورقة Questions-AR
+        const webAppUrl = analytics.getWebAppUrl();
+        if (webAppUrl) {
+          try {
+            const sheetRes = await fetchQuestionsFromSheet(loadedLessons, webAppUrl);
+            if (sheetRes.success && sheetRes.lessonsWithQuestions && sheetRes.lessonsWithQuestions.length > 0) {
+              setLessons(sheetRes.lessonsWithQuestions);
+              saveStoredLessons(sheetRes.lessonsWithQuestions);
+            }
+          } catch (_) {}
+        }
       }
     });
   }, []);
@@ -383,6 +398,11 @@ export default function App() {
             setShowHologram3D(false);
             setActiveModal('explanation');
           }}
+          onOpenQuestions={() => {
+            soundService.pauseModelSound();
+            setShowHologram3D(false);
+            setActiveModal('questions');
+          }}
           onOpenModel3D={() => {
             setShowHologram3D((prev) => {
               const next = !prev;
@@ -458,6 +478,19 @@ export default function App() {
           grade={activeLesson.grade}
           subject={activeLesson.subject}
           questions={getLessonQuestions(activeLesson)}
+          onClose={() => {
+            setActiveModal('none');
+            setShowFloatingModel(true);
+          }}
+        />
+      )}
+
+      {activeModal === 'questions' && activeLesson && (
+        <QuestionsModal
+          lesson={activeLesson}
+          questions={getLessonQuestions(activeLesson)}
+          subscriber={currentSubscriber}
+          webAppUrl={analytics.getWebAppUrl()}
           onClose={() => {
             setActiveModal('none');
             setShowFloatingModel(true);

@@ -30,11 +30,27 @@ export interface LessonQuestion {
   id: string;
   type: QuestionType; // 'multiple_choice' أو 'text_answer'
   question: string;
+  imageUrl?: string; // رابط صورة السؤال الاختيارية (العمود B, F, J في ورقة Questions-AR)
   options?: string[]; // لأسئلة الاختيار من متعدد
-  correctIndex?: number; // رقم الإجابة الصحيحة (0, 1, 2, 3)
-  correctAnswerText?: string; // الإجابة النموذجية أو المفتاحية للسؤال النصي
+  correctIndex?: number; // رقم الإجابة الصحيحة (0, 1, 2, 3...)
+  correctAnswerText?: string; // الإجابة النموذجية أو المفتاحية للسؤال النصي (إذا تُرِكَت فارغة تصبح إجابة حرة)
+  isFreeText?: boolean; // هل السؤال إجابة حرة؟
   explanation?: string; // تفسير وتعزيز الإجابة
   points?: number; // نقاط أو درجات السؤال
+}
+
+/**
+ * فحص هل الدرس يحتوي على أسئلة فعلية لعرض زر الأسئلة للطالب (إذا لم توجد أسئلة يُخفى الزر)
+ */
+export function hasLessonQuestions(lesson?: LessonData | null): boolean {
+  if (!lesson) return false;
+  if (Array.isArray(lesson.questions) && lesson.questions.length > 0) {
+    return lesson.questions.some((q) => q && q.question && q.question.trim().length > 0);
+  }
+  if (lesson.description?.quiz?.question && lesson.description.quiz.question.trim().length > 0) {
+    return true;
+  }
+  return false;
 }
 
 export interface StudentSubmission {

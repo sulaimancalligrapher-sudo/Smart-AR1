@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
-  HelpCircle, Plus, Edit3, Trash2, ChevronUp, ChevronDown, CheckCircle2, 
-  FileSpreadsheet, Send, Download, RefreshCw, ListFilter, User, Check
+  HelpCircle, Brain, Plus, Edit3, Trash2, ChevronUp, ChevronDown, CheckCircle2, 
+  FileSpreadsheet, Send, Download, RefreshCw, ListFilter, User, Check,
+  DownloadCloud, UploadCloud, Loader2, Image as ImageIcon, Sparkles, AlertCircle
 } from 'lucide-react';
 import { 
   LessonData, 
@@ -17,11 +18,15 @@ import {
   clearAllSubmissions, 
   recordStudentSubmission 
 } from '../services/studentSubmissions';
+import { fetchQuestionsFromSheet, exportQuestionsToSheet } from '../services/sheetsQuestionsSync';
+import { analytics } from '../services/analytics';
 
 interface LessonQuestionsEditorProps {
   currentLesson: LessonData;
   allLessons: LessonData[];
   onUpdateQuestions: (questions: LessonQuestion[]) => void;
+  onUpdateAllLessons?: (lessons: LessonData[]) => void;
+  webAppUrl?: string;
   onRequestConfirm: (modalConfig: {
     isOpen: boolean;
     title: string;
@@ -36,6 +41,8 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
   currentLesson,
   allLessons,
   onUpdateQuestions,
+  onUpdateAllLessons,
+  webAppUrl,
   onRequestConfirm
 }) => {
   const [subTab, setSubTab] = useState<'builder' | 'submissions'>('builder');
@@ -43,12 +50,15 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
   // Form State for Adding New Question
   const [newQType, setNewQType] = useState<QuestionType>('multiple_choice');
   const [newQText, setNewQText] = useState<string>('');
+  const [newQImageUrl, setNewQImageUrl] = useState<string>('');
   const [newQOptions, setNewQOptions] = useState<string[]>(['', '', '', '']);
   const [newQCorrectIndex, setNewQCorrectIndex] = useState<number>(0);
   const [newQCorrectAnswerText, setNewQCorrectAnswerText] = useState<string>('');
+  const [newQIsFreeText, setNewQIsFreeText] = useState<boolean>(false);
   const [newQExplanation, setNewQExplanation] = useState<string>('');
   const [newQPoints, setNewQPoints] = useState<number>(1);
   const [questionNotice, setQuestionNotice] = useState<string | null>(null);
+  const [isSheetSyncing, setIsSheetSyncing] = useState<boolean>(false);
 
   // Student Submissions State
   const [submissions, setSubmissions] = useState<StudentSubmission[]>(() => getStoredSubmissions());
@@ -56,6 +66,47 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
 
   const currentQuestions = getLessonQuestions(currentLesson);
+
+  const handleImportFromSheet = async () => {
+    setIsSheetSyncing(true);
+    setQuestionNotice(null);
+    try {
+      const targetUrl = webAppUrl || analytics.getWebAppUrl();
+      const res = await fetchQuestionsFromSheet(allLessons, targetUrl);
+      if (res.success && res.lessonsWithQuestions) {
+        if (onUpdateAllLessons) {
+          onUpdateAllLessons(res.lessonsWithQuestions);
+        }
+        setQuestionNotice(res.message);
+      } else {
+        setQuestionNotice(`⚠️ ${res.message}`);
+      }
+    } catch (err: any) {
+      setQuestionNotice(`⚠️ خطأ في الاستيراد: ${err?.message || err}`);
+    } finally {
+      setIsSheetSyncing(false);
+      setTimeout(() => setQuestionNotice(null), 5000);
+    }
+  };
+
+  const handleExportToSheet = async () => {
+    setIsSheetSyncing(true);
+    setQuestionNotice(null);
+    try {
+      const targetUrl = webAppUrl || analytics.getWebAppUrl();
+      const res = await exportQuestionsToSheet(allLessons, targetUrl);
+      if (res.success) {
+        setQuestionNotice(res.message);
+      } else {
+        setQuestionNotice(`⚠️ ${res.message}`);
+      }
+    } catch (err: any) {
+      setQuestionNotice(`⚠️ خطأ في التصدير: ${err?.message || err}`);
+    } finally {
+      setIsSheetSyncing(false);
+      setTimeout(() => setQuestionNotice(null), 5000);
+    }
+  };
 
   const handleAddQuestion = () => {
     if (!newQText.trim()) {
@@ -77,22 +128,25 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
         id: qId,
         type: 'multiple_choice',
         question: newQText.trim(),
+        imageUrl: newQImageUrl.trim() || undefined,
         options: validOptions,
         correctIndex: safeCorrectIndex,
         explanation: newQExplanation.trim() || undefined,
         points: Number(newQPoints) || 1
       };
     } else {
-      if (!newQCorrectAnswerText.trim()) {
-        setQuestionNotice('⚠️ يرجى كتابة الإجابة النموذجية أو الكلمات المفتاحية للسؤال النصي');
+      if (!newQIsFreeText && !newQCorrectAnswerText.trim()) {
+        setQuestionNotice('⚠️ يرجى كتابة الإجابة النموذجية أو تفعيل خيار (إجابة حرة بدون صح أو خطأ)');
         return;
       }
       questionObj = {
         id: qId,
         type: 'text_answer',
         question: newQText.trim(),
-        correctAnswerText: newQCorrectAnswerText.trim(),
-        explanation: newQExplanation.trim() || undefined,
+        imageUrl: newQImageUrl.trim() || undefined,
+        correctAnswerText: newQIsFreeText ? undefined : newQCorrectAnswerText.trim(),
+        isFreeText: newQIsFreeText,
+        explanation: newQExplanation.trim() || (newQIsFreeText ? 'إجابة نصية حرة' : undefined),
         points: Number(newQPoints) || 1
       };
     }
@@ -101,9 +155,11 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
     onUpdateQuestions(updatedQuestions);
 
     setNewQText('');
+    setNewQImageUrl('');
     setNewQOptions(['', '', '', '']);
     setNewQCorrectIndex(0);
     setNewQCorrectAnswerText('');
+    setNewQIsFreeText(false);
     setNewQExplanation('');
     setNewQPoints(1);
     setQuestionNotice('✓ تمت إضافة السؤال بنجاح لبنك أسئلة الدرس!');
@@ -219,11 +275,11 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800 pb-3">
         <div className="flex items-center gap-2">
           <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
-            <HelpCircle className="w-4 h-4" />
+            <Brain className="w-4 h-4" />
           </span>
           <div>
             <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-              <span>❓ بنك الأسئلة وتسجيل الإجابات</span>
+              <span>🧠 بنك الأسئلة وتسجيل الإجابات</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono font-bold">
                 {currentQuestions.length} أسئلة للدرس
               </span>
@@ -277,6 +333,47 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
       {/* ======================= 1. قسم بناء الأسئلة ======================= */}
       {subTab === 'builder' && (
         <div className="space-y-4">
+          {/* شريط المزامنة مع ورقة Questions-AR */}
+          <div className="p-3 sm:p-4 rounded-xl bg-slate-900 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>المزامنة مع ورقة الأسئلة (Questions-AR)</span>
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/30 font-semibold">
+                  بنية أفقية لكل درس
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                تُحفظ أسئلة كل درس أفقياً في صف واحد (صورة، نص السؤال، الخيارات، طريقة الإجابة).
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleImportFromSheet}
+                disabled={isSheetSyncing}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                title="جلب وتحديث الأسئلة من ورقة Questions-AR في Google Sheets"
+              >
+                {isSheetSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5 text-sky-400" />}
+                <span>استيراد من Questions-AR</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportToSheet}
+                disabled={isSheetSyncing}
+                className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-amber-600/20 active:scale-95 disabled:opacity-50"
+                title="تصدير وحفظ أسئلة جميع الدروس أفقياً في ورقة Questions-AR"
+              >
+                {isSheetSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                <span>تحديث ورقة Questions-AR</span>
+              </button>
+            </div>
+          </div>
+
           {/* قائمة الأسئلة الحالية */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
@@ -284,7 +381,9 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
                 أسئلة هذا الدرس ({currentQuestions.length}):
               </span>
               <span className="text-[11px] text-slate-400">
-                يمكنك تعديل أي سؤال، تحديد الخيار الصحيح، وإعادة الترتيب بالأسهم
+                {currentQuestions.length === 0
+                  ? '⚠️ هذا الدرس لا يحتوي على أسئلة ولن يظهر له زر الأسئلة في الكاميرا'
+                  : '✓ سيظهر زر الأسئلة للطالب عند توجيه الكاميرا لصورة هذا الدرس'}
               </span>
             </div>
 
@@ -342,6 +441,21 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                      </div>
+
+                      {/* رابط صورة السؤال الاختيارية */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>رابط صورة السؤال الاختيارية (العمود B, F, J في ورقة Questions-AR):</span>
+                          {q.imageUrl && <span className="text-sky-400 font-semibold">توجد صورة للسؤال ✓</span>}
+                        </div>
+                        <input
+                          type="url"
+                          value={q.imageUrl || ''}
+                          onChange={(e) => handleUpdateQuestion(qIdx, { imageUrl: e.target.value.trim() || undefined })}
+                          placeholder="https://... رابط صورة توضيحية للسؤال (اختياري)"
+                          className="w-full px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 font-mono focus:border-amber-500 focus:outline-none"
+                        />
                       </div>
 
                       {/* نص السؤال */}
@@ -406,17 +520,37 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
 
                       {/* سؤال الإجابة النصية القصيرة */}
                       {!isMCQ && (
-                        <div className="space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
-                          <label className="text-[11px] font-bold text-emerald-400">
-                            الإجابة النموذجية أو الكلمات المفتاحية المقبولة:
-                          </label>
-                          <input
-                            type="text"
-                            value={q.correctAnswerText || ''}
-                            onChange={(e) => handleUpdateQuestion(qIdx, { correctAnswerText: e.target.value })}
-                            placeholder="اكتب الإجابة النموذجية التي يقارن بها حل الطالب..."
-                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
-                          />
+                        <div className="space-y-2 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <label className="text-[11px] font-bold text-emerald-400">
+                              الإجابة النصية (العمود E في ورقة Questions-AR):
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-sky-300 font-semibold cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(q.isFreeText)}
+                                onChange={(e) => handleUpdateQuestion(qIdx, {
+                                  isFreeText: e.target.checked,
+                                  correctAnswerText: e.target.checked ? undefined : (q.correctAnswerText || '')
+                                })}
+                                className="rounded text-sky-500 cursor-pointer"
+                              />
+                              <span>إجابة حرة مفتوحة (بدون صح/خطأ)</span>
+                            </label>
+                          </div>
+                          {!q.isFreeText ? (
+                            <input
+                              type="text"
+                              value={q.correctAnswerText || ''}
+                              onChange={(e) => handleUpdateQuestion(qIdx, { correctAnswerText: e.target.value })}
+                              placeholder="اكتب الإجابة النموذجية التي يقارن بها حل الطالب..."
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                            />
+                          ) : (
+                            <p className="text-[10px] text-sky-300">
+                              💡 إجابة حرة: ستبقى الخلية E فارغة في Questions-AR وسيُحفظ نص الطالب بحرية في Answers-AR.
+                            </p>
+                          )}
                         </div>
                       )}
 
@@ -490,9 +624,26 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
               </div>
             </div>
 
+            {/* رابط صورة السؤال الاختيارية (العمود B في ورقة Questions-AR) */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                <span>رابط صورة السؤال الاختيارية (العمود B في ورقة Questions-AR):</span>
+                {newQImageUrl && (
+                  <span className="text-[10px] text-sky-400 font-medium">تم إدخال رابط الصورة ✓</span>
+                )}
+              </label>
+              <input
+                type="url"
+                value={newQImageUrl}
+                onChange={(e) => setNewQImageUrl(e.target.value)}
+                placeholder="https://... رابط صورة السؤال إن وُجدت (اختياري)"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+
             {/* نص السؤال */}
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-300">نص السؤال:</label>
+              <label className="text-[11px] font-bold text-slate-300">نص السؤال (العمود C في ورقة Questions-AR):</label>
               <input
                 type="text"
                 value={newQText}
@@ -506,7 +657,7 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
             {newQType === 'multiple_choice' ? (
               <div className="space-y-1.5 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
                 <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                  اكتب الخيارات وحدد الإجابة الصحيحة بالضغط على الدائرة:
+                  اكتب الخيارات (العمود D) وحدد الإجابة الصحيحة برقم الخيار (العمود E):
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {newQOptions.map((opt, i) => (
@@ -538,7 +689,7 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
                       />
                       {newQCorrectIndex === i && (
                         <span className="text-[10px] text-emerald-400 font-bold px-1 rounded bg-emerald-500/20 flex-shrink-0">
-                          ✓ الصحيح
+                          ✓ الخيار {i + 1}
                         </span>
                       )}
                     </div>
@@ -546,17 +697,53 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="space-y-1 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
-                <label className="text-[11px] font-bold text-emerald-400">
-                  الإجابة النموذجية أو الكلمات المفتاحية (يكتب الطالب الإجابة بيده):
-                </label>
-                <input
-                  type="text"
-                  value={newQCorrectAnswerText}
-                  onChange={(e) => setNewQCorrectAnswerText(e.target.value)}
-                  placeholder="اكتب الإجابة النموذجية التي يقارن بها حل الطالب..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
-                />
+              <div className="space-y-2 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="text-[11px] font-bold text-emerald-400">
+                    طريقة الإجابة النصية (العمود E في ورقة Questions-AR):
+                  </label>
+                  <div className="flex items-center gap-3 text-xs">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
+                      <input
+                        type="radio"
+                        name="new_q_is_free"
+                        checked={!newQIsFreeText}
+                        onChange={() => setNewQIsFreeText(false)}
+                        className="text-emerald-500"
+                      />
+                      <span>إجابة نموذجية محددة</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-sky-300 font-semibold">
+                      <input
+                        type="radio"
+                        name="new_q_is_free"
+                        checked={newQIsFreeText}
+                        onChange={() => setNewQIsFreeText(true)}
+                        className="text-sky-500"
+                      />
+                      <span>إجابة حرة (بدون صح/خطأ)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {!newQIsFreeText ? (
+                  <div>
+                    <input
+                      type="text"
+                      value={newQCorrectAnswerText}
+                      onChange={(e) => setNewQCorrectAnswerText(e.target.value)}
+                      placeholder="اكتب النص الصحيح المطلوب من الطالب لمطابقته (مثل: الخط العربي)..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      💡 تُحفظ الإجابة في العمود E، وفي ورقة Answers-AR يُسجل للحل: «صح» أو «خطأ».
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded-lg bg-sky-950/50 border border-sky-500/30 text-xs text-sky-200">
+                    <span>💡 تكون الخلية E في الشيت فارغة، وفي ورقة Answers-AR يُسجل نص إجابة الطالب الحرة نفسه.</span>
+                  </div>
+                )}
               </div>
             )}
 

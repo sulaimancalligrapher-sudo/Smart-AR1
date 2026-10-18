@@ -3,15 +3,22 @@ import {
   Video,
   Image,
   Music,
-  BookOpen,
   Box,
   X,
   Layers,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  Brain
 } from 'lucide-react';
-import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios } from '../types/ar';
+import {
+  LessonData,
+  getActiveLessonModel,
+  getLessonVideos,
+  getLessonAudios,
+  hasLessonQuestions,
+  getLessonQuestions
+} from '../types/ar';
 
 interface TransparentOverlayProps {
   lesson: LessonData;
@@ -21,6 +28,7 @@ interface TransparentOverlayProps {
   onOpenImages: () => void;
   onOpenAudio: () => void;
   onOpenExplanation: () => void;
+  onOpenQuestions?: () => void;
   onOpenModel3D: () => void;
   onToggleFloatingModel?: () => void;
   onCloseLesson: () => void;
@@ -34,6 +42,7 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
   onOpenImages,
   onOpenAudio,
   onOpenExplanation,
+  onOpenQuestions,
   onOpenModel3D,
   onToggleFloatingModel,
   onCloseLesson
@@ -43,17 +52,14 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
   // التحقق من توفر كل نوع من أنواع بيانات الدرس (دعم التعدد)
   const videosList = getLessonVideos(lesson);
   const audiosList = getLessonAudios(lesson);
+  const lessonQuestions = getLessonQuestions(lesson);
+  const hasQuestions = hasLessonQuestions(lesson);
   const hasVideo = videosList.length > 0;
   const hasImages = Boolean(
     (lesson.images && lesson.images.length > 0) ||
     (lesson.targetImage && lesson.targetImage.trim() !== '')
   );
   const hasAudio = audiosList.length > 0;
-  const hasDescription = Boolean(
-    lesson.description?.summary?.trim() ||
-    lesson.description?.fullText?.trim() ||
-    (lesson.description?.keyPoints && lesson.description.keyPoints.length > 0)
-  );
   const hasARModel = Boolean(getActiveLessonModel(lesson, true)) && Boolean(onToggleFloatingModel);
   const has360Model = Boolean(getActiveLessonModel(lesson, false));
 
@@ -146,15 +152,20 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                 </button>
               )}
 
-              {/* زر الشرح */}
-              {hasDescription && (
+              {/* زر بنك الأسئلة والتقييم والتفكير (أيقونة الدماغ) - يظهر حصراً إذا كان الدرس يحتوي على أسئلة مضافة */}
+              {hasQuestions && onOpenQuestions && (
                 <button
-                  onClick={onOpenExplanation}
-                  className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white border border-amber-400/40 flex items-center justify-center shadow-lg shadow-amber-600/30 active:scale-90 transition-all cursor-pointer group"
-                  title="📖 الشرح والمعلومات"
-                  aria-label="الشرح والمعلومات"
+                  onClick={onOpenQuestions}
+                  className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:from-amber-600 active:to-amber-700 text-slate-950 border border-amber-300/80 flex items-center justify-center shadow-lg shadow-amber-500/30 active:scale-90 transition-all cursor-pointer group"
+                  title={lessonQuestions.length > 0 ? `🧠 أسئلة وتفكير الدرس (${lessonQuestions.length})` : '🧠 أسئلة وتفكير الدرس'}
+                  aria-label="أسئلة الدرس والتفكير"
                 >
-                  <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
+                  <Brain className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow text-slate-950 stroke-[2.4]" />
+                  {lessonQuestions.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-amber-200 text-slate-950 font-black text-[10px] w-4 h-4 rounded-full flex items-center justify-center shadow border border-amber-500">
+                      {lessonQuestions.length}
+                    </span>
+                  )}
                 </button>
               )}
 

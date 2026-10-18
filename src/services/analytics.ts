@@ -2,7 +2,7 @@ import { ARActionType, AnalyticsLogItem, AnalyticsPayload } from '../types/ar';
 
 const STORAGE_KEY_LOGS = 'smart_ar_event_logs';
 const STORAGE_KEY_WEB_APP_URL = 'smart_ar_sheets_web_app_url';
-const DEFAULT_FALLBACK_URL = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzpKCreIaw70RuUr5Z_CY7czun_ZewvouGBKM10QYTYX1DD74Vu3e3X9PLoNRqQpM-L/exec';
+const DEFAULT_FALLBACK_URL = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxSZIbdlvl-kkAwYX2QOBv4uir_ra-G-yzTzu2PpcTh3IdqcQ4YxDuyD9MW-5nDlHTi/exec';
 
 // Detect client device category
 function detectDevice(): string {
