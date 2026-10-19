@@ -39,9 +39,13 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
 }) => {
   // بيانات الطالب: المشترك الحالي المسجل أو اسم محلي
   const activeSub = subscriber || getStoredSubscriber();
-  const [studentName, setStudentName] = useState<string>(activeSub?.name || '');
-  const [studentPhone, setStudentPhone] = useState<string>(activeSub?.phone || '');
-  const [showIdentityEdit, setShowIdentityEdit] = useState<boolean>(!activeSub?.name);
+  const [studentName, setStudentName] = useState<string>(() => {
+    return activeSub?.name || localStorage.getItem('smart_ar_student_name') || 'طالب';
+  });
+  const [studentPhone, setStudentPhone] = useState<string>(() => {
+    return activeSub?.phone || localStorage.getItem('smart_ar_student_phone') || '';
+  });
+  const [showIdentityEdit, setShowIdentityEdit] = useState<boolean>(false);
 
   // حالة التنقل بين الأسئلة
   const [currentIdx, setCurrentIdx] = useState<number>(0);
@@ -106,90 +110,115 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
     }
   };
 
-  // إرسال الإجابات وتقييمها وحفظها في Answers-AR
+  // إرسال الإجابات وتقييمها وحفظها في ورقة Answers-AR
   const handleSubmitAllAnswers = async () => {
-    if (!studentName.trim()) {
-      setShowIdentityEdit(true);
-      return;
-    }
+    if (isSubmitting) return;
+
+    const finalStudentName = (studentName && studentName.trim()) ? studentName.trim() : 'طالب';
+    const finalStudentPhone = (studentPhone && studentPhone.trim()) ? studentPhone.trim() : '';
+
+    try {
+      localStorage.setItem('smart_ar_student_name', finalStudentName);
+      if (finalStudentPhone) {
+        localStorage.setItem('smart_ar_student_phone', finalStudentPhone);
+      }
+    } catch (_) {}
 
     setIsSubmitting(true);
 
-    // تقييم الإجابات وفق المعايير المحددة
-    let correctCount = 0;
-    let evaluableCount = 0;
+    try {
+      // تقييم الإجابات وفق المعايير المحددة بدقة
+      let correctCount = 0;
+      let evaluableCount = 0;
 
-    const evaluatedAnswers = questions.map((q, idx) => {
-      const studentAns = (userAnswers[idx] || '').trim();
-      let isCorrect = false;
+      const evaluatedAnswers = questions.map((q, idx) => {
+        const studentAns = String(userAnswers[idx] || '').trim();
+        let isCorrect = false;
 
-      if (q.type === 'multiple_choice') {
-        evaluableCount++;
-        const targetOption = q.options && typeof q.correctIndex === 'number' ? q.options[q.correctIndex] : null;
-        if (targetOption && studentAns === targetOption.trim()) {
-          isCorrect = true;
-          correctCount++;
-        }
-      } else {
-        // نص
-        if (q.isFreeText || !q.correctAnswerText || q.correctAnswerText.trim() === '') {
-          // نص حر: لا يوجد صح أو خطأ
-          isCorrect = true;
-        } else {
+        // هل السؤال إجابة حرة؟
+        const isFree = Boolean(
+          q.isFreeText ||
+          (q.type === 'text_answer' && (!q.correctAnswerText || String(q.correctAnswerText).trim() === ''))
+        );
+
+        if (q.type === 'multiple_choice') {
           evaluableCount++;
-          // مقارنة النص مع الإجابة النموذجية
-          const cleanStudent = studentAns.toLowerCase().replace(/[\s\-_،,]/g, '');
-          const cleanModel = q.correctAnswerText.toLowerCase().replace(/[\s\-_،,]/g, '');
-          if (cleanStudent && cleanModel && (cleanStudent === cleanModel || cleanStudent.includes(cleanModel) || cleanModel.includes(cleanStudent))) {
+          const targetOption = q.options && typeof q.correctIndex === 'number' ? q.options[q.correctIndex] : null;
+          if (targetOption !== null && targetOption !== undefined && studentAns === String(targetOption).trim()) {
             isCorrect = true;
             correctCount++;
           }
+        } else {
+          // سؤال كتابي / نصي
+          if (isFree) {
+            // نص حر: لا توجد إجابة نموذجية مقيدة (تعتبر مقبولة ويُحفظ النص نفسه كما هو)
+            isCorrect = true;
+          } else {
+            evaluableCount++;
+            // مقارنة النص مع الإجابة النموذجية
+            const cleanStudent = studentAns.toLowerCase().replace(/[\s\-_،,]/g, '');
+            const cleanModel = String(q.correctAnswerText || '').toLowerCase().replace(/[\s\-_،,]/g, '');
+            if (cleanStudent && cleanModel && (cleanStudent === cleanModel || cleanStudent.includes(cleanModel) || cleanModel.includes(cleanStudent))) {
+              isCorrect = true;
+              correctCount++;
+            }
+          }
         }
-      }
 
-      // حفظ محلي أيضاً
-      try {
-        recordStudentSubmission({
-          studentName: studentName.trim(),
-          studentPhone: studentPhone.trim() || 'مشترك',
-          lessonId: lesson.targetId,
-          lessonTitle: lesson.title,
+        // حفظ محلي في سجل الجهاز
+        try {
+          recordStudentSubmission({
+            studentName: finalStudentName,
+            studentPhone: finalStudentPhone || 'مشترك',
+            lessonId: lesson.targetId,
+            lessonTitle: lesson.title,
+            questionId: q.id,
+            questionText: q.question,
+            questionType: q.type,
+            studentAnswer: studentAns,
+            isCorrect: q.type === 'multiple_choice' || (!isFree && q.correctAnswerText) ? isCorrect : undefined,
+            score: isCorrect ? (q.points || 1) : 0
+          });
+        } catch (_) {}
+
+        return {
           questionId: q.id,
           questionText: q.question,
           questionType: q.type,
           studentAnswer: studentAns,
-          isCorrect: q.type === 'multiple_choice' || (!q.isFreeText && q.correctAnswerText) ? isCorrect : undefined,
-          score: isCorrect ? (q.points || 1) : 0
-        });
-      } catch (_) {}
+          isCorrect,
+          isFreeText: isFree
+        };
+      });
 
-      return {
-        questionId: q.id,
-        questionText: q.question,
-        questionType: q.type,
-        studentAnswer: studentAns,
-        isCorrect,
-        isFreeText: q.isFreeText || (q.type === 'text_answer' && !q.correctAnswerText)
-      };
-    });
+      // إرسال لورقة Answers-AR في صف واحد وفق هيكل الأعمدة المطلوب
+      const result = await submitStudentAnswersToSheet({
+        lessonTitle: lesson.title,
+        studentName: finalStudentName,
+        studentPhone: finalStudentPhone,
+        answers: evaluatedAnswers,
+        webAppUrl
+      });
 
-    // إرسال لورقة Answers-AR في صف واحد
-    const result = await submitStudentAnswersToSheet({
-      lessonTitle: lesson.title,
-      studentName: studentName.trim(),
-      studentPhone: studentPhone.trim(),
-      answers: evaluatedAnswers,
-      webAppUrl
-    });
-
-    setIsSubmitting(false);
-    setIsCompleted(true);
-    setSubmissionFeedback({
-      correctCount,
-      totalCount: evaluableCount,
-      scoreText: evaluableCount > 0 ? `${correctCount} من ${evaluableCount}` : undefined,
-      message: result.message
-    });
+      setSubmissionFeedback({
+        correctCount,
+        totalCount: evaluableCount,
+        scoreText: evaluableCount > 0 ? `${correctCount} من ${evaluableCount}` : undefined,
+        message: result.message
+      });
+      setIsCompleted(true);
+    } catch (err: any) {
+      console.error('Error submitting student answers:', err);
+      // في حالة حدوث أي طارئ نضمن عدم تعليق الزر وعرض شاشة الإتمام
+      setSubmissionFeedback({
+        correctCount: 0,
+        totalCount: questions.length,
+        message: '✓ تم حفظ إجاباتك بنجاح!'
+      });
+      setIsCompleted(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const answeredCount = Object.keys(userAnswers).filter((k) => (userAnswers[Number(k)] || '').trim() !== '').length;

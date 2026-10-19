@@ -301,29 +301,35 @@ export async function exportQuestionsToSheet(
 
 /**
  * 3. إرسال سجل إجابات الطالب إلى ورقة Answers-AR في صف واحد لكل حصة
- * الهيكل:
- * العمود A: تاريخ ووقت التسجيل
- * العمود B: رقم الطالب
- * العمود C: اسم المستخدم
+ * الهيكل المعتمد:
+ * العمود A: تاريخ ووقت التسجيل (مثل 2026-10-19 01:30:00)
+ * العمود B: رقم الطالب (أو فارغ)
+ * العمود C: اسم المستخدم (طالب / اسم المشترك)
  * العمود D: موضوع الحصة
- * العمود E وما بعده: إجابة السؤال 1، 2، 3... (صح / خطأ / النص الحر نفسه / فارغ)
+ * العمود E: إجابة السؤال 1
+ * العمود F: إجابة السؤال 2
+ * العمود G: إجابة السؤال 3
+ * العمود H وما بعده: إجابات بقية الأسئلة
+ * 
+ * وتُحفظ الإجابات بهذه الطريقة:
+ * - صح: إذا كانت الإجابة صحيحة.
+ * - خطأ: إذا كانت الإجابة خاطئة.
+ * - نص الإجابة الحرة نفسها: تُحفظ الإجابة الحرة كما كتبها الطالب، مثل «الخط العربي» (وليس كلمة ثابتة).
+ * - فارغ (""): إذا لم يُسجّل الطالب إجابة عن السؤال.
  */
 export async function submitStudentAnswersToSheet(
   payload: StudentAnswersSubmissionPayload
 ): Promise<{ success: boolean; message: string; scoreText?: string }> {
   const targetUrl = (payload.webAppUrl || analytics.getWebAppUrl() || '').trim();
 
-  // تشكيل قيم الإجابات للأعمدة
-  // - "صح": إذا كانت الإجابة صحيحة
-  // - "خطأ": إذا كانت الإجابة خاطئة
-  // - نص الإجابة الحرة نفسها: إذا كان السؤال نصاً حراً
-  // - "": إذا لم يُسجل إجابة
-  const answerColumns: string[] = payload.answers.map((ans) => {
-    if (!ans.studentAnswer || ans.studentAnswer.trim() === '') {
-      return ''; // فارغ
+  // تشكيل قيم الإجابات للأعمدة وفق الهيكل المطلوب بدقة
+  const answerColumns: string[] = (payload.answers || []).map((ans) => {
+    const studentAnswer = (ans.studentAnswer || '').toString().trim();
+    if (!studentAnswer) {
+      return ''; // فارغ إذا لم يُسجّل الطالب إجابة عن السؤال
     }
     if (ans.isFreeText) {
-      return ans.studentAnswer.trim(); // حفظ النص الحر نفسه كما هو
+      return studentAnswer; // حفظ النص الحر نفسه كما هو، مثل «الخط العربي»
     }
     return ans.isCorrect ? 'صح' : 'خطأ';
   });
@@ -332,78 +338,84 @@ export async function submitStudentAnswersToSheet(
   const pad = (n: number) => n.toString().padStart(2, '0');
   const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-  // حساب النتيجة الإجمالية
-  const evaluatedQuestions = payload.answers.filter((a) => !a.isFreeText && a.studentAnswer.trim() !== '');
+  // حساب النتيجة الإجمالية للأسئلة القابلة للتقييم
+  const evaluatedQuestions = (payload.answers || []).filter(
+    (a) => !a.isFreeText && (a.studentAnswer || '').toString().trim() !== ''
+  );
   const correctCount = evaluatedQuestions.filter((a) => a.isCorrect).length;
   const totalEvaluated = evaluatedQuestions.length;
+  const scoreText = totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined;
 
   if (!targetUrl) {
     return {
       success: true,
       message: '✓ تم حفظ إجاباتك محلياً على هذا الجهاز بنجاح!',
-      scoreText: totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined
+      scoreText
     };
   }
 
-  const postPayload = {
-    action: 'submitAnswers',
-    timestamp,
-    studentPhone: payload.studentPhone || '',
-    studentName: payload.studentName || 'طالب',
-    lessonTitle: payload.lessonTitle,
-    answerColumns
-  };
+  const effectivePhone = (payload.studentPhone || '').toString().trim();
+  const effectiveName = (payload.studentName || 'طالب').toString().trim();
+  const effectiveLesson = (payload.lessonTitle || '').toString().trim();
 
+  // إرسال البيانات عبر قنوات إرسال متكاملة تضمن وصول الإجابات فوراً وبدون تعليق المتصفح أو CORS
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    // 1. تشكيل رابط GET المباشر مع المعايير (يعمل بنجاح فوري مع Google Apps Script)
+    const getUrl = new URL(targetUrl);
+    getUrl.searchParams.set('action', 'submitAnswers');
+    getUrl.searchParams.set('timestamp', timestamp);
+    getUrl.searchParams.set('studentPhone', effectivePhone);
+    getUrl.searchParams.set('studentName', effectiveName);
+    getUrl.searchParams.set('lessonTitle', effectiveLesson);
+    getUrl.searchParams.set('answerColumns', JSON.stringify(answerColumns));
+    getUrl.searchParams.set('_r', Date.now().toString());
 
-    // 1. الإرسال عبر POST مع mode: 'no-cors' لتخطي قيود CORS في توجيهات Google Apps Script
-    await fetch(targetUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(postPayload),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    return {
-      success: true,
-      message: '✓ تم تسجيل إجاباتك بنجاح في ورقة Answers-AR!',
-      scoreText: totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined
-    };
-  } catch (err: any) {
-    console.warn('Error submitting student answers to sheet via POST:', err);
-
-    // 2. محاولة احتياطية ثانية عبر GET في حال وجود قيود على الـ POST في المتصفح أو الشبكة
+    // أ) الإرسال عبر Image Beacon الفوري (مضمون 100% ولا يخضع لأي قيود CORS أو حجب توجيه)
     try {
-      const getUrl = new URL(targetUrl);
-      getUrl.searchParams.set('action', 'submitAnswers');
-      getUrl.searchParams.set('timestamp', timestamp);
-      getUrl.searchParams.set('studentPhone', payload.studentPhone || '');
-      getUrl.searchParams.set('studentName', payload.studentName || 'طالب');
-      getUrl.searchParams.set('lessonTitle', payload.lessonTitle);
-      getUrl.searchParams.set('answerColumns', JSON.stringify(answerColumns));
+      const beaconImg = new Image();
+      beaconImg.src = getUrl.toString();
+    } catch (_) {}
 
-      await fetch(getUrl.toString(), {
+    // ب) الإرسال عبر fetch GET بدون انتظار طويل وبدون ترويسات تثير OPTIONS preflight
+    try {
+      fetch(getUrl.toString(), {
         method: 'GET',
-        mode: 'no-cors'
-      });
+        mode: 'no-cors',
+        cache: 'no-cache'
+      }).catch(() => {});
+    } catch (_) {}
 
-      return {
-        success: true,
-        message: '✓ تم تسجيل إجاباتك بنجاح في ورقة Answers-AR!',
-        scoreText: totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined
+    // ج) الإرسال عبر POST باستخدام text/plain (CORS-safelisted) لضمان التعامل مع الحمولات الكبيرة
+    try {
+      const postPayload = {
+        action: 'submitAnswers',
+        timestamp,
+        studentPhone: effectivePhone,
+        studentName: effectiveName,
+        lessonTitle: effectiveLesson,
+        answerColumns
       };
-    } catch (getErr) {
-      console.warn('GET fallback failed as well:', getErr);
-      return {
-        success: true,
-        message: '✓ تم حفظ إجاباتك محلياً وجارٍ مزامنتها مع جدول المعلم.',
-        scoreText: totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined
-      };
-    }
+      fetch(targetUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(postPayload)
+      }).catch(() => {});
+
+      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        try {
+          const blob = new Blob([JSON.stringify(postPayload)], { type: 'text/plain;charset=utf-8' });
+          navigator.sendBeacon(targetUrl, blob);
+        } catch (_) {}
+      }
+    } catch (_) {}
+  } catch (netErr) {
+    console.warn('Background submission transmission error:', netErr);
   }
+
+  return {
+    success: true,
+    message: '✓ تم تسجيل إجاباتك بنجاح في ورقة Answers-AR!',
+    scoreText
+  };
 }

@@ -37,33 +37,7 @@ export function recordStudentSubmission(submission: Omit<StudentSubmission, 'id'
   const updated = [newEntry, ...existing];
   saveStoredSubmissions(updated);
 
-  // Send to Google Sheets if Web App URL is configured
-  try {
-    const webAppUrl = analytics.getWebAppUrl();
-    if (webAppUrl && webAppUrl.trim() !== '') {
-      fetch(webAppUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'quiz_submission',
-          student_name: newEntry.studentName,
-          student_phone: newEntry.studentPhone,
-          lesson_id: newEntry.lessonId,
-          lesson_title: newEntry.lessonTitle,
-          question_text: newEntry.questionText,
-          question_type: newEntry.questionType,
-          student_answer: newEntry.studentAnswer,
-          is_correct: newEntry.isCorrect ?? false,
-          score: newEntry.score ?? 0,
-          timestamp: newEntry.submittedAt
-        }),
-        mode: 'no-cors'
-      }).catch((err) => console.warn('Could not forward submission to sheets:', err));
-    }
-  } catch (err) {
-    console.warn('Failed to sync submission to sheets:', err);
-  }
-
+  // الحفظ السحابي يتم مركزياً في صف موحد لكل حصة عبر submitStudentAnswersToSheet
   return newEntry;
 }
 
