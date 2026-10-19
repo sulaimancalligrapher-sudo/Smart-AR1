@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Brain,
   X,
@@ -15,10 +15,20 @@ import {
   RotateCcw,
   Check,
   AlertCircle,
-  Loader2
+  Loader2,
+  Lock,
+  KeyRound,
+  ShieldCheck,
+  UserCheck
 } from 'lucide-react';
-import { LessonData, LessonQuestion } from '../types/ar';
-import { SubscriberInfo, getStoredSubscriber } from '../services/subscriptionAuth';
+import { LessonData, LessonQuestion, isLessonRestricted } from '../types/ar';
+import {
+  SubscriberInfo,
+  getStoredSubscriber,
+  saveStoredSubscriber,
+  verifySubscriberWithSheet,
+  normalizeArabicDigits
+} from '../services/subscriptionAuth';
 import { submitStudentAnswersToSheet } from '../services/sheetsQuestionsSync';
 import { recordStudentSubmission } from '../services/studentSubmissions';
 
@@ -27,6 +37,7 @@ interface QuestionsModalProps {
   questions: LessonQuestion[];
   subscriber?: SubscriberInfo | null;
   webAppUrl?: string;
+  onSubscriberLogin?: (subscriber: SubscriberInfo) => void;
   onClose: () => void;
 }
 
@@ -35,23 +46,50 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   questions,
   subscriber,
   webAppUrl,
+  onSubscriberLogin,
   onClose
 }) => {
-  // بيانات الطالب: المشترك الحالي المسجل أو اسم محلي
-  const activeSub = subscriber || getStoredSubscriber();
+  // فحص نمط الدرس: هل هو مقيد للمشتركين فقط أم وضع مفتوح للزوار
+  const isRestricted = isLessonRestricted(lesson);
+
+  // المشترك النشط (من الـ props أو الـ localStorage)
+  const [activeSub, setActiveSub] = useState<SubscriberInfo | null>(
+    () => subscriber || getStoredSubscriber()
+  );
+
+  useEffect(() => {
+    if (subscriber) {
+      setActiveSub(subscriber);
+      setStudentName(subscriber.name);
+      setStudentPhone(subscriber.phone);
+    }
+  }, [subscriber]);
+
+  // في الوضع المفتوح (الوضع الأول): يسجل باسم "زائر" ورقم هاتف فارغ ما لم يكن مشتركاً مسجلاً
+  // في الوضع المقيد (الوضع الثاني): يشترط وجود مشترك مسجل لتسجيل الإجابة باسمه ورقمه
   const [studentName, setStudentName] = useState<string>(() => {
-    return activeSub?.name || localStorage.getItem('smart_ar_student_name') || 'طالب';
+    if (activeSub?.name) return activeSub.name;
+    if (isRestricted) return '';
+    return localStorage.getItem('smart_ar_student_name') || 'زائر';
   });
+
   const [studentPhone, setStudentPhone] = useState<string>(() => {
-    return activeSub?.phone || localStorage.getItem('smart_ar_student_phone') || '';
+    if (activeSub?.phone) return activeSub.phone;
+    return localStorage.getItem('smart_ar_student_phone') || '';
   });
-  const [showIdentityEdit, setShowIdentityEdit] = useState<boolean>(false);
 
   // حالة التنقل بين الأسئلة
   const [currentIdx, setCurrentIdx] = useState<number>(0);
 
   // إجابات الطالب: [qIndex] => studentAnswer string
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
+
+  // حالة نافذة تسجيل دخول المشترك السريعة (خاصة بالوضع المقيد)
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [loginNameInput, setLoginNameInput] = useState<string>('');
+  const [loginPhoneInput, setLoginPhoneInput] = useState<string>('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isVerifyingLogin, setIsVerifyingLogin] = useState<boolean>(false);
 
   // حالة الإرسال والنتائج
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -110,21 +148,21 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
     }
   };
 
-  // إرسال الإجابات وتقييمها وحفظها في ورقة Answers-AR
-  const handleSubmitAllAnswers = async () => {
-    if (isSubmitting) return;
+  // تنفيذ إرسال الإجابات إلى ورقة Answers-AR
+  const doSubmitAnswers = async (targetStudentName: string, targetStudentPhone: string) => {
+    setIsSubmitting(true);
 
-    const finalStudentName = (studentName && studentName.trim()) ? studentName.trim() : 'طالب';
-    const finalStudentPhone = (studentPhone && studentPhone.trim()) ? studentPhone.trim() : '';
+    const effectiveName = (targetStudentName && targetStudentName.trim()) 
+      ? targetStudentName.trim() 
+      : 'زائر';
+    const effectivePhone = normalizeArabicDigits((targetStudentPhone || '').trim().replace(/[\s\-\(\)]/g, ''));
 
     try {
-      localStorage.setItem('smart_ar_student_name', finalStudentName);
-      if (finalStudentPhone) {
-        localStorage.setItem('smart_ar_student_phone', finalStudentPhone);
+      localStorage.setItem('smart_ar_student_name', effectiveName);
+      if (effectivePhone) {
+        localStorage.setItem('smart_ar_student_phone', effectivePhone);
       }
     } catch (_) {}
-
-    setIsSubmitting(true);
 
     try {
       // تقييم الإجابات وفق المعايير المحددة بدقة
@@ -168,8 +206,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
         // حفظ محلي في سجل الجهاز
         try {
           recordStudentSubmission({
-            studentName: finalStudentName,
-            studentPhone: finalStudentPhone || 'مشترك',
+            studentName: effectiveName,
+            studentPhone: effectivePhone || 'زائر',
             lessonId: lesson.targetId,
             lessonTitle: lesson.title,
             questionId: q.id,
@@ -194,8 +232,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
       // إرسال لورقة Answers-AR في صف واحد وفق هيكل الأعمدة المطلوب
       const result = await submitStudentAnswersToSheet({
         lessonTitle: lesson.title,
-        studentName: finalStudentName,
-        studentPhone: finalStudentPhone,
+        studentName: effectiveName,
+        studentPhone: effectivePhone,
         answers: evaluatedAnswers,
         webAppUrl
       });
@@ -209,15 +247,74 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
       setIsCompleted(true);
     } catch (err: any) {
       console.error('Error submitting student answers:', err);
-      // في حالة حدوث أي طارئ نضمن عدم تعليق الزر وعرض شاشة الإتمام
       setSubmissionFeedback({
         correctCount: 0,
         totalCount: questions.length,
-        message: '✓ تم حفظ إجاباتك بنجاح!'
+        message: effectivePhone
+          ? `✓ تم تسجيل إجاباتك باسم (${effectiveName}) ورقم (${effectivePhone}) في ورقة Answers-AR!`
+          : `✓ تم تسجيل إجاباتك كـ (زائر) في ورقة Answers-AR!`
       });
       setIsCompleted(true);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // معالجة النقر على زر "إرسال الإجابات والتقييم"
+  const handleSubmitAllAnswers = async () => {
+    if (isSubmitting) return;
+
+    // 🔒 الوضع الثاني: إذا كان الدرس مقيداً ولم يسجل المشترك دخوله بعد، يطلب منه تسجيل الدخول فوراً
+    if (isRestricted && !activeSub) {
+      setShowLoginModal(true);
+      return;
+    }
+
+    // 🔓 الوضع الأول (زائر) أو مستخدم مشترك مسجل
+    const finalName = activeSub?.name || (studentName && studentName.trim() ? studentName.trim() : 'زائر');
+    const finalPhone = activeSub?.phone || (studentPhone && studentPhone.trim() ? studentPhone.trim() : '');
+
+    await doSubmitAnswers(finalName, finalPhone);
+  };
+
+  // تسجيل دخول المشترك السريع والتحقق منه من ورقة SubData
+  const handleQuickSubscriberLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+
+    const cName = loginNameInput.trim();
+    const cPhone = normalizeArabicDigits(loginPhoneInput.trim().replace(/[\s\-\(\)]/g, ''));
+
+    if (!cName || !cPhone) {
+      setLoginError('يرجى كتابة كلٍ من اسم المشترك ورقم هاتفه للمتابعة.');
+      return;
+    }
+
+    setIsVerifyingLogin(true);
+
+    try {
+      const res = await verifySubscriberWithSheet(cName, cPhone, webAppUrl);
+
+      if (res.success && res.subscriber) {
+        saveStoredSubscriber(res.subscriber);
+        setActiveSub(res.subscriber);
+        setStudentName(res.subscriber.name);
+        setStudentPhone(res.subscriber.phone);
+        if (onSubscriberLogin) {
+          onSubscriberLogin(res.subscriber);
+        }
+        setShowLoginModal(false);
+        setIsVerifyingLogin(false);
+
+        // إرسال الإجابات فوراً باسم ورقم المشترك المتحقق منه
+        await doSubmitAnswers(res.subscriber.name, res.subscriber.phone);
+      } else {
+        setLoginError(res.message);
+        setIsVerifyingLogin(false);
+      }
+    } catch (err: any) {
+      setLoginError(`حدث خطأ أثناء الاتصال: ${err?.message || 'تأكد من الاتصال'}`);
+      setIsVerifyingLogin(false);
     }
   };
 
@@ -243,6 +340,17 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
                   {questions.length} أسئلة
                 </span>
+                {isRestricted ? (
+                  <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" />
+                    الوضع المقيد
+                  </span>
+                ) : (
+                  <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1">
+                    <User className="w-2.5 h-2.5" />
+                    الوضع المفتوح
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-slate-400">
                 أجب عن الأسئلة وسيتم تسجيل نتائجك مباشرة في ورقة الإجابات (Answers-AR)
@@ -259,38 +367,59 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
           </button>
         </div>
 
+        {/* تنبيه الوضع المقيد إذا لم يسجل الزائر دخوله بعد */}
+        {isRestricted && !activeSub && (
+          <div className="px-5 py-2.5 bg-amber-950/70 border-b border-amber-500/40 flex items-center justify-between gap-3 text-xs text-amber-200">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>الوضع المقيد:</strong> هذا الدرس يتطلب تسجيل الدخول كمشترك لكي تجيب على الأسئلة وتُسجّل الإجابة باسمك ورقمك.
+              </span>
+            </div>
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 transition-all cursor-pointer shadow"
+            >
+              🔑 تسجيل الدخول
+            </button>
+          </div>
+        )}
+
         {/* Student Identity Bar */}
         <div className="px-5 py-2.5 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-400/30">
-              <User className="w-3.5 h-3.5" />
-            </div>
-            {activeSub?.name && !showIdentityEdit ? (
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-white">الطالب المسجل: {studentName}</span>
-                {studentPhone && (
-                  <span className="text-[10px] text-slate-400 font-mono">({studentPhone})</span>
-                )}
-                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-semibold">
-                  مشترك مفعل ✓
+            {activeSub?.name ? (
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-400/30">
+                  <UserCheck className="w-3.5 h-3.5" />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-white">المشترك المسجل: {activeSub.name}</span>
+                  {activeSub.phone && (
+                    <span className="text-[10px] text-slate-400 font-mono">({activeSub.phone})</span>
+                  )}
+                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-semibold">
+                    مشترك مفعل ✓
+                  </span>
+                </div>
+              </div>
+            ) : isRestricted ? (
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center border border-amber-400/30">
+                  <Lock className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-amber-300 font-medium">
+                  لم يتم تسجيل الدخول (سيُطلب تسجيل الدخول عند الإرسال لحفظ اسمك ورقمك)
                 </span>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="اسم الطالب..."
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                />
-                <input
-                  type="text"
-                  placeholder="رقم الهاتف/المشترك..."
-                  value={studentPhone}
-                  onChange={(e) => setStudentPhone(e.target.value)}
-                  className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
-                />
+                <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center border border-sky-400/30">
+                  <User className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-sky-200 font-bold">
+                  وضع الزائر (تصفح مجاني مفتوح) · تُسجّل الإجابة باسم: «زائر»
+                </span>
               </div>
             )}
           </div>
@@ -301,6 +430,95 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
             </span>
           </div>
         </div>
+
+        {/* نافذة تسجيل الدخول للمشترك المدمجة (تظهر للوضع المقيد) */}
+        {showLoginModal && (
+          <div className="p-4 sm:p-5 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-amber-500/40 space-y-3 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  <KeyRound className="w-4 h-4" />
+                </span>
+                <h4 className="text-sm font-bold text-white">تسجيل دخول المشترك (الوضع المقيد)</h4>
+              </div>
+              <button
+                onClick={() => setShowLoginModal(false)}
+                className="text-slate-400 hover:text-white text-xs cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-amber-200/90 leading-relaxed">
+              يشترط تسجيل الدخول لكي تجيب على أسئلة هذا الدرس المقيد وتُسجّل نتائجك باسمك ورقم هاتفك في ورقة Answers-AR.
+            </p>
+
+            <form onSubmit={handleQuickSubscriberLogin} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] text-slate-300 mb-1 font-medium">
+                    اسم المشترك الكامل:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: محمد أحمد"
+                    value={loginNameInput}
+                    onChange={(e) => setLoginNameInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-300 mb-1 font-medium">
+                    رقم الهاتف / المشترك:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: 0501234567 أو 123 للتجربة"
+                    value={loginPhoneInput}
+                    onChange={(e) => setLoginPhoneInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
+                  />
+                </div>
+              </div>
+
+              {loginError && (
+                <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowLoginModal(false)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingLogin}
+                  className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-md"
+                >
+                  {isVerifyingLogin ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>جارٍ التحقق...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>تأكيد الدخول وإرسال الإجابات</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">

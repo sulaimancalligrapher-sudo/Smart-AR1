@@ -491,6 +491,7 @@ export default function App() {
           questions={getLessonQuestions(activeLesson)}
           subscriber={currentSubscriber}
           webAppUrl={analytics.getWebAppUrl()}
+          onSubscriberLogin={handleSubscriberLoginSuccess}
           onClose={() => {
             setActiveModal('none');
             setShowFloatingModel(true);

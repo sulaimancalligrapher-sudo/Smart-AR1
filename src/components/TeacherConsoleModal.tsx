@@ -1414,7 +1414,7 @@ function doGet(e) {
       var newRow = [
         e.parameter.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT+3", "yyyy-MM-dd HH:mm:ss"),
         e.parameter.studentPhone || "",
-        e.parameter.studentName || "طالب",
+        e.parameter.studentName || "زائر",
         e.parameter.lessonTitle || ""
       ].concat(ansCols);
 
@@ -1505,7 +1505,7 @@ function doPost(e) {
       var newRow = [
         data.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT+3", "yyyy-MM-dd HH:mm:ss"),
         data.studentPhone || "",
-        data.studentName || "طالب",
+        data.studentName || "زائر",
         data.lessonTitle || ""
       ].concat(ansCols);
 

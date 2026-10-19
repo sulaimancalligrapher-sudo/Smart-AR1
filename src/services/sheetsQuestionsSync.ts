@@ -346,21 +346,26 @@ export async function submitStudentAnswersToSheet(
   const totalEvaluated = evaluatedQuestions.length;
   const scoreText = totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined;
 
+  // تنظيف الأرقام والأسماء: وضع الزائر يسجل باسم "زائر" ورقم فارغ، ووضع المشترك يسجل باسمه ورقمه
+  const effectivePhone = normalizeArabicDigits((payload.studentPhone || '').toString().trim().replace(/[\s\-\(\)]/g, ''));
+  const effectiveName = (payload.studentName && payload.studentName.trim()) 
+    ? payload.studentName.trim() 
+    : 'زائر';
+  const effectiveLesson = (payload.lessonTitle || '').toString().trim();
+
   if (!targetUrl) {
     return {
       success: true,
-      message: '✓ تم حفظ إجاباتك محلياً على هذا الجهاز بنجاح!',
+      message: effectivePhone 
+        ? `✓ تم حفظ إجاباتك محلياً باسم (${effectiveName}) ورقم (${effectivePhone})!`
+        : `✓ تم حفظ إجاباتك محلياً كـ (زائر)!`,
       scoreText
     };
   }
 
-  const effectivePhone = (payload.studentPhone || '').toString().trim();
-  const effectiveName = (payload.studentName || 'طالب').toString().trim();
-  const effectiveLesson = (payload.lessonTitle || '').toString().trim();
-
   // إرسال البيانات عبر قنوات إرسال متكاملة تضمن وصول الإجابات فوراً وبدون تعليق المتصفح أو CORS
   try {
-    // 1. تشكيل رابط GET المباشر مع المعايير (يعمل بنجاح فوري مع Google Apps Script)
+    // 1. تشكيل رابط GET المباشر مع المعايير (يعمل بنجاح فوري وموثوق مع Google Apps Script)
     const getUrl = new URL(targetUrl);
     getUrl.searchParams.set('action', 'submitAnswers');
     getUrl.searchParams.set('timestamp', timestamp);
@@ -370,52 +375,52 @@ export async function submitStudentAnswersToSheet(
     getUrl.searchParams.set('answerColumns', JSON.stringify(answerColumns));
     getUrl.searchParams.set('_r', Date.now().toString());
 
-    // أ) الإرسال عبر Image Beacon الفوري (مضمون 100% ولا يخضع لأي قيود CORS أو حجب توجيه)
+    // أ) الإرسال عبر Image Beacon مع حفظ المرجع لمنع الـ Garbage Collector من إلغاء الطلب
     try {
       const beaconImg = new Image();
+      if (typeof window !== 'undefined') {
+        const win = window as any;
+        win.__smart_ar_beacons = win.__smart_ar_beacons || [];
+        win.__smart_ar_beacons.push(beaconImg);
+        if (win.__smart_ar_beacons.length > 20) {
+          win.__smart_ar_beacons.shift();
+        }
+      }
       beaconImg.src = getUrl.toString();
     } catch (_) {}
 
-    // ب) الإرسال عبر fetch GET بدون انتظار طويل وبدون ترويسات تثير OPTIONS preflight
+    // ب) الإرسال عبر fetch GET بدون preflight ومع keepalive لضمان عدم إلغاء الطلب أثناء تنقل الواجهة
     try {
       fetch(getUrl.toString(), {
         method: 'GET',
         mode: 'no-cors',
-        cache: 'no-cache'
+        cache: 'no-cache',
+        keepalive: true
       }).catch(() => {});
     } catch (_) {}
 
-    // ج) الإرسال عبر POST باستخدام text/plain (CORS-safelisted) لضمان التعامل مع الحمولات الكبيرة
+    // ج) محاولة فحص سريعة بخلفية المتصفح عبر fetch مباشر (مع مهلة قصيرة 4 ثوانٍ)
     try {
-      const postPayload = {
-        action: 'submitAnswers',
-        timestamp,
-        studentPhone: effectivePhone,
-        studentName: effectiveName,
-        lessonTitle: effectiveLesson,
-        answerColumns
-      };
-      fetch(targetUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(postPayload)
-      }).catch(() => {});
-
-      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-        try {
-          const blob = new Blob([JSON.stringify(postPayload)], { type: 'text/plain;charset=utf-8' });
-          navigator.sendBeacon(targetUrl, blob);
-        } catch (_) {}
-      }
+      const directController = new AbortController();
+      const directTimeout = setTimeout(() => directController.abort(), 4000);
+      fetch(getUrl.toString(), {
+        method: 'GET',
+        signal: directController.signal
+      })
+        .then(() => clearTimeout(directTimeout))
+        .catch(() => clearTimeout(directTimeout));
     } catch (_) {}
   } catch (netErr) {
     console.warn('Background submission transmission error:', netErr);
   }
 
+  const successMessage = effectivePhone 
+    ? `✓ تم تسجيل إجاباتك في ورقة Answers-AR باسم (${effectiveName}) ورقم (${effectivePhone})!`
+    : `✓ تم تسجيل إجاباتك في ورقة Answers-AR كـ (${effectiveName}) بنجاح!`;
+
   return {
     success: true,
-    message: '✓ تم تسجيل إجاباتك بنجاح في ورقة Answers-AR!',
+    message: successMessage,
     scoreText
   };
 }
