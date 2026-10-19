@@ -7,7 +7,7 @@ import {
   Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User,
   DownloadCloud, UploadCloud, Loader2
 } from 'lucide-react';
-import { analytics } from '../services/analytics';
+import { analytics, DEFAULT_SHEETS_WEB_APP_URL } from '../services/analytics';
 import {
   AnalyticsLogItem,
   LessonData,
@@ -3391,6 +3391,20 @@ function createJsonResponse(obj) {
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    setWebAppUrl(DEFAULT_SHEETS_WEB_APP_URL);
+                    analytics.setWebAppUrl(DEFAULT_SHEETS_WEB_APP_URL);
+                    setTestResult('✓ تم تعيين واستعادة الرابط الافتراضي الدائم بنجاح.');
+                    setTimeout(() => setTestResult(null), 3500);
+                  }}
+                  title="استعادة الرابط الدائم المدمج في التطبيق"
+                  className="px-3 py-2 rounded-xl bg-sky-950/70 hover:bg-sky-900/80 text-sky-300 border border-sky-500/30 text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>الرابط الافتراضي المدمج</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleTestPing}
                   disabled={isTesting}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
@@ -3399,6 +3413,11 @@ function createJsonResponse(obj) {
                   <span>{isTesting ? 'جارٍ الإرسال...' : 'إرسال حدث تجريبي'}</span>
                 </button>
               </form>
+
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/90 bg-emerald-950/30 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>الرابط الافتراضي مدمج في الكود ويعمل تلقائياً لجميع الطلاب والهواتف دون الحاجة لأي إعداد يدوي.</span>
+              </div>
 
               {testResult && (
                 <div className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${

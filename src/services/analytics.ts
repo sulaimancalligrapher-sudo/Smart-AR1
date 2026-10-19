@@ -2,7 +2,8 @@ import { ARActionType, AnalyticsLogItem, AnalyticsPayload } from '../types/ar';
 
 const STORAGE_KEY_LOGS = 'smart_ar_event_logs';
 const STORAGE_KEY_WEB_APP_URL = 'smart_ar_sheets_web_app_url';
-const DEFAULT_FALLBACK_URL = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxSZIbdlvl-kkAwYX2QOBv4uir_ra-G-yzTzu2PpcTh3IdqcQ4YxDuyD9MW-5nDlHTi/exec';
+export const DEFAULT_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxSZIbdlvl-kkAwYX2QOBv4uir_ra-G-yzTzu2PpcTh3IdqcQ4YxDuyD9MW-5nDlHTi/exec';
+const DEFAULT_FALLBACK_URL = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL || DEFAULT_SHEETS_WEB_APP_URL;
 
 // Detect client device category
 function detectDevice(): string {
@@ -84,7 +85,11 @@ class AnalyticsService {
   }
 
   public getWebAppUrl(): string {
-    return localStorage.getItem(STORAGE_KEY_WEB_APP_URL) || DEFAULT_FALLBACK_URL;
+    const saved = localStorage.getItem(STORAGE_KEY_WEB_APP_URL);
+    if (saved && saved.trim()) {
+      return saved.trim();
+    }
+    return DEFAULT_FALLBACK_URL;
   }
 
   public setWebAppUrl(url: string) {
