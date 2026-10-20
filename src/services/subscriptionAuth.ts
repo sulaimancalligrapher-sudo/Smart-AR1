@@ -31,7 +31,13 @@ export function getStoredSubscriber(): SubscriberInfo | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SUBSCRIBER);
     if (!raw) return null;
-    return JSON.parse(raw) as SubscriberInfo;
+    const parsed = JSON.parse(raw);
+    if (!parsed) return null;
+    return {
+      name: String(parsed.name || '').trim(),
+      phone: String(parsed.phone || '').trim(),
+      loginAt: parsed.loginAt
+    };
   } catch {
     return null;
   }
@@ -158,8 +164,8 @@ export async function verifySubscriberWithSheet(
 
     if (data && data.success) {
       const confirmedSub: SubscriberInfo = {
-        name: data.name || cleanName,
-        phone: data.phone || cleanPhone,
+        name: String(data.name || cleanName).trim(),
+        phone: String(data.phone || cleanPhone).trim(),
         loginAt: new Date().toISOString()
       };
       saveStoredSubscriber(confirmedSub);

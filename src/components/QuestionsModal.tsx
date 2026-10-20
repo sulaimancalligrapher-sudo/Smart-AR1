@@ -161,8 +161,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   // 2. الوضع الثاني (المقيد للمشترك): الدخول المباشر للمشترك المسجل
   const handleStartSubscriberAnswering = () => {
     if (activeSub) {
-      setStudentName(activeSub.name);
-      setStudentPhone(activeSub.phone);
+      setStudentName(String(activeSub.name || '').trim());
+      setStudentPhone(String(activeSub.phone || '').trim());
       setModalStage('answering');
     }
   };
@@ -214,13 +214,11 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
 
     // في الوضع المفتوح للزائر: الاسم هو اسم الزائر وبدون رقم
     // في الوضع المقيد للمشترك: الاسم هو اسم المشترك والرقم هو رقم المشترك
-    const effectiveName = !isRestricted
-      ? (studentName.trim() || visitorNameInput.trim() || 'زائر')
-      : (studentName.trim() || activeSub?.name || 'مشترك');
-    
-    const effectivePhone = !isRestricted
-      ? ''
-      : (studentPhone.trim() || activeSub?.phone || '');
+    const rawName = studentName || activeSub?.name || visitorNameInput || '';
+    const rawPhone = !isRestricted ? '' : (studentPhone || activeSub?.phone || '');
+
+    const effectiveName = String(rawName != null ? rawName : '').trim() || (!isRestricted ? 'زائر' : 'مشترك');
+    const effectivePhone = !isRestricted ? '' : String(rawPhone != null ? rawPhone : '').trim();
 
     try {
       // تقييم الإجابات وفق المعايير المحددة بدقة
@@ -620,13 +618,14 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                 {currentQ.type === 'multiple_choice' ? (
                   <div className="space-y-2 pt-2">
                     {(currentQ.options || ['نعم', 'لا']).map((opt, oIdx) => {
-                      const isSelected = currentAnswer === opt.trim();
+                      const optStr = String(opt != null ? opt : '');
+                      const isSelected = currentAnswer === optStr.trim();
                       const letter = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'][oIdx] || (oIdx + 1).toString();
                       return (
                         <button
                           key={oIdx}
                           type="button"
-                          onClick={() => handleSelectOption(opt.trim())}
+                          onClick={() => handleSelectOption(optStr.trim())}
                           className={`w-full p-3.5 rounded-xl border text-right transition-all cursor-pointer flex items-center gap-3 ${
                             isSelected
                               ? 'bg-amber-500/20 border-amber-400 text-white font-bold ring-2 ring-amber-400/30 shadow-md'

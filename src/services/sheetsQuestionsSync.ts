@@ -351,11 +351,11 @@ export async function submitStudentAnswersToSheet(
   const scoreText = totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined;
 
   // تنظيف الأرقام والأسماء
-  const effectivePhone = normalizeArabicDigits((payload.studentPhone || '').toString().trim().replace(/[\s\-\(\)]/g, ''));
-  const effectiveName = (payload.studentName && payload.studentName.trim()) 
-    ? payload.studentName.trim() 
+  const effectivePhone = normalizeArabicDigits((payload.studentPhone != null ? String(payload.studentPhone) : '').trim().replace(/[\s\-\(\)]/g, ''));
+  const effectiveName = (payload.studentName != null && String(payload.studentName).trim()) 
+    ? String(payload.studentName).trim() 
     : 'زائر';
-  const effectiveLesson = (payload.lessonTitle || '').toString().trim();
+  const effectiveLesson = (payload.lessonTitle != null ? String(payload.lessonTitle) : '').trim();
 
   // حماية صارمة لمنع التكرار (Deduplication Lock)
   const dedupKey = `${effectiveName}_${effectivePhone}_${effectiveLesson}_${answerColumns.join('|')}`;
