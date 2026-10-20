@@ -37,6 +37,7 @@ import { getStoredSubmissions, clearAllSubmissions, recordStudentSubmission } fr
 import { LessonQuestionsEditor } from './LessonQuestionsEditor';
 import { getSubscriptionExternalUrl, setSubscriptionExternalUrl } from '../services/subscriptionAuth';
 import { fetchQuestionsFromSheet, exportQuestionsToSheet } from '../services/sheetsQuestionsSync';
+import { SystemAnswersModal } from './SystemAnswersModal';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -158,6 +159,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [subscriptionUrl, setSubscriptionUrl] = useState<string>(() => getSubscriptionExternalUrl());
   const [subscriptionUrlSaved, setSubscriptionUrlSaved] = useState<boolean>(false);
+  const [isAnswersModalOpen, setIsAnswersModalOpen] = useState<boolean>(false);
 
   // Lesson Editor State
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
@@ -1743,8 +1745,18 @@ function createJsonResponse(obj) {
                   )}
                 </div>
 
-                {/* زر إضافة درس جديد بجانب القائمة المنسدلة */}
-                <div className="self-end sm:self-auto sm:pt-4">
+                {/* أزرار إضافة درس جديد وقسم تسجيل إجابات الطلاب في نفس الصف */}
+                <div className="self-end sm:self-auto sm:pt-4 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsAnswersModalOpen(true)}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-emerald-400/30"
+                    title="فتح جدول وسجل إجابات كافة الطلاب للدروس المعتمد لورقة Answers-AR"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                    <span>📊 قسم تسجيل إجابات الطلاب (Answers-AR)</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleAddNewLesson}
@@ -3751,6 +3763,13 @@ function createJsonResponse(obj) {
           isDestructive={confirmModal.isDestructive}
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+        />
+
+        {/* نافذة قسم تسجيل إجابات الطلاب لكافة الدروس (Answers-AR) */}
+        <SystemAnswersModal
+          isOpen={isAnswersModalOpen}
+          lessons={editableLessons}
+          onClose={() => setIsAnswersModalOpen(false)}
         />
       </div>
     </div>

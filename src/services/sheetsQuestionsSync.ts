@@ -1,6 +1,7 @@
 import { LessonData, LessonQuestion, QuestionType } from '../types/ar';
 import { analytics } from './analytics';
 import { normalizeArabicDigits } from './subscriptionAuth';
+import { recordSystemAnswer, updateSystemAnswerSyncStatus } from './studentSubmissions';
 
 export interface SheetQuestionSyncResult {
   success: boolean;
@@ -317,9 +318,12 @@ export async function exportQuestionsToSheet(
  * - نص الإجابة الحرة نفسها: تُحفظ الإجابة الحرة كما كتبها الطالب، مثل «الخط العربي» (وليس كلمة ثابتة).
  * - فارغ (""): إذا لم يُسجّل الطالب إجابة عن السؤال.
  */
+// ذاكرة مؤقتة لمنع أي تكرار متزامن لنفس سجل الإجابات خلال 10 ثوانٍ
+const recentSubmissionsCache = new Map<string, number>();
+
 export async function submitStudentAnswersToSheet(
   payload: StudentAnswersSubmissionPayload
-): Promise<{ success: boolean; message: string; scoreText?: string }> {
+): Promise<{ success: boolean; message: string; scoreText?: string; systemRecordId?: string }> {
   const targetUrl = (payload.webAppUrl || analytics.getWebAppUrl() || '').trim();
 
   // تشكيل قيم الإجابات للأعمدة وفق الهيكل المطلوب بدقة
@@ -346,81 +350,81 @@ export async function submitStudentAnswersToSheet(
   const totalEvaluated = evaluatedQuestions.length;
   const scoreText = totalEvaluated > 0 ? `${correctCount} من ${totalEvaluated}` : undefined;
 
-  // تنظيف الأرقام والأسماء: وضع الزائر يسجل باسم "زائر" ورقم فارغ، ووضع المشترك يسجل باسمه ورقمه
+  // تنظيف الأرقام والأسماء
   const effectivePhone = normalizeArabicDigits((payload.studentPhone || '').toString().trim().replace(/[\s\-\(\)]/g, ''));
   const effectiveName = (payload.studentName && payload.studentName.trim()) 
     ? payload.studentName.trim() 
     : 'زائر';
   const effectiveLesson = (payload.lessonTitle || '').toString().trim();
 
-  if (!targetUrl) {
+  // حماية صارمة لمنع التكرار (Deduplication Lock)
+  const dedupKey = `${effectiveName}_${effectivePhone}_${effectiveLesson}_${answerColumns.join('|')}`;
+  const lastSentTime = recentSubmissionsCache.get(dedupKey) || 0;
+  if (Date.now() - lastSentTime < 10000) {
     return {
       success: true,
       message: effectivePhone 
-        ? `✓ تم حفظ إجاباتك محلياً باسم (${effectiveName}) ورقم (${effectivePhone})!`
-        : `✓ تم حفظ إجاباتك محلياً كـ (زائر)!`,
+        ? `✓ تم حفظ الإجابات في النظام وإرسالها باسم (${effectiveName}) ورقم (${effectivePhone})!`
+        : `✓ تم حفظ الإجابات في النظام وإرسالها باسم (${effectiveName}) بنجاح!`,
       scoreText
     };
   }
+  recentSubmissionsCache.set(dedupKey, Date.now());
 
-  // إرسال البيانات عبر قنوات إرسال متكاملة تضمن وصول الإجابات فوراً وبدون تعليق المتصفح أو CORS
+  // ⭐ الخطوة 1: تسجيل الإجابات أولاً في النظام (System Database First) ⭐
+  let systemRecordId = '';
   try {
-    // 1. تشكيل رابط GET المباشر مع المعايير (يعمل بنجاح فوري وموثوق مع Google Apps Script)
-    const getUrl = new URL(targetUrl);
-    getUrl.searchParams.set('action', 'submitAnswers');
-    getUrl.searchParams.set('timestamp', timestamp);
-    getUrl.searchParams.set('studentPhone', effectivePhone);
-    getUrl.searchParams.set('studentName', effectiveName);
-    getUrl.searchParams.set('lessonTitle', effectiveLesson);
-    getUrl.searchParams.set('answerColumns', JSON.stringify(answerColumns));
-    getUrl.searchParams.set('_r', Date.now().toString());
+    const sysRec = recordSystemAnswer({
+      timestamp,
+      studentPhone: effectivePhone,
+      studentName: effectiveName,
+      lessonTitle: effectiveLesson,
+      answerColumns,
+      syncedToSheet: false
+    });
+    systemRecordId = sysRec.id;
+  } catch (sysErr) {
+    console.warn('Error saving answer to system database:', sysErr);
+  }
 
-    // أ) الإرسال عبر Image Beacon مع حفظ المرجع لمنع الـ Garbage Collector من إلغاء الطلب
+  // ⭐ الخطوة 2: إرسال طلب واحد موحد وحيد إلى Google Sheets لمنع أي تكرار ⭐
+  if (targetUrl) {
     try {
-      const beaconImg = new Image();
-      if (typeof window !== 'undefined') {
-        const win = window as any;
-        win.__smart_ar_beacons = win.__smart_ar_beacons || [];
-        win.__smart_ar_beacons.push(beaconImg);
-        if (win.__smart_ar_beacons.length > 20) {
-          win.__smart_ar_beacons.shift();
-        }
-      }
-      beaconImg.src = getUrl.toString();
-    } catch (_) {}
+      const getUrl = new URL(targetUrl);
+      getUrl.searchParams.set('action', 'submitAnswers');
+      getUrl.searchParams.set('timestamp', timestamp);
+      getUrl.searchParams.set('studentPhone', effectivePhone);
+      getUrl.searchParams.set('studentName', effectiveName);
+      getUrl.searchParams.set('lessonTitle', effectiveLesson);
+      getUrl.searchParams.set('answerColumns', JSON.stringify(answerColumns));
+      getUrl.searchParams.set('_r', Date.now().toString());
 
-    // ب) الإرسال عبر fetch GET بدون preflight ومع keepalive لضمان عدم إلغاء الطلب أثناء تنقل الواجهة
-    try {
+      // إرسال طلب وحيد عبر fetch مع keepalive
       fetch(getUrl.toString(), {
         method: 'GET',
         mode: 'no-cors',
         cache: 'no-cache',
         keepalive: true
-      }).catch(() => {});
-    } catch (_) {}
-
-    // ج) محاولة فحص سريعة بخلفية المتصفح عبر fetch مباشر (مع مهلة قصيرة 4 ثوانٍ)
-    try {
-      const directController = new AbortController();
-      const directTimeout = setTimeout(() => directController.abort(), 4000);
-      fetch(getUrl.toString(), {
-        method: 'GET',
-        signal: directController.signal
       })
-        .then(() => clearTimeout(directTimeout))
-        .catch(() => clearTimeout(directTimeout));
-    } catch (_) {}
-  } catch (netErr) {
-    console.warn('Background submission transmission error:', netErr);
+        .then(() => {
+          if (systemRecordId) {
+            updateSystemAnswerSyncStatus(systemRecordId, true);
+          }
+        })
+        .catch(() => {});
+    } catch (netErr) {
+      console.warn('Background submission transmission error:', netErr);
+    }
   }
 
   const successMessage = effectivePhone 
-    ? `✓ تم تسجيل إجاباتك في ورقة Answers-AR باسم (${effectiveName}) ورقم (${effectivePhone})!`
-    : `✓ تم تسجيل إجاباتك في ورقة Answers-AR كـ (${effectiveName}) بنجاح!`;
+    ? `✓ تم حفظ الإجابات في النظام وإرسالها باسم (${effectiveName}) ورقم (${effectivePhone})!`
+    : `✓ تم حفظ الإجابات في النظام وإرسالها باسم (${effectiveName}) بنجاح!`;
 
   return {
     success: true,
     message: successMessage,
-    scoreText
+    scoreText,
+    systemRecordId
   };
 }

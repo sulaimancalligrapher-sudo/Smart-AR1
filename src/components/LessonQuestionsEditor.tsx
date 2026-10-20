@@ -45,8 +45,6 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
   webAppUrl,
   onRequestConfirm
 }) => {
-  const [subTab, setSubTab] = useState<'builder' | 'submissions'>('builder');
-
   // Form State for Adding New Question
   const [newQType, setNewQType] = useState<QuestionType>('multiple_choice');
   const [newQText, setNewQText] = useState<string>('');
@@ -59,10 +57,6 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
   const [newQPoints, setNewQPoints] = useState<number>(1);
   const [questionNotice, setQuestionNotice] = useState<string | null>(null);
   const [isSheetSyncing, setIsSheetSyncing] = useState<boolean>(false);
-
-  // Student Submissions State
-  const [submissions, setSubmissions] = useState<StudentSubmission[]>(() => getStoredSubmissions());
-  const [submissionFilterLesson, setSubmissionFilterLesson] = useState<string>('all');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
 
   const currentQuestions = getLessonQuestions(currentLesson);
@@ -204,71 +198,6 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
     onUpdateQuestions(copy);
   };
 
-  const handleRefreshSubmissions = () => {
-    setSubmissions(getStoredSubmissions());
-    setStatusNotice('تم تحديث قائمة إجابات الطلاب.');
-    setTimeout(() => setStatusNotice(null), 2500);
-  };
-
-  const handleClearSubmissions = () => {
-    onRequestConfirm({
-      isOpen: true,
-      title: 'مسح سجل إجابات الطلاب',
-      message: 'هل أنت متأكد من مسح جميع إجابات الطلاب المسجلة في هذا المتصفح؟',
-      confirmText: 'نعم، مسح السجل',
-      isDestructive: true,
-      onConfirm: () => {
-        clearAllSubmissions();
-        setSubmissions([]);
-        setStatusNotice('تم إفراغ سجل الإجابات.');
-        setTimeout(() => setStatusNotice(null), 3000);
-      }
-    });
-  };
-
-  const handleAddSampleSubmission = () => {
-    recordStudentSubmission({
-      studentName: 'أحمد سلطان (طالب تجريبي)',
-      studentPhone: '0551234567',
-      lessonId: currentLesson.targetId || 'lesson_001',
-      lessonTitle: currentLesson.title || 'درس تجريبي',
-      questionId: 'q_sample_1',
-      questionText: 'سؤال تجريبي لاختبار الربط وحفظ الإجابات في الشيت',
-      questionType: 'multiple_choice',
-      studentAnswer: 'الإجابة الأولى النموذجية',
-      isCorrect: true,
-      score: 1
-    });
-    setSubmissions(getStoredSubmissions());
-    setStatusNotice('✓ تم تسجيل إجابة تجريبية وإرسالها تلقائياً إلى Google Sheets!');
-    setTimeout(() => setStatusNotice(null), 4000);
-  };
-
-  const handleExportSubmissionsCsv = () => {
-    if (submissions.length === 0) {
-      alert('لا توجد إجابات مسجلة لتصديرها.');
-      return;
-    }
-    const headers = ['اسم الطالب', 'رقم الجوال / المشترك', 'الدرس', 'نوع السؤال', 'نص السؤال', 'إجابة الطالب', 'النتيجة', 'تاريخ ووقت الإرسال'];
-    const rows = submissions.map((s) => [
-      `"${s.studentName.replace(/"/g, '""')}"`,
-      `"${s.studentPhone.replace(/"/g, '""')}"`,
-      `"${s.lessonTitle.replace(/"/g, '""')}"`,
-      `"${s.questionType === 'multiple_choice' ? 'اختيار من متعدد' : 'إجابة نصية'}"`,
-      `"${s.questionText.replace(/"/g, '""')}"`,
-      `"${s.studentAnswer.replace(/"/g, '""')}"`,
-      `"${s.isCorrect ? 'صحيحة' : 'غير صحيحة'}"`,
-      `"${new Date(s.submittedAt).toLocaleString('ar-EG')}"`
-    ]);
-
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `student_answers_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-  };
-
   return (
     <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-4 animate-fadeIn">
       {/* رأس بنك الأسئلة مع التبديل بين القسمين */}
@@ -279,46 +208,21 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
           </span>
           <div>
             <h5 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-              <span>🧠 بنك الأسئلة وتسجيل الإجابات</span>
+              <span>🧠 بنك أسئلة الدرس (Questions-AR)</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono font-bold">
                 {currentQuestions.length} أسئلة للدرس
               </span>
             </h5>
             <p className="text-[11px] text-slate-300">
-              قسم بناء أسئلة الدرس (خيارات وإجابة نصية) وقسم تسجيل الإجابات المربوط بـ Google Sheets.
+              قسم بناء وتحرير أسئلة هذا الدرس والمزامنة الأفقية مع ورقة Questions-AR.
             </p>
           </div>
         </div>
 
-        {/* التبديل بين القسمين */}
-        <div className="flex items-center bg-slate-900 rounded-xl p-1 border border-slate-800 text-xs font-bold self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={() => setSubTab('builder')}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-              subTab === 'builder'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>📝 قسم بناء وتحرير الأسئلة ({currentQuestions.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSubTab('submissions');
-              setSubmissions(getStoredSubmissions());
-            }}
-            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-              subTab === 'submissions'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>📊 قسم تسجيل الإجابات ({submissions.length})</span>
-          </button>
+        {/* شارة عدد أسئلة الدرس */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold self-start sm:self-auto">
+          <Edit3 className="w-3.5 h-3.5" />
+          <span>بنك أسئلة الدرس ({currentQuestions.length})</span>
         </div>
       </div>
 
@@ -330,9 +234,8 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
         </div>
       )}
 
-      {/* ======================= 1. قسم بناء الأسئلة ======================= */}
-      {subTab === 'builder' && (
-        <div className="space-y-4">
+      {/* ======================= قسم بناء وتحرير الأسئلة ======================= */}
+      <div className="space-y-4">
           {/* شريط المزامنة مع ورقة Questions-AR */}
           <div className="p-3 sm:p-4 rounded-xl bg-slate-900 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-1">
@@ -783,156 +686,6 @@ export const LessonQuestionsEditor: React.FC<LessonQuestionsEditorProps> = ({
             </div>
           </div>
         </div>
-      )}
-
-      {/* ======================= 2. قسم تسجيل الإجابات ======================= */}
-      {subTab === 'submissions' && (
-        <div className="space-y-4">
-          <div className="p-3.5 rounded-xl bg-sky-950/40 border border-sky-500/30 flex items-start gap-3 text-xs text-sky-200 leading-relaxed">
-            <FileSpreadsheet className="w-5 h-5 text-sky-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold text-white block mb-0.5">
-                🔗 سجل إجابات الطلاب والربط التلقائي مع Google Sheets:
-              </span>
-              يسجل هذا الجدول إجابات الطلاب فور حلهم للأسئلة مع الاسم والرقم والنتيجة وتاريخ الإرسال، ويرسلها تلقائياً لـ Google Sheets.
-            </div>
-          </div>
-
-          {/* فلاتر وأدوات السجل */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
-            <div className="flex items-center gap-2">
-              <ListFilter className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-bold text-slate-300">تصفية:</span>
-              <select
-                value={submissionFilterLesson}
-                onChange={(e) => setSubmissionFilterLesson(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-              >
-                <option value="all">عرض إجابات جميع الدروس ({submissions.length})</option>
-                {allLessons.map((l) => (
-                  <option key={l.targetId} value={l.targetId}>
-                    {l.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={handleRefreshSubmissions}
-                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                title="تحديث البيانات"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>تحديث</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleAddSampleSubmission}
-                className="px-2.5 py-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                title="تسجيل إجابة تجريبية للتأكد من وصولها للجدول ولـ Google Sheets"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>🧪 إرسال إجابة تجريبية</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportSubmissionsCsv}
-                className="px-2.5 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                title="تنزيل جدول الإجابات كملف Excel / CSV"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>تصدير CSV</span>
-              </button>
-
-              {submissions.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearSubmissions}
-                  className="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                  title="مسح كافة الإجابات المسجلة"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>مسح السجل</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* جدول الإجابات */}
-          {submissions.length > 0 ? (
-            <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/60 shadow-inner">
-              <div className="max-h-80 overflow-y-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-900 text-slate-400 sticky top-0 border-b border-slate-800 z-10">
-                    <tr>
-                      <th className="p-2.5">الطالب</th>
-                      <th className="p-2.5">رقم الهاتف / المشترك</th>
-                      <th className="p-2.5">الدرس</th>
-                      <th className="p-2.5">السؤال</th>
-                      <th className="p-2.5">إجابة الطالب</th>
-                      <th className="p-2.5">التقييم</th>
-                      <th className="p-2.5">تاريخ الإرسال</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {submissions
-                      .filter((s) => submissionFilterLesson === 'all' || s.lessonId === submissionFilterLesson)
-                      .map((sub) => (
-                        <tr key={sub.id} className="hover:bg-slate-900/40 transition-colors">
-                          <td className="p-2.5 font-bold text-white flex items-center gap-1.5">
-                            <User className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                            <span>{sub.studentName}</span>
-                          </td>
-                          <td className="p-2.5 font-mono text-slate-300 text-[11px]">
-                            {sub.studentPhone || '—'}
-                          </td>
-                          <td className="p-2.5 text-slate-200">
-                            {sub.lessonTitle}
-                          </td>
-                          <td className="p-2.5 text-slate-300 max-w-[200px] truncate" title={sub.questionText}>
-                            {sub.questionText}
-                          </td>
-                          <td className="p-2.5 text-amber-200 font-semibold max-w-[150px] truncate" title={sub.studentAnswer}>
-                            {sub.studentAnswer}
-                          </td>
-                          <td className="p-2.5">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              sub.isCorrect
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                                : 'bg-rose-950 text-rose-300 border border-rose-500/40'
-                            }`}>
-                              {sub.isCorrect ? '✓ صحيحة' : '✗ خاطئة'}
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-slate-400 font-mono text-[10px]">
-                            {new Date(sub.submittedAt).toLocaleDateString('ar-EG', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="p-8 text-center rounded-xl bg-slate-900/50 border border-slate-800 text-slate-400 space-y-2">
-              <FileSpreadsheet className="w-8 h-8 text-slate-600 mx-auto" />
-              <p className="text-xs font-bold text-slate-300">لا توجد إجابات مسجلة بعد</p>
-              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
-                عندما يجيب الطلاب على الأسئلة في التطبيق ستظهر إجاباتهم هنا فوراً، أو يمكنك الضغط على <strong>[ 🧪 إرسال إجابة تجريبية ]</strong> للتأكد من الجدول والربط بشيت قوقل.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+      </div>
   );
 };

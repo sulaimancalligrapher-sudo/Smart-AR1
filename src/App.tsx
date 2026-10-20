@@ -152,29 +152,7 @@ export default function App() {
       ) ||
       lesson;
 
-    // 2. فحص مستوى الوصول (الوضع المفتوح vs الوضع المقيد للمشتركين)
-    // نتحقق من State والـ Ref وأيضاً LocalStorage مباشرة لمنع أي stale closure
-    const isLocked = isLessonRestricted(fresh);
-    const activeSub = currentSubscriber || currentSubscriberRef.current || getStoredSubscriber();
-    const isSubscribed = Boolean(activeSub);
-
-    if (isLocked && !isSubscribed) {
-      // 🔒 الدرس مقفل للمشتركين فقط والزائر لم يسجل دخوله بعد
-      soundService.pauseModelSound();
-      setLockedLessonTarget(fresh);
-      setIsSubscriberLockModalOpen(true);
-      setActiveLesson(null);
-      setShowHologram3D(false);
-      setShowFloatingModel(false);
-      analytics.trackEvent({
-        targetId: fresh.targetId,
-        lessonTitle: fresh.title,
-        action: 'target_detected'
-      });
-      return;
-    }
-
-    // 🔓 الدرس متاح مجاناً أو الزائر مشترك مفعل
+    // تفعيل الدرس لعرض أزرار التفاعل فوق الكاميرا في كلا الوضعين
     setActiveLesson(fresh);
     setShowHologram3D(false);
     setShowFloatingModel(true);
@@ -381,6 +359,11 @@ export default function App() {
           isModel3DActive={showHologram3D}
           isFloatingModelActive={showFloatingModel}
           onOpenVideo={() => {
+            if (activeLesson && isLessonRestricted(activeLesson) && !currentSubscriber && !getStoredSubscriber()) {
+              setLockedLessonTarget(activeLesson);
+              setIsSubscriberLockModalOpen(true);
+              return;
+            }
             soundService.pauseModelSound();
             setShowHologram3D(false);
             setActiveModal('video');
@@ -390,11 +373,21 @@ export default function App() {
             setActiveModal('images');
           }}
           onOpenAudio={() => {
+            if (activeLesson && isLessonRestricted(activeLesson) && !currentSubscriber && !getStoredSubscriber()) {
+              setLockedLessonTarget(activeLesson);
+              setIsSubscriberLockModalOpen(true);
+              return;
+            }
             soundService.pauseModelSound();
             setShowHologram3D(false);
             setActiveModal('audio');
           }}
           onOpenExplanation={() => {
+            if (activeLesson && isLessonRestricted(activeLesson) && !currentSubscriber && !getStoredSubscriber()) {
+              setLockedLessonTarget(activeLesson);
+              setIsSubscriberLockModalOpen(true);
+              return;
+            }
             setShowHologram3D(false);
             setActiveModal('explanation');
           }}

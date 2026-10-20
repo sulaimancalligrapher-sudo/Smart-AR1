@@ -1,25 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Brain,
   X,
   ChevronRight,
   ChevronLeft,
   CheckCircle2,
-  XCircle,
   Send,
-  Sparkles,
   Award,
   User,
-  Phone,
-  Image as ImageIcon,
   RotateCcw,
   Check,
   AlertCircle,
   Loader2,
   Lock,
   KeyRound,
-  ShieldCheck,
-  UserCheck
+  UserCheck,
+  ArrowRight,
+  Sparkles
 } from 'lucide-react';
 import { LessonData, LessonQuestion, isLessonRestricted } from '../types/ar';
 import {
@@ -49,10 +46,10 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   onSubscriberLogin,
   onClose
 }) => {
-  // فحص نمط الدرس: هل هو مقيد للمشتركين فقط أم وضع مفتوح للزوار
+  // فحص هل الدرس مقيد للمشتركين أم مفتوح للزوار
   const isRestricted = isLessonRestricted(lesson);
 
-  // المشترك النشط (من الـ props أو الـ localStorage)
+  // المشترك النشط المسجل
   const [activeSub, setActiveSub] = useState<SubscriberInfo | null>(
     () => subscriber || getStoredSubscriber()
   );
@@ -60,23 +57,29 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   useEffect(() => {
     if (subscriber) {
       setActiveSub(subscriber);
-      setStudentName(subscriber.name);
-      setStudentPhone(subscriber.phone);
     }
   }, [subscriber]);
 
-  // في الوضع المفتوح (الوضع الأول): يسجل باسم "زائر" ورقم هاتف فارغ ما لم يكن مشتركاً مسجلاً
-  // في الوضع المقيد (الوضع الثاني): يشترط وجود مشترك مسجل لتسجيل الإجابة باسمه ورقمه
-  const [studentName, setStudentName] = useState<string>(() => {
-    if (activeSub?.name) return activeSub.name;
-    if (isRestricted) return '';
-    return localStorage.getItem('smart_ar_student_name') || 'زائر';
+  // مراحل النافذة:
+  // 'initial_gate': نافذة البداية (تسجيل اسم الزائر أو الترحيب بالمشترك/تسجيل دخوله)
+  // 'answering': مرحلة حل واستعراض الأسئلة
+  // 'completed': مرحلة عرض النتائج والتقييم
+  const [modalStage, setModalStage] = useState<'initial_gate' | 'answering' | 'completed'>('initial_gate');
+
+  // بيانات هوية الطالب التي ستُسجل مع الإجابة
+  const [studentName, setStudentName] = useState<string>('');
+  const [studentPhone, setStudentPhone] = useState<string>('');
+
+  // مدخلات الزائر في المرحلة الأولى
+  const [visitorNameInput, setVisitorNameInput] = useState<string>(() => {
+    return localStorage.getItem('smart_ar_student_name') || '';
   });
 
-  const [studentPhone, setStudentPhone] = useState<string>(() => {
-    if (activeSub?.phone) return activeSub.phone;
-    return localStorage.getItem('smart_ar_student_phone') || '';
-  });
+  // مدخلات تسجيل دخول المشترك في الوضع المقيد
+  const [loginNameInput, setLoginNameInput] = useState<string>('');
+  const [loginPhoneInput, setLoginPhoneInput] = useState<string>('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isVerifyingLogin, setIsVerifyingLogin] = useState<boolean>(false);
 
   // حالة التنقل بين الأسئلة
   const [currentIdx, setCurrentIdx] = useState<number>(0);
@@ -84,16 +87,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   // إجابات الطالب: [qIndex] => studentAnswer string
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
 
-  // حالة نافذة تسجيل دخول المشترك السريعة (خاصة بالوضع المقيد)
-  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
-  const [loginNameInput, setLoginNameInput] = useState<string>('');
-  const [loginPhoneInput, setLoginPhoneInput] = useState<string>('');
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [isVerifyingLogin, setIsVerifyingLogin] = useState<boolean>(false);
-
   // حالة الإرسال والنتائج
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [submissionFeedback, setSubmissionFeedback] = useState<{
     scoreText?: string;
     correctCount: number;
@@ -148,21 +143,84 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
     }
   };
 
-  // تنفيذ إرسال الإجابات إلى ورقة Answers-AR
-  const doSubmitAnswers = async (targetStudentName: string, targetStudentPhone: string) => {
-    setIsSubmitting(true);
+  // منع الإرسال المتكرر داخل المكون
+  const hasSubmittedRef = useRef(false);
 
-    const effectiveName = (targetStudentName && targetStudentName.trim()) 
-      ? targetStudentName.trim() 
-      : 'زائر';
-    const effectivePhone = normalizeArabicDigits((targetStudentPhone || '').trim().replace(/[\s\-\(\)]/g, ''));
+  // 1. الوضع الأول (المفتوح للزائر): تسجيل الاسم والانتقال للأسئلة بدون رقم
+  const handleStartVisitorAnswering = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const finalName = visitorNameInput.trim() || 'زائر';
+    setStudentName(finalName);
+    setStudentPhone(''); // بدون رقم كما هو محدد في المطلوب
+    try {
+      localStorage.setItem('smart_ar_student_name', finalName);
+    } catch (_) {}
+    setModalStage('answering');
+  };
+
+  // 2. الوضع الثاني (المقيد للمشترك): الدخول المباشر للمشترك المسجل
+  const handleStartSubscriberAnswering = () => {
+    if (activeSub) {
+      setStudentName(activeSub.name);
+      setStudentPhone(activeSub.phone);
+      setModalStage('answering');
+    }
+  };
+
+  // 3. الوضع الثاني (المقيد للمشترك): تسجيل دخول مشترك جديد ثم الانتقال للأسئلة
+  const handleSubscriberLoginAndStart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+
+    const cName = loginNameInput.trim();
+    const cPhone = normalizeArabicDigits(loginPhoneInput.trim().replace(/[\s\-\(\)]/g, ''));
+
+    if (!cName || !cPhone) {
+      setLoginError('يرجى إدخال اسم المشترك ورقم هاتفه للمتابعة.');
+      return;
+    }
+
+    setIsVerifyingLogin(true);
 
     try {
-      localStorage.setItem('smart_ar_student_name', effectiveName);
-      if (effectivePhone) {
-        localStorage.setItem('smart_ar_student_phone', effectivePhone);
+      const res = await verifySubscriberWithSheet(cName, cPhone, webAppUrl);
+
+      if (res.success && res.subscriber) {
+        saveStoredSubscriber(res.subscriber);
+        setActiveSub(res.subscriber);
+        setStudentName(res.subscriber.name);
+        setStudentPhone(res.subscriber.phone);
+        if (onSubscriberLogin) {
+          onSubscriberLogin(res.subscriber);
+        }
+        setIsVerifyingLogin(false);
+        setModalStage('answering');
+      } else {
+        setLoginError(res.message);
+        setIsVerifyingLogin(false);
       }
-    } catch (_) {}
+    } catch (err: any) {
+      setLoginError(`حدث خطأ أثناء الاتصال: ${err?.message || 'تأكد من الاتصال بالإنترنت'}`);
+      setIsVerifyingLogin(false);
+    }
+  };
+
+  // تنفيذ إرسال الإجابات وحفظها في النظام أولاً ثم الشيت
+  const handleFinalSubmitAllAnswers = async () => {
+    if (isSubmitting || hasSubmittedRef.current) return;
+
+    hasSubmittedRef.current = true;
+    setIsSubmitting(true);
+
+    // في الوضع المفتوح للزائر: الاسم هو اسم الزائر وبدون رقم
+    // في الوضع المقيد للمشترك: الاسم هو اسم المشترك والرقم هو رقم المشترك
+    const effectiveName = !isRestricted
+      ? (studentName.trim() || visitorNameInput.trim() || 'زائر')
+      : (studentName.trim() || activeSub?.name || 'مشترك');
+    
+    const effectivePhone = !isRestricted
+      ? ''
+      : (studentPhone.trim() || activeSub?.phone || '');
 
     try {
       // تقييم الإجابات وفق المعايير المحددة بدقة
@@ -189,11 +247,9 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
         } else {
           // سؤال كتابي / نصي
           if (isFree) {
-            // نص حر: لا توجد إجابة نموذجية مقيدة (تعتبر مقبولة ويُحفظ النص نفسه كما هو)
-            isCorrect = true;
+            isCorrect = true; // نص حر: تُحفظ الإجابة الحرة كما كتبها الطالب
           } else {
             evaluableCount++;
-            // مقارنة النص مع الإجابة النموذجية
             const cleanStudent = studentAns.toLowerCase().replace(/[\s\-_،,]/g, '');
             const cleanModel = String(q.correctAnswerText || '').toLowerCase().replace(/[\s\-_،,]/g, '');
             if (cleanStudent && cleanModel && (cleanStudent === cleanModel || cleanStudent.includes(cleanModel) || cleanModel.includes(cleanStudent))) {
@@ -203,7 +259,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
           }
         }
 
-        // حفظ محلي في سجل الجهاز
+        // حفظ تفصيلي في سجل التوافق
         try {
           recordStudentSubmission({
             studentName: effectiveName,
@@ -229,7 +285,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
         };
       });
 
-      // إرسال لورقة Answers-AR في صف واحد وفق هيكل الأعمدة المطلوب
+      // إرسال الإجابات: تُسجل أولاً في النظام ثم يُرسل طلب وحيد لـ Google Sheets
       const result = await submitStudentAnswersToSheet({
         lessonTitle: lesson.title,
         studentName: effectiveName,
@@ -244,77 +300,19 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
         scoreText: evaluableCount > 0 ? `${correctCount} من ${evaluableCount}` : undefined,
         message: result.message
       });
-      setIsCompleted(true);
+      setModalStage('completed');
     } catch (err: any) {
       console.error('Error submitting student answers:', err);
       setSubmissionFeedback({
         correctCount: 0,
         totalCount: questions.length,
         message: effectivePhone
-          ? `✓ تم تسجيل إجاباتك باسم (${effectiveName}) ورقم (${effectivePhone}) في ورقة Answers-AR!`
-          : `✓ تم تسجيل إجاباتك كـ (زائر) في ورقة Answers-AR!`
+          ? `✓ تم حفظ إجاباتك في النظام وإرسالها باسم (${effectiveName}) ورقم (${effectivePhone})!`
+          : `✓ تم حفظ إجاباتك في النظام وإرسالها باسم (${effectiveName}) بنجاح!`
       });
-      setIsCompleted(true);
+      setModalStage('completed');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  // معالجة النقر على زر "إرسال الإجابات والتقييم"
-  const handleSubmitAllAnswers = async () => {
-    if (isSubmitting) return;
-
-    // 🔒 الوضع الثاني: إذا كان الدرس مقيداً ولم يسجل المشترك دخوله بعد، يطلب منه تسجيل الدخول فوراً
-    if (isRestricted && !activeSub) {
-      setShowLoginModal(true);
-      return;
-    }
-
-    // 🔓 الوضع الأول (زائر) أو مستخدم مشترك مسجل
-    const finalName = activeSub?.name || (studentName && studentName.trim() ? studentName.trim() : 'زائر');
-    const finalPhone = activeSub?.phone || (studentPhone && studentPhone.trim() ? studentPhone.trim() : '');
-
-    await doSubmitAnswers(finalName, finalPhone);
-  };
-
-  // تسجيل دخول المشترك السريع والتحقق منه من ورقة SubData
-  const handleQuickSubscriberLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError(null);
-
-    const cName = loginNameInput.trim();
-    const cPhone = normalizeArabicDigits(loginPhoneInput.trim().replace(/[\s\-\(\)]/g, ''));
-
-    if (!cName || !cPhone) {
-      setLoginError('يرجى كتابة كلٍ من اسم المشترك ورقم هاتفه للمتابعة.');
-      return;
-    }
-
-    setIsVerifyingLogin(true);
-
-    try {
-      const res = await verifySubscriberWithSheet(cName, cPhone, webAppUrl);
-
-      if (res.success && res.subscriber) {
-        saveStoredSubscriber(res.subscriber);
-        setActiveSub(res.subscriber);
-        setStudentName(res.subscriber.name);
-        setStudentPhone(res.subscriber.phone);
-        if (onSubscriberLogin) {
-          onSubscriberLogin(res.subscriber);
-        }
-        setShowLoginModal(false);
-        setIsVerifyingLogin(false);
-
-        // إرسال الإجابات فوراً باسم ورقم المشترك المتحقق منه
-        await doSubmitAnswers(res.subscriber.name, res.subscriber.phone);
-      } else {
-        setLoginError(res.message);
-        setIsVerifyingLogin(false);
-      }
-    } catch (err: any) {
-      setLoginError(`حدث خطأ أثناء الاتصال: ${err?.message || 'تأكد من الاتصال'}`);
-      setIsVerifyingLogin(false);
     }
   };
 
@@ -353,7 +351,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-slate-400">
-                أجب عن الأسئلة وسيتم تسجيل نتائجك مباشرة في ورقة الإجابات (Answers-AR)
+                تسجيل وحفظ الإجابات في جدول النظام وورقة Answers-AR
               </p>
             </div>
           </div>
@@ -367,163 +365,200 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
           </button>
         </div>
 
-        {/* تنبيه الوضع المقيد إذا لم يسجل الزائر دخوله بعد */}
-        {isRestricted && !activeSub && (
-          <div className="px-5 py-2.5 bg-amber-950/70 border-b border-amber-500/40 flex items-center justify-between gap-3 text-xs text-amber-200">
-            <div className="flex items-center gap-2">
-              <Lock className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                <strong>الوضع المقيد:</strong> هذا الدرس يتطلب تسجيل الدخول كمشترك لكي تجيب على الأسئلة وتُسجّل الإجابة باسمك ورقمك.
-              </span>
-            </div>
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 transition-all cursor-pointer shadow"
-            >
-              🔑 تسجيل الدخول
-            </button>
-          </div>
-        )}
+        {/* ======================================================== */}
+        {/* المرحلة 1: شاشة البداية المخصصة لكل وضع (Initial Gate) */}
+        {/* ======================================================== */}
+        {modalStage === 'initial_gate' && (
+          <div className="p-6 sm:p-8 flex-1 flex flex-col items-center justify-center text-center space-y-6">
+            {!isRestricted ? (
+              /* الوضع الأول: المفتوح للزائر - تسجيل الاسم فقط */
+              <div className="w-full max-w-md bg-slate-950/90 border border-slate-800 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-sky-500/20 border border-sky-400/30 text-sky-400 flex items-center justify-center mx-auto shadow-inner">
+                  <User className="w-7 h-7" />
+                </div>
 
-        {/* Student Identity Bar */}
-        <div className="px-5 py-2.5 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2">
-            {activeSub?.name ? (
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-400/30">
-                  <UserCheck className="w-3.5 h-3.5" />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-white">المشترك المسجل: {activeSub.name}</span>
-                  {activeSub.phone && (
-                    <span className="text-[10px] text-slate-400 font-mono">({activeSub.phone})</span>
-                  )}
-                  <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-semibold">
-                    مشترك مفعل ✓
+                <div className="space-y-1.5">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30 font-bold">
+                    الوضع المفتوح للزائر
                   </span>
+                  <h4 className="text-base sm:text-lg font-black text-white">
+                    تسجيل اسمك للبدء في حل الأسئلة
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    مرحباً بك! يرجى كتابة اسمك الكريم ليتم تسجيل إجاباتك في النظام باسمك (بدون رقم هاتف):
+                  </p>
                 </div>
+
+                <form onSubmit={handleStartVisitorAnswering} className="space-y-4">
+                  <input
+                    type="text"
+                    required
+                    placeholder="اكتب اسمك الكريم هنا (مثال: أحمد، سارة)..."
+                    value={visitorNameInput}
+                    onChange={(e) => setVisitorNameInput(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 text-center"
+                    autoFocus
+                  />
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-sky-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <span>🚀 بدء الإجابة على الأسئلة</span>
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                  </button>
+                </form>
               </div>
-            ) : isRestricted ? (
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center border border-amber-400/30">
-                  <Lock className="w-3.5 h-3.5" />
+            ) : activeSub ? (
+              /* الوضع الثاني (أو المشترك المسجل): نافذة ترحيب باسم المشترك وزر دخول الأسئلة */
+              <div className="w-full max-w-md bg-slate-950/90 border border-emerald-500/30 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
+                  <UserCheck className="w-7 h-7" />
                 </div>
-                <span className="text-amber-300 font-medium">
-                  لم يتم تسجيل الدخول (سيُطلب تسجيل الدخول عند الإرسال لحفظ اسمك ورقمك)
-                </span>
+
+                <div className="space-y-2">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/30 font-bold">
+                    حساب مشترك مفعل ✓
+                  </span>
+                  <h4 className="text-lg sm:text-xl font-black text-white">
+                    مرحباً بك، {activeSub.name}! 👋
+                  </h4>
+                  <p className="text-xs text-slate-300">
+                    رقم المشترك المسجل: <span className="font-mono text-emerald-300 font-bold">{activeSub.phone}</span>
+                  </p>
+                  <p className="text-xs text-slate-400 leading-relaxed pt-1">
+                    أنت الآن في الوضع المخصص للمشتركين لدرس «{lesson.title}». ستُسجل كافة إجاباتك ونتائج تفكيرك باسمك ورقمك مباشرة.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleStartSubscriberAnswering}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-emerald-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                >
+                  <span>🚀 دخول ورؤية الأسئلة والإجابة عليها</span>
+                  <ArrowRight className="w-4 h-4 rotate-180" />
+                </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center border border-sky-400/30">
-                  <User className="w-3.5 h-3.5" />
+              /* الوضع الثاني: المقيد للمشترك - لم يسجل دخوله بعد */
+              <div className="w-full max-w-md bg-slate-950/90 border border-amber-500/40 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center mx-auto shadow-inner">
+                  <Lock className="w-7 h-7" />
                 </div>
-                <span className="text-sky-200 font-bold">
-                  وضع الزائر (تصفح مجاني مفتوح) · تُسجّل الإجابة باسم: «زائر»
-                </span>
+
+                <div className="space-y-1.5">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-500/40 font-bold">
+                    محتوى مقيد للمشتركين
+                  </span>
+                  <h4 className="text-base sm:text-lg font-black text-white">
+                    تسجيل دخول المشترك لرؤية الأسئلة
+                  </h4>
+                  <p className="text-xs text-amber-200/90 leading-relaxed">
+                    يشترط تسجيل الدخول بحساب المشترك (الاسم ورقم الهاتف) لكي تجيب على أسئلة هذا الدرس وتُسجّل الإجابة باسمك ورقمك:
+                  </p>
+                </div>
+
+                <form onSubmit={handleSubscriberLoginAndStart} className="space-y-3.5 text-right">
+                  <div>
+                    <label className="block text-[11px] text-slate-300 mb-1 font-medium">
+                      اسم المشترك:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="اكتب اسمك الكامل..."
+                      value={loginNameInput}
+                      onChange={(e) => setLoginNameInput(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-300 mb-1 font-medium">
+                      رقم هاتف المشترك:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="مثال: 0501234567 أو 123 للتجربة"
+                      value={loginPhoneInput}
+                      onChange={(e) => setLoginPhoneInput(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
+                    />
+                  </div>
+
+                  {loginError && (
+                    <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2 text-right">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{loginError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isVerifyingLogin}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                  >
+                    {isVerifyingLogin ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                        <span>جارٍ التحقق وتفعيل الحساب...</span>
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound className="w-4 h-4" />
+                        <span>تأكيد الدخول ورؤية الأسئلة</span>
+                      </>
+                    )}
+                  </button>
+                </form>
               </div>
             )}
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-amber-300 bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-500/30 font-medium">
-              تمت الإجابة: {answeredCount} من {questions.length}
-            </span>
-          </div>
-        </div>
-
-        {/* نافذة تسجيل الدخول للمشترك المدمجة (تظهر للوضع المقيد) */}
-        {showLoginModal && (
-          <div className="p-4 sm:p-5 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-amber-500/40 space-y-3 animate-fadeIn">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  <KeyRound className="w-4 h-4" />
-                </span>
-                <h4 className="text-sm font-bold text-white">تسجيل دخول المشترك (الوضع المقيد)</h4>
-              </div>
-              <button
-                onClick={() => setShowLoginModal(false)}
-                className="text-slate-400 hover:text-white text-xs cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-amber-200/90 leading-relaxed">
-              يشترط تسجيل الدخول لكي تجيب على أسئلة هذا الدرس المقيد وتُسجّل نتائجك باسمك ورقم هاتفك في ورقة Answers-AR.
-            </p>
-
-            <form onSubmit={handleQuickSubscriberLogin} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-[11px] text-slate-300 mb-1 font-medium">
-                    اسم المشترك الكامل:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="مثال: محمد أحمد"
-                    value={loginNameInput}
-                    onChange={(e) => setLoginNameInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-300 mb-1 font-medium">
-                    رقم الهاتف / المشترك:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="مثال: 0501234567 أو 123 للتجربة"
-                    value={loginPhoneInput}
-                    onChange={(e) => setLoginPhoneInput(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
-                  />
-                </div>
-              </div>
-
-              {loginError && (
-                <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{loginError}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowLoginModal(false)}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={isVerifyingLogin}
-                  className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-md"
-                >
-                  {isVerifyingLogin ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>جارٍ التحقق...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>تأكيد الدخول وإرسال الإجابات</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
         )}
 
-        {/* Modal Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
-          {!isCompleted ? (
-            <>
+        {/* ======================================================== */}
+        {/* المرحلة 2: شاشة حل واستعراض الأسئلة (Answering Stage) */}
+        {/* ======================================================== */}
+        {modalStage === 'answering' && (
+          <>
+            {/* شريط هوية الطالب المعلقة بالإجابة */}
+            <div className="px-5 py-2.5 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                {studentPhone ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-400/30">
+                      <UserCheck className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="font-bold text-white">المشترك: {studentName}</span>
+                    <span className="text-[10px] text-emerald-300 font-mono">({studentPhone})</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                      مشترك مفعل ✓
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center border border-sky-400/30">
+                      <User className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="font-bold text-white">الزائر: {studentName}</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-sky-950 text-sky-300 border border-sky-500/40">
+                      وضع الزائر (بدون رقم)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-amber-300 bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-500/30 font-medium">
+                  تمت الإجابة: {answeredCount} من {questions.length}
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
               {/* Question Stepper Tabs */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 {questions.map((q, idx) => {
@@ -627,15 +662,68 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                     />
                     {currentQ.isFreeText && (
                       <p className="text-[11px] text-sky-300">
-                        💡 هذا السؤال ذو إجابة حرة، سيتم تسجيل ما تكتبه نصاً في جدول Answers-AR.
+                        💡 هذا السؤال ذو إجابة حرة، سيتم حفظ النص الحر نفسه كما كتبته في النظام وفي ورقة Answers-AR.
                       </p>
                     )}
                   </div>
                 )}
               </div>
-            </>
-          ) : (
-            /* Celebration & Results Screen */
+            </div>
+
+            {/* Footer Navigation Buttons */}
+            <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3">
+              <button
+                onClick={handlePrev}
+                disabled={currentIdx === 0}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                  currentIdx === 0
+                    ? 'opacity-40 cursor-not-allowed bg-slate-900 text-slate-500'
+                    : 'bg-slate-800 hover:bg-slate-700 text-white'
+                }`}
+              >
+                <ChevronRight className="w-4 h-4" />
+                <span>السابق</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                {currentIdx < questions.length - 1 ? (
+                  <button
+                    onClick={handleNext}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                  >
+                    <span>التالي</span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                ) : null}
+
+                {/* زر الإرسال النهائي الملون والبارز */}
+                <button
+                  onClick={handleFinalSubmitAllAnswers}
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>جارٍ الحفظ والإرسال...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 fill-slate-950" />
+                      <span>📤 إرسال الإجابات والتقييم</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ======================================================== */}
+        {/* المرحلة 3: شاشة النتائج والتقييم (Completed Stage) */}
+        {/* ======================================================== */}
+        {modalStage === 'completed' && (
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
             <div className="bg-slate-950 p-6 rounded-3xl border border-emerald-500/40 text-center space-y-5 animate-scaleUp">
               <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto shadow-xl">
                 <Award className="w-8 h-8 animate-bounce" />
@@ -646,7 +734,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                   أحسنت يا {studentName || 'بطل'}! 🎉
                 </h4>
                 <p className="text-xs sm:text-sm text-emerald-300 font-medium">
-                  {submissionFeedback?.message || 'تم تسجيل جميع إجاباتك بنجاح في ورقة المعلم (Answers-AR).'}
+                  {submissionFeedback?.message || 'تم تسجيل جميع إجاباتك بنجاح في النظام وورقة Answers-AR.'}
                 </p>
               </div>
 
@@ -661,7 +749,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
 
               {/* Answers Breakdown */}
               <div className="space-y-2 text-right pt-2 border-t border-slate-800">
-                <h5 className="text-xs font-bold text-slate-300 mb-2">ملخص إجاباتك المسجلة:</h5>
+                <h5 className="text-xs font-bold text-slate-300 mb-2">ملخص إجاباتك المسجلة في النظام:</h5>
                 {questions.map((q, idx) => {
                   const ans = (userAnswers[idx] || '').trim();
                   return (
@@ -687,7 +775,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                 </button>
                 <button
                   onClick={() => {
-                    setIsCompleted(false);
+                    setModalStage('answering');
                     setCurrentIdx(0);
                   }}
                   className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
@@ -696,55 +784,6 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                   <span>مراجعة الأسئلة</span>
                 </button>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer Navigation Buttons */}
-        {!isCompleted && (
-          <div className="px-5 py-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-3">
-            <button
-              onClick={handlePrev}
-              disabled={currentIdx === 0}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                currentIdx === 0
-                  ? 'opacity-40 cursor-not-allowed bg-slate-900 text-slate-500'
-                  : 'bg-slate-800 hover:bg-slate-700 text-white'
-              }`}
-            >
-              <ChevronRight className="w-4 h-4" />
-              <span>السابق</span>
-            </button>
-
-            <div className="flex items-center gap-2">
-              {currentIdx < questions.length - 1 ? (
-                <button
-                  onClick={handleNext}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-                >
-                  <span>التالي</span>
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              ) : null}
-
-              {/* زر الإرسال النهائي الملون والبارز */}
-              <button
-                onClick={handleSubmitAllAnswers}
-                disabled={isSubmitting}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                    <span>جارٍ الإرسال...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 fill-slate-950" />
-                    <span>📤 إرسال الإجابات والتقييم</span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
         )}

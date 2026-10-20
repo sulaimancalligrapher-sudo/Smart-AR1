@@ -69,6 +69,25 @@ export interface StudentSubmission {
   syncedToSheets?: boolean;
 }
 
+/**
+ * سجل إجابات الطالب في النظام المعتمد لورقة Answers-AR
+ * العمود A: تاريخ ووقت التسجيل (YYYY-MM-DD HH:mm:ss)
+ * العمود B: رقم الطالب (أو فارغ)
+ * العمود C: اسم المستخدم (اسم الطالب أو المشترك)
+ * العمود D: موضوع الحصة
+ * العمود E وما بعده: إجابات الأسئلة (صح / خطأ / النص الحر نفسه / فارغ)
+ */
+export interface SystemAnswerRecord {
+  id: string;
+  timestamp: string;          // العمود A: تاريخ ووقت التسجيل
+  studentPhone: string;       // العمود B: رقم الطالب (أو فارغ للزائر)
+  studentName: string;        // العمود C: اسم المستخدم (اسم المشترك أو الزائر)
+  lessonTitle: string;        // العمود D: موضوع الحصة
+  answerColumns: string[];    // العمود E وما بعده: إجابات الأسئلة
+  syncedToSheet?: boolean;    // هل تم إرسالها وحفظها في Google Sheets
+  syncedAt?: string;          // وقت اكتمال المزامنة
+}
+
 export interface LessonQuiz {
   question: string;
   options: string[];
