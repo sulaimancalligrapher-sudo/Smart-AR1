@@ -283,9 +283,15 @@ export const SystemAnswersModal: React.FC<SystemAnswersModalProps> = ({
         </div>
 
         {syncFeedback && (
-          <div className="px-6 py-2 bg-emerald-950/70 border-b border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>{syncFeedback}</span>
+          <div className={`px-6 py-2.5 border-b text-xs flex items-center justify-between gap-3 ${
+            syncFeedback.includes('✓')
+              ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+              : 'bg-amber-950/70 border-amber-500/40 text-amber-300'
+          }`}>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{syncFeedback}</span>
+            </div>
           </div>
         )}
 

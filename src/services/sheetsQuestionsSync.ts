@@ -360,7 +360,7 @@ export async function submitStudentAnswersToSheet(
   // حماية صارمة لمنع التكرار (Deduplication Lock)
   const dedupKey = `${effectiveName}_${effectivePhone}_${effectiveLesson}_${answerColumns.join('|')}`;
   const lastSentTime = recentSubmissionsCache.get(dedupKey) || 0;
-  if (Date.now() - lastSentTime < 10000) {
+  if (Date.now() - lastSentTime < 15000) {
     return {
       success: true,
       message: effectivePhone 
@@ -391,7 +391,7 @@ export async function submitStudentAnswersToSheet(
     console.warn('Error saving answer to system database:', sysErr);
   }
 
-  // ⭐ الخطوة 2: إرسال الإجابات إلى Google Sheets عبر تقنيات GET و Beacon المضمونة 100% على كافة أجهزة الجوال والتابلت والكمبيوتر ⭐
+  // ⭐ الخطوة 2: إرسال الإجابات إلى Google Sheets عبر طلب وحيد مضمون 100% (منع التكرار) ⭐
   if (targetUrl) {
     let transmitted = false;
 
@@ -406,18 +406,10 @@ export async function submitStudentAnswersToSheet(
       getUrl.searchParams.set('device', deviceType);
       getUrl.searchParams.set('_r', Date.now().toString());
 
-      // 1) إرسال متزامن عبر Image Beacon المضمون 100% لكافة متصفحات الجوال والتابلت (iOS Safari, Android Chrome, WebView)
-      // هذا الأسلوب ينفذه متصفح الجوال والتابلت مباشرة في الخلفية، ويتبع تلقائياً توجيهات Google (302) بدون أي قيود CORS
-      if (typeof Image !== 'undefined') {
-        const beaconImg = new Image();
-        beaconImg.src = getUrl.toString();
-        transmitted = true;
-      }
-
-      // 2) إرسال عبر fetch GET المباشر مع keepalive
+      // 1) إرسال وحيد أساسي عبر fetch GET المباشر مع keepalive
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 7000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
         await fetch(getUrl.toString(), {
           method: 'GET',
@@ -430,15 +422,15 @@ export async function submitStudentAnswersToSheet(
         clearTimeout(timeoutId);
         transmitted = true;
       } catch (fetchErr) {
-        console.warn('GET fetch notice on mobile/tablet:', fetchErr);
+        console.warn('GET fetch notice on mobile/tablet, attempting single fallback:', fetchErr);
       }
 
-      // 3) إرسال إضافي عبر navigator.sendBeacon إذا كان متاحاً في المتصفح
-      try {
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          navigator.sendBeacon(getUrl.toString());
-        }
-      } catch (_) {}
+      // 2) بديل احتياطي وحيد: يُستدعى فقط إذا فشل fetch أعلاه، لضمان عدم تكرار الإرسال
+      if (!transmitted && typeof Image !== 'undefined') {
+        const beaconImg = new Image();
+        beaconImg.src = getUrl.toString();
+        transmitted = true;
+      }
 
       if (transmitted && systemRecordId) {
         updateSystemAnswerSyncStatus(systemRecordId, true);
@@ -501,9 +493,12 @@ export async function fetchAnswersFromSheet(
     }
 
     if (!data || !data.success) {
+      const msg = data?.message || (data?.status === 'ready'
+        ? '⚠️ سكريبت Google Apps Script المنشور بحاجة لتحديث ونشر إصدار جديد (Deploy > New deployment) لتفعيل جلب إجابات الجوال والتابلت إلى شاشة الكمبيوتر تلقائياً.'
+        : 'تعذر جلب بيانات ورقة Answers-AR.');
       return {
         success: false,
-        message: data?.message || 'تعذر جلب بيانات ورقة Answers-AR.'
+        message: msg
       };
     }
 

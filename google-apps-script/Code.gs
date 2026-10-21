@@ -114,12 +114,43 @@ function doGet(e) {
         e.parameter.lessonTitle || ""
       ].concat(ansCols);
 
-      ansSheet.appendRow(newRow);
+      // فحص ومنع تكرار الإرسال المتزامن
+      var lastRowIdx = ansSheet.getLastRow();
+      var isDuplicate = false;
+      if (lastRowIdx > 1) {
+        var lastValues = ansSheet.getRange(lastRowIdx, 1, 1, Math.min(ansSheet.getLastColumn(), 4 + ansCols.length)).getValues()[0];
+        var lastPhone = String(lastValues[1] || "").trim();
+        var lastName = String(lastValues[2] || "").trim();
+        var lastLesson = String(lastValues[3] || "").trim();
+        var curPhone = String(e.parameter.studentPhone || "").trim();
+        var curName = String(e.parameter.studentName || "زائر").trim();
+        var curLesson = String(e.parameter.lessonTitle || "").trim();
+
+        if (lastPhone === curPhone && lastName === curName && lastLesson === curLesson) {
+          var allMatch = true;
+          for (var a = 0; a < ansCols.length; a++) {
+            if (String(lastValues[4 + a] || "").trim() !== String(ansCols[a] || "").trim()) {
+              allMatch = false;
+              break;
+            }
+          }
+          if (allMatch) {
+            isDuplicate = true;
+          }
+        }
+      }
+
+      if (!isDuplicate) {
+        ansSheet.appendRow(newRow);
+      }
 
       return createJsonResponse({
         success: true,
         status: "success",
-        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+        isDuplicate: isDuplicate,
+        message: isDuplicate 
+          ? "✓ تم استلام الإجابة مسبقاً (تم منع التكرار بنجاح)."
+          : "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
       });
     }
 
@@ -221,12 +252,35 @@ function doPost(e) {
         data.lessonTitle || ""
       ].concat(ansCols);
 
-      ansSheet.appendRow(newRow);
+      var lastRowIdxP = ansSheet.getLastRow();
+      var isDuplicateP = false;
+      if (lastRowIdxP > 1) {
+        var lastValuesP = ansSheet.getRange(lastRowIdxP, 1, 1, Math.min(ansSheet.getLastColumn(), 4 + ansCols.length)).getValues()[0];
+        if (String(lastValuesP[1] || "").trim() === String(data.studentPhone || "").trim() &&
+            String(lastValuesP[2] || "").trim() === String(data.studentName || "زائر").trim() &&
+            String(lastValuesP[3] || "").trim() === String(data.lessonTitle || "").trim()) {
+          var matchAll = true;
+          for (var ap = 0; ap < ansCols.length; ap++) {
+            if (String(lastValuesP[4 + ap] || "").trim() !== String(ansCols[ap] || "").trim()) {
+              matchAll = false;
+              break;
+            }
+          }
+          if (matchAll) isDuplicateP = true;
+        }
+      }
+
+      if (!isDuplicateP) {
+        ansSheet.appendRow(newRow);
+      }
 
       return createJsonResponse({
         success: true,
         status: "success",
-        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+        isDuplicate: isDuplicateP,
+        message: isDuplicateP 
+          ? "✓ تم استلام الإجابة مسبقاً (تم منع التكرار بنجاح)."
+          : "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
       });
     }
 

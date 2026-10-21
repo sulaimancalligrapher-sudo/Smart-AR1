@@ -5,7 +5,7 @@ import {
   HelpCircle, Brain, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
   Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown,
   Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User,
-  DownloadCloud, UploadCloud, Loader2
+  DownloadCloud, UploadCloud, Loader2, Smartphone, Tablet, Monitor, Search
 } from 'lucide-react';
 import { analytics, DEFAULT_SHEETS_WEB_APP_URL } from '../services/analytics';
 import {
@@ -18,6 +18,7 @@ import {
   LessonQuestion,
   QuestionType,
   StudentSubmission,
+  SystemAnswerRecord,
   getActiveLessonModel,
   getLessonVideos,
   getLessonAudios,
@@ -33,10 +34,10 @@ import { normalizeImageUrl, normalizeAudioUrl, getAlternativeImageUrls } from '.
 import { buildMultiTargetMap } from '../services/targetCompiler';
 import { optimizeImageFile } from '../services/imageOptimizer';
 import { ConfirmModal } from './ConfirmModal';
-import { getStoredSubmissions, clearAllSubmissions, recordStudentSubmission } from '../services/studentSubmissions';
+import { getStoredSubmissions, clearAllSubmissions, recordStudentSubmission, getStoredSystemAnswers } from '../services/studentSubmissions';
 import { LessonQuestionsEditor } from './LessonQuestionsEditor';
 import { getSubscriptionExternalUrl, setSubscriptionExternalUrl } from '../services/subscriptionAuth';
-import { fetchQuestionsFromSheet, exportQuestionsToSheet } from '../services/sheetsQuestionsSync';
+import { fetchQuestionsFromSheet, exportQuestionsToSheet, fetchAnswersFromSheet } from '../services/sheetsQuestionsSync';
 import { SystemAnswersModal } from './SystemAnswersModal';
 
 interface TeacherConsoleModalProps {
@@ -160,6 +161,30 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   const [subscriptionUrl, setSubscriptionUrl] = useState<string>(() => getSubscriptionExternalUrl());
   const [subscriptionUrlSaved, setSubscriptionUrlSaved] = useState<boolean>(false);
   const [isAnswersModalOpen, setIsAnswersModalOpen] = useState<boolean>(false);
+  const [systemAnswers, setSystemAnswers] = useState<SystemAnswerRecord[]>(() => getStoredSystemAnswers());
+  const [isFetchingSubmissions, setIsFetchingSubmissions] = useState<boolean>(false);
+  const [submissionsSearch, setSubmissionsSearch] = useState<string>('');
+  const [answersSyncNotice, setAnswersSyncNotice] = useState<string | null>(null);
+
+  // تحديث قائمة إجابات النظام من الشيت
+  const handleFetchAnswersInConsole = async () => {
+    setIsFetchingSubmissions(true);
+    setAnswersSyncNotice(null);
+    try {
+      const res = await fetchAnswersFromSheet(webAppUrl);
+      if (res.success && res.records) {
+        setSystemAnswers(res.records);
+        setAnswersSyncNotice(`✓ تم جلب وتحديث ${res.records.length} سجل بنجاح من ورقة Answers-AR!`);
+      } else {
+        setAnswersSyncNotice(res.message);
+      }
+    } catch (e: any) {
+      setAnswersSyncNotice(`تعذر جلب السجلات: ${e?.message || 'تأكد من الاتصال'}`);
+    } finally {
+      setIsFetchingSubmissions(false);
+      setTimeout(() => setAnswersSyncNotice(null), 5000);
+    }
+  };
 
   // Lesson Editor State
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number>(0);
@@ -1420,12 +1445,43 @@ function doGet(e) {
         e.parameter.lessonTitle || ""
       ].concat(ansCols);
 
-      ansSheet.appendRow(newRow);
+      // فحص ومنع تكرار الإرسال المتزامن
+      var lastRowIdx = ansSheet.getLastRow();
+      var isDuplicate = false;
+      if (lastRowIdx > 1) {
+        var lastValues = ansSheet.getRange(lastRowIdx, 1, 1, Math.min(ansSheet.getLastColumn(), 4 + ansCols.length)).getValues()[0];
+        var lastPhone = String(lastValues[1] || "").trim();
+        var lastName = String(lastValues[2] || "").trim();
+        var lastLesson = String(lastValues[3] || "").trim();
+        var curPhone = String(e.parameter.studentPhone || "").trim();
+        var curName = String(e.parameter.studentName || "زائر").trim();
+        var curLesson = String(e.parameter.lessonTitle || "").trim();
+
+        if (lastPhone === curPhone && lastName === curName && lastLesson === curLesson) {
+          var allMatch = true;
+          for (var a = 0; a < ansCols.length; a++) {
+            if (String(lastValues[4 + a] || "").trim() !== String(ansCols[a] || "").trim()) {
+              allMatch = false;
+              break;
+            }
+          }
+          if (allMatch) {
+            isDuplicate = true;
+          }
+        }
+      }
+
+      if (!isDuplicate) {
+        ansSheet.appendRow(newRow);
+      }
 
       return createJsonResponse({
         success: true,
         status: "success",
-        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+        isDuplicate: isDuplicate,
+        message: isDuplicate 
+          ? "✓ تم استلام الإجابة مسبقاً (تم منع التكرار بنجاح)."
+          : "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
       });
     }
 
@@ -1527,12 +1583,35 @@ function doPost(e) {
         data.lessonTitle || ""
       ].concat(ansCols);
 
-      ansSheet.appendRow(newRow);
+      var lastRowIdxP = ansSheet.getLastRow();
+      var isDuplicateP = false;
+      if (lastRowIdxP > 1) {
+        var lastValuesP = ansSheet.getRange(lastRowIdxP, 1, 1, Math.min(ansSheet.getLastColumn(), 4 + ansCols.length)).getValues()[0];
+        if (String(lastValuesP[1] || "").trim() === String(data.studentPhone || "").trim() &&
+            String(lastValuesP[2] || "").trim() === String(data.studentName || "زائر").trim() &&
+            String(lastValuesP[3] || "").trim() === String(data.lessonTitle || "").trim()) {
+          var matchAll = true;
+          for (var ap = 0; ap < ansCols.length; ap++) {
+            if (String(lastValuesP[4 + ap] || "").trim() !== String(ansCols[ap] || "").trim()) {
+              matchAll = false;
+              break;
+            }
+          }
+          if (matchAll) isDuplicateP = true;
+        }
+      }
+
+      if (!isDuplicateP) {
+        ansSheet.appendRow(newRow);
+      }
 
       return createJsonResponse({
         success: true,
         status: "success",
-        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+        isDuplicate: isDuplicateP,
+        message: isDuplicateP 
+          ? "✓ تم استلام الإجابة مسبقاً (تم منع التكرار بنجاح)."
+          : "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
       });
     }
 
@@ -1765,12 +1844,18 @@ function createJsonResponse(obj) {
                 <div className="self-end sm:self-auto sm:pt-4 flex items-center gap-2 flex-wrap sm:flex-nowrap">
                   <button
                     type="button"
-                    onClick={() => setIsAnswersModalOpen(true)}
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-emerald-400/30"
+                    onClick={() => {
+                      setSystemAnswers(getStoredSystemAnswers());
+                      setIsAnswersModalOpen(true);
+                    }}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap active:scale-95 border border-emerald-400/30"
                     title="فتح جدول وسجل إجابات كافة الطلاب للدروس المعتمد لورقة Answers-AR"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
                     <span>📊 قسم تسجيل إجابات الطلاب (Answers-AR)</span>
+                    <span className="px-2 py-0.5 rounded-full bg-black/30 text-emerald-200 text-xs font-bold font-mono">
+                      {systemAnswers.length}
+                    </span>
                   </button>
 
                   <button
@@ -2965,40 +3050,326 @@ function createJsonResponse(obj) {
                 )}
 
                 {/* ========================================================================= */}
-                {/* ❓ التبويب 4: بنك الأسئلة وتسجيل الإجابات                                  */}
+                {/* ❓ التبويب 4: بنك الأسئلة وتسجيل إجابات الطلاب                           */}
                 {/* ========================================================================= */}
                 {lessonSubTab === 'questions' && (
-                  <div className="animate-fadeIn">
-                    <LessonQuestionsEditor
-                      currentLesson={currentLesson}
-                      allLessons={editableLessons}
-                      webAppUrl={webAppUrl}
-                      onUpdateAllLessons={(nextLessons) => {
-                        setEditableLessons(nextLessons);
-                        if (onUpdateLessons) onUpdateLessons(nextLessons);
-                        saveStoredLessons(nextLessons);
-                      }}
-                      onUpdateQuestions={(newQuestions) => {
-                        const nextLessons = [...editableLessons];
-                        const cur = { ...currentLesson, questions: newQuestions };
-                        if (newQuestions[0]?.type === 'multiple_choice') {
-                          cur.description = {
-                            ...cur.description,
-                            quiz: {
-                              question: newQuestions[0].question,
-                              options: newQuestions[0].options || [],
-                              correctIndex: newQuestions[0].correctIndex ?? 0,
-                              explanation: newQuestions[0].explanation || ''
-                            }
-                          };
-                        }
-                        nextLessons[selectedLessonIndex] = cur;
-                        setEditableLessons(nextLessons);
-                        if (onUpdateLessons) onUpdateLessons(nextLessons);
-                        saveStoredLessons(nextLessons);
-                      }}
-                      onRequestConfirm={setConfirmModal}
-                    />
+                  <div className="space-y-4 animate-fadeIn">
+                    {/* شريط التبديل بين بنك الأسئلة وسجل الإجابات */}
+                    <div className="flex items-center justify-between p-2 rounded-2xl bg-slate-950 border border-amber-500/30 gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQuestionSubTab('builder')}
+                          className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                            questionSubTab === 'builder'
+                              ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                          }`}
+                        >
+                          <HelpCircle className="w-4 h-4" />
+                          <span>بنك أسئلة الدرس</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuestionSubTab('submissions');
+                            setSystemAnswers(getStoredSystemAnswers());
+                          }}
+                          className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                            questionSubTab === 'submissions'
+                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                          }`}
+                        >
+                          <FileSpreadsheet className="w-4 h-4" />
+                          <span>📊 إجابات الطلاب المسجلة في النظام (Answers-AR)</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-bold">
+                            {systemAnswers.length}
+                          </span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSystemAnswers(getStoredSystemAnswers());
+                          setIsAnswersModalOpen(true);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        title="فتح نافذة جدول إجابات الطلاب الشاملة لكافة الدروس"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>فتح الجدول الشامل المستقل ↗</span>
+                      </button>
+                    </div>
+
+                    {questionSubTab === 'builder' ? (
+                      <LessonQuestionsEditor
+                        currentLesson={currentLesson}
+                        allLessons={editableLessons}
+                        webAppUrl={webAppUrl}
+                        onUpdateAllLessons={(nextLessons) => {
+                          setEditableLessons(nextLessons);
+                          if (onUpdateLessons) onUpdateLessons(nextLessons);
+                          saveStoredLessons(nextLessons);
+                        }}
+                        onUpdateQuestions={(newQuestions) => {
+                          const nextLessons = [...editableLessons];
+                          const cur = { ...currentLesson, questions: newQuestions };
+                          if (newQuestions[0]?.type === 'multiple_choice') {
+                            cur.description = {
+                              ...cur.description,
+                              quiz: {
+                                question: newQuestions[0].question,
+                                options: newQuestions[0].options || [],
+                                correctIndex: newQuestions[0].correctIndex ?? 0,
+                                explanation: newQuestions[0].explanation || ''
+                              }
+                            };
+                          }
+                          nextLessons[selectedLessonIndex] = cur;
+                          setEditableLessons(nextLessons);
+                          if (onUpdateLessons) onUpdateLessons(nextLessons);
+                          saveStoredLessons(nextLessons);
+                        }}
+                        onRequestConfirm={setConfirmModal}
+                      />
+                    ) : (
+                      /* عرض سجل إجابات الطلاب في النظام المعتمد لورقة Answers-AR */
+                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-emerald-500/30 space-y-4 animate-fadeIn">
+                        {answersSyncNotice && (
+                          <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                            answersSyncNotice.includes('✓')
+                              ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300'
+                              : 'bg-amber-950/70 border border-amber-500/40 text-amber-300'
+                          }`}>
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            <span>{answersSyncNotice}</span>
+                          </div>
+                        )}
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              <FileSpreadsheet className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                <span>سجل إجابات الطلاب المعتمد (Answers-AR)</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                                  {systemAnswers.length} سجل مسجل
+                                </span>
+                              </h4>
+                              <p className="text-[11px] text-slate-400">
+                                يتم تسجيل إجابات الطلاب من الجوال والتابلت والكمبيوتر في هذا الجدول وتزامنها مع ورقة Answers-AR
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={handleFetchAnswersInConsole}
+                              disabled={isFetchingSubmissions}
+                              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 shadow-sm active:scale-95"
+                              title="جلب إجابات الطلاب التي تمت من الجوال أو التابلت وتحديثها فورياً من Google Sheets"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 ${isFetchingSubmissions ? 'animate-spin' : ''}`} />
+                              <span>{isFetchingSubmissions ? 'جارٍ الجلب...' : '📥 جلب من Google Sheets'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSystemAnswers(getStoredSystemAnswers());
+                                setIsAnswersModalOpen(true);
+                              }}
+                              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                              <span>تصدير وعرض كامل</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* فلاتر البحث */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                          <div className="relative flex-1 max-w-sm">
+                            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={submissionsSearch}
+                              onChange={(e) => setSubmissionsSearch(e.target.value)}
+                              placeholder="بحث باسم الطالب، رقم الهاتف، أو اسم الدرس..."
+                              className="w-full pr-9 pl-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400">تصفية:</span>
+                            <select
+                              value={submissionFilterLesson}
+                              onChange={(e) => setSubmissionFilterLesson(e.target.value)}
+                              className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                            >
+                              <option value="all">جميع الدروس ({systemAnswers.length})</option>
+                              {editableLessons.map((l, idx) => (
+                                <option key={l.targetId || idx} value={l.title}>
+                                  {l.title}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* جدول الإجابات */}
+                        {(() => {
+                          const filtered = systemAnswers.filter((a) => {
+                            const matchSearch =
+                              !submissionsSearch.trim() ||
+                              a.studentName.toLowerCase().includes(submissionsSearch.toLowerCase()) ||
+                              a.studentPhone.includes(submissionsSearch) ||
+                              a.lessonTitle.toLowerCase().includes(submissionsSearch.toLowerCase());
+                            const matchLesson =
+                              submissionFilterLesson === 'all' ||
+                              a.lessonTitle.trim() === submissionFilterLesson.trim();
+                            return matchSearch && matchLesson;
+                          });
+
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="p-8 text-center rounded-xl bg-slate-900/60 border border-dashed border-slate-800 space-y-2">
+                                <FileSpreadsheet className="w-8 h-8 text-slate-600 mx-auto" />
+                                <p className="text-xs font-bold text-slate-400">لا توجد إجابات مسجلة بعد وفق هذا الفلتر</p>
+                                <p className="text-[11px] text-slate-500">
+                                  عندما يجيب الطالب أو المشترك أو الزائر على الأسئلة في شاشة الكاميرا، ستظهر إجاباته هنا مباشرة وتُرسل لورقة Answers-AR.
+                                </p>
+                              </div>
+                            );
+                          }
+
+                          const maxCols = Math.max(
+                            3,
+                            ...filtered.map((a) => (Array.isArray(a.answerColumns) ? a.answerColumns.length : 0))
+                          );
+
+                          return (
+                            <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/80 shadow-inner">
+                              <div className="overflow-x-auto max-h-72">
+                                <table className="w-full text-right text-xs border-collapse">
+                                  <thead className="bg-slate-950 text-slate-300 font-bold sticky top-0 z-10 border-b border-slate-800">
+                                    <tr>
+                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">التاريخ والوقت</th>
+                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">رقم الطالب</th>
+                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">اسم المستخدم</th>
+                                      <th className="p-2.5 whitespace-nowrap bg-slate-950 text-center">الجهاز</th>
+                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">موضوع الحصة</th>
+                                      {Array.from({ length: maxCols }).map((_, i) => (
+                                        <th key={i} className="p-2.5 whitespace-nowrap bg-slate-950 text-center min-w-[90px]">
+                                          إجابة س{i + 1}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-800/80 text-[11px]">
+                                    {filtered.map((row, rIdx) => {
+                                      const isVisitor = !row.studentPhone || row.studentName === 'زائر';
+                                      const ansCols = Array.isArray(row.answerColumns) ? row.answerColumns : [];
+                                      const d = String(row.device || '').toLowerCase();
+                                      const isMob = d.includes('جوال') || d.includes('mobile') || d.includes('phone');
+                                      const isTab = d.includes('تابلت') || d.includes('tablet') || d.includes('ipad');
+
+                                      return (
+                                        <tr key={row.id || rIdx} className="hover:bg-slate-800/50 transition-colors">
+                                          <td className="p-2.5 font-mono text-slate-400 whitespace-nowrap">
+                                            {row.timestamp}
+                                          </td>
+                                          <td className="p-2.5 font-mono whitespace-nowrap">
+                                            {row.studentPhone ? (
+                                              <span className="text-emerald-400 font-bold">{row.studentPhone}</span>
+                                            ) : (
+                                              <span className="text-slate-500 italic">زائر</span>
+                                            )}
+                                          </td>
+                                          <td className="p-2.5 font-bold whitespace-nowrap">
+                                            {isVisitor ? (
+                                              <span className="px-2 py-0.5 rounded-md bg-sky-950 text-sky-300 border border-sky-500/20">
+                                                {row.studentName || 'زائر'}
+                                              </span>
+                                            ) : (
+                                              <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 border border-emerald-500/20">
+                                                {row.studentName}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="p-2.5 whitespace-nowrap text-center">
+                                            {isMob ? (
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px]">
+                                                <Smartphone className="w-3 h-3" />
+                                                <span>جوال</span>
+                                              </span>
+                                            ) : isTab ? (
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px]">
+                                                <Tablet className="w-3 h-3" />
+                                                <span>تابلت</span>
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[10px]">
+                                                <Monitor className="w-3 h-3" />
+                                                <span>كمبيوتر</span>
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="p-2.5 font-medium text-amber-200 whitespace-nowrap">
+                                            {row.lessonTitle}
+                                          </td>
+                                          {Array.from({ length: maxCols }).map((_, cIdx) => {
+                                            const cell = ansCols[cIdx];
+                                            if (cell === undefined || cell === null || cell === '') {
+                                              return (
+                                                <td key={cIdx} className="p-2.5 text-center text-slate-600">
+                                                  -
+                                                </td>
+                                              );
+                                            }
+                                            if (cell === 'صح') {
+                                              return (
+                                                <td key={cIdx} className="p-2.5 text-center">
+                                                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                                                    صح ✓
+                                                  </span>
+                                                </td>
+                                              );
+                                            }
+                                            if (cell === 'خطأ') {
+                                              return (
+                                                <td key={cIdx} className="p-2.5 text-center">
+                                                  <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold">
+                                                    خطأ ✗
+                                                  </span>
+                                                </td>
+                                              );
+                                            }
+                                            return (
+                                              <td key={cIdx} className="p-2.5 text-center">
+                                                <span className="px-2 py-0.5 rounded bg-slate-800 text-sky-200 border border-slate-700">
+                                                  {cell}
+                                                </span>
+                                              </td>
+                                            );
+                                          })}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -3668,6 +4039,23 @@ function createJsonResponse(obj) {
                   <p>• <span className="text-sky-300 font-bold">نص الإجابة الحرة نفسه:</span> مثل «الخط العربي» دون تقييد بصح أو خطأ.</p>
                   <p>• <span className="text-slate-400 font-bold">فارغ:</span> إذا لم يُسجل الطالب إجابة عن هذا السؤال.</p>
                 </div>
+
+                <div className="pt-2 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSystemAnswers(getStoredSystemAnswers());
+                      setIsAnswersModalOpen(true);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/20 active:scale-95"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                    <span>📊 فتح قسم وسجل إجابات الطلاب (Answers-AR)</span>
+                    <span className="px-2 py-0.5 rounded-full bg-black/30 text-emerald-200 text-[10px] font-bold">
+                      {systemAnswers.length} سجل
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -3785,7 +4173,10 @@ function createJsonResponse(obj) {
         <SystemAnswersModal
           isOpen={isAnswersModalOpen}
           lessons={editableLessons}
-          onClose={() => setIsAnswersModalOpen(false)}
+          onClose={() => {
+            setIsAnswersModalOpen(false);
+            setSystemAnswers(getStoredSystemAnswers());
+          }}
         />
       </div>
     </div>

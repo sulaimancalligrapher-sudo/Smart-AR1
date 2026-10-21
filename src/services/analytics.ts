@@ -2,7 +2,7 @@ import { ARActionType, AnalyticsLogItem, AnalyticsPayload } from '../types/ar';
 
 const STORAGE_KEY_LOGS = 'smart_ar_event_logs';
 const STORAGE_KEY_WEB_APP_URL = 'smart_ar_sheets_web_app_url';
-export const DEFAULT_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxzLC0BzUKEdFcRJlxBgz66Q-Ng3OL20lG3ubdyupAHu8OgdMJpb7Gc5JMhThgsR17Rew/exec';
+export const DEFAULT_SHEETS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbykmtU73Lx2sDADSMR-6bs7gUB_L0DXzjPEl86Fk6tNpcIE0Uf2-bMDI_61cceb3do7Lg/exec';
 const DEFAULT_FALLBACK_URL = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL || DEFAULT_SHEETS_WEB_APP_URL;
 
 // Detect client device category
