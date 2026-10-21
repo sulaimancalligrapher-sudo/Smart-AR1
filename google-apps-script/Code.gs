@@ -1,180 +1,275 @@
-/**
- * Google Apps Script - WebAR Educational Book Events Logger
- * 
- * هذا السكريبت يستقبل بيانات الاستخدام من تطبيق WebAR
- * ويسجل كل حدث كصف جديد في جدول بيانات Google Sheets.
- * 
- * الأعمدة:
- * 1. timestamp    (تاريخ ووقت الحدث)
- * 2. session_id   (معرّف الجلسة العشوائي)
- * 3. target_id    (معرّف الهدف / الدرس)
- * 4. lesson_title (عنوان الدرس)
- * 5. action       (نوع الحدث: target_detected, video_open, etc.)
- * 6. device       (نوع الجهاز ونظام التشغيل)
- * 7. language     (لغة التطبيق)
- */
+// Google Apps Script - Code.gs
+// يدعم:
+// 1. ورقة SubData: التحقق من المشتركين والدروس المقيدة
+// 2. ورقة Questions-AR: قراءة وتحديث بنك الأسئلة أفقياً لكل درس
+// 3. ورقة Answers-AR: حفظ إجابات وتقييمات الطلاب لكل حصة (يدعم الجوال، التابلت، والكمبيوتر)
+// 4. ورقة Events: سجل أحداث الكاميرا المباشرة
 
-// اسم ورقة العمل المخصصة لتسجيل الأحداث
-var SHEET_NAME = "Events";
+var SUBSCRIBERS_SHEET = "SubData";
+var QUESTIONS_SHEET = "Questions-AR";
+var ANSWERS_SHEET = "Answers-AR";
+var EVENTS_SHEET = "Events";
+var SUBMISSIONS_SHEET = "Submissions";
 
-/**
- * معالجة طلبات POST الواردة من موقع WebAR
- */
-function doPost(e) {
-  try {
-    var contents = e.postData.contents;
-    var data = JSON.parse(contents);
-    
-    var result = recordEvent(data);
-    
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "success",
-      message: "Event recorded successfully",
-      row: result.row
-    })).setMimeType(ContentService.MimeType.JSON);
-    
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      message: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-/**
- * معالجة طلبات GET (للاختبار والروابط البديلة)
- */
+// 1. معالجة طلبات GET (فحص المشتركين + جلب الأسئلة + تسجيل إجابات الطلاب + جلب الإجابات)
 function doGet(e) {
   try {
-    var data = null;
-    
-    // إذا تم تمرير البيانات كـ JSON في معلمة 'data'
-    if (e.parameter && e.parameter.data) {
-      data = JSON.parse(e.parameter.data);
-    } else if (e.parameter && e.parameter.action) {
-      // أو معلمات فردية في الرابط
-      data = {
-        timestamp: e.parameter.timestamp || new Date().toISOString(),
-        session_id: e.parameter.session_id || "test_session",
-        target_id: e.parameter.target_id || "lesson_001",
-        lesson_title: e.parameter.lesson_title || "دورة الماء",
-        action: e.parameter.action || "test_ping",
-        device: e.parameter.device || "Browser GET",
-        language: e.parameter.language || "ar"
-      };
+    var action = (e.parameter && e.parameter.action) ? e.parameter.action : "";
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // أ) التحقق من المشترك في ورقة SubData
+    if (action === "verifySubscriber") {
+      var phone = (e.parameter.phone || "").toString().trim().replace(/[\s\-\(\)]/g, "");
+      var name = (e.parameter.name || "").toString().trim().toLowerCase();
+
+      var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
+      if (!subSheet) {
+        subSheet = ss.insertSheet(SUBSCRIBERS_SHEET);
+        subSheet.appendRow(["رقم المشترك / الجوال", "اسم المشترك"]);
+        return createJsonResponse({
+          success: false,
+          message: "تم إنشاء ورقة SubData تلقائياً في الشيت، يرجى وضع أرقام المشتركين في العمود A وأسمائهم في العمود B."
+        });
+      }
+
+      var subData = subSheet.getDataRange().getValues();
+      for (var i = 1; i < subData.length; i++) {
+        var rowPhone = (subData[i][0] || "").toString().trim().replace(/[\s\-\(\)]/g, "");
+        var rowName = (subData[i][1] || "").toString().trim().toLowerCase();
+
+        if (rowPhone && phone && rowPhone === phone) {
+          if (!name || rowName.indexOf(name) !== -1 || name.indexOf(rowName) !== -1) {
+            return createJsonResponse({
+              success: true,
+              name: subData[i][1] || e.parameter.name,
+              phone: subData[i][0] || e.parameter.phone
+            });
+          }
+        }
+      }
+
+      return createJsonResponse({
+        success: false,
+        message: "عذراً، هذا الاسم أو الرقم غير مسجل في ورقة المشتركين (SubData)."
+      });
     }
-    
-    if (data) {
-      var result = recordEvent(data);
-      return ContentService.createTextOutput(JSON.stringify({
+
+    // ب) جلب بنك الأسئلة من ورقة Questions-AR
+    if (action === "getQuestions") {
+      var qSheet = ss.getSheetByName(QUESTIONS_SHEET);
+      if (!qSheet) {
+        qSheet = ss.insertSheet(QUESTIONS_SHEET);
+        qSheet.appendRow([
+          "عنوان الدرس",
+          "رابط صورة السؤال 1",
+          "نص السؤال 1",
+          "خيارات السؤال 1 أو «نص»",
+          "طريقة الإجابة / الإجابة الصحيحة 1",
+          "رابط صورة السؤال 2",
+          "نص السؤال 2",
+          "خيارات السؤال 2 أو «نص»",
+          "طريقة الإجابة / الإجابة الصحيحة 2"
+        ]);
+        return createJsonResponse({
+          success: true,
+          message: "تم إنشاء ورقة Questions-AR بنجاح وهي جاهزة لإضافة الأسئلة.",
+          rows: []
+        });
+      }
+
+      var rows = qSheet.getDataRange().getValues();
+      return createJsonResponse({
+        success: true,
+        rows: rows
+      });
+    }
+
+    // ج) تسجيل إجابات وتقييمات الطلاب في ورقة Answers-AR (مضمون 100% للجوال والتابلت والكمبيوتر)
+    if (action === "submitAnswers") {
+      var ansSheet = ss.getSheetByName(ANSWERS_SHEET) || ss.insertSheet(ANSWERS_SHEET);
+      if (ansSheet.getLastRow() === 0) {
+        var headerRow = [
+          "تاريخ ووقت التسجيل",
+          "رقم الطالب",
+          "اسم المستخدم",
+          "موضوع الحصة"
+        ];
+        for (var q = 1; q <= 20; q++) {
+          headerRow.push("إجابة السؤال " + q);
+        }
+        ansSheet.appendRow(headerRow);
+      }
+
+      var ansCols = [];
+      try {
+        ansCols = JSON.parse(e.parameter.answerColumns || "[]");
+      } catch (err) {
+        ansCols = [];
+      }
+
+      var newRow = [
+        e.parameter.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT+3", "yyyy-MM-dd HH:mm:ss"),
+        e.parameter.studentPhone || "",
+        e.parameter.studentName || "زائر",
+        e.parameter.lessonTitle || ""
+      ].concat(ansCols);
+
+      ansSheet.appendRow(newRow);
+
+      return createJsonResponse({
+        success: true,
         status: "success",
-        message: "Event recorded via GET",
-        row: result.row
-      })).setMimeType(ContentService.MimeType.JSON);
+        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+      });
     }
-    
-    // صفحة ترحيبية عند فتح رابط Web App في المتصفح
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "active",
-      service: "WebAR Smart Book Logger API",
-      time: new Date().toISOString(),
-      instructions: "Send POST request with JSON payload or GET with ?data={...}"
-    })).setMimeType(ContentService.MimeType.JSON);
-    
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      status: "error",
-      message: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+
+    // د) جلب سجلات إجابات الطلاب من ورقة Answers-AR لكافة الأجهزة (جوالات، تابلت، كمبيوتر)
+    if (action === "getAnswers") {
+      var ansSheet = ss.getSheetByName(ANSWERS_SHEET);
+      if (!ansSheet) {
+        return createJsonResponse({
+          success: true,
+          rows: []
+        });
+      }
+      var rows = ansSheet.getDataRange().getValues();
+      return createJsonResponse({
+        success: true,
+        rows: rows
+      });
+    }
+
+    return createJsonResponse({
+      status: "ready",
+      app: "Smart AR Book Web App",
+      sheets: [SUBSCRIBERS_SHEET, QUESTIONS_SHEET, ANSWERS_SHEET]
+    });
+  } catch (err) {
+    return createJsonResponse({ success: false, error: err.toString() });
   }
 }
 
-/**
- * دالة تسجيل الحدث في ورقة Google Sheet
- */
-function recordEvent(data) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME);
-  
-  // إذا لم تكن ورقة Events موجودة، يتم إنشاؤها وتنسيق الترويسة تلقائياً
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
-    setupHeaders(sheet);
+// 2. معالجة طلبات POST (تحديث ورقة Questions-AR + تسجيل إجابات الطلاب في Answers-AR + الأحداث)
+function doPost(e) {
+  try {
+    var data = {};
+    if (e && e.postData && e.postData.contents) {
+      try {
+        data = JSON.parse(e.postData.contents);
+      } catch (errP) {
+        data = {};
+      }
+    }
+    if ((!data || !data.action) && e && e.parameter && e.parameter.action) {
+      data = e.parameter;
+    }
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // أ) تحديث وحفظ كافة الأسئلة في ورقة Questions-AR أفقياً
+    if (data.action === "syncQuestions") {
+      var qSheet = ss.getSheetByName(QUESTIONS_SHEET) || ss.insertSheet(QUESTIONS_SHEET);
+      qSheet.clearContents();
+
+      if (data.rows && data.rows.length > 0) {
+        var maxCols = 1;
+        for (var r = 0; r < data.rows.length; r++) {
+          if (data.rows[r].length > maxCols) maxCols = data.rows[r].length;
+        }
+
+        var paddedRows = data.rows.map(function(row) {
+          var copy = row.slice();
+          while (copy.length < maxCols) copy.push("");
+          return copy;
+        });
+
+        qSheet.getRange(1, 1, paddedRows.length, maxCols).setValues(paddedRows);
+      }
+
+      return createJsonResponse({
+        success: true,
+        message: "✓ تم تحديث ورقة Questions-AR في Google Sheets بنجاح!"
+      });
+    }
+
+    // ب) تسجيل إجابات وتقييمات الطالب في ورقة Answers-AR
+    if (data.action === "submitAnswers") {
+      var ansSheet = ss.getSheetByName(ANSWERS_SHEET) || ss.insertSheet(ANSWERS_SHEET);
+      var ansCols = data.answerColumns || [];
+      if (typeof ansCols === "string") {
+        try { ansCols = JSON.parse(ansCols); } catch (_) { ansCols = [ansCols]; }
+      }
+      if (!Array.isArray(ansCols)) ansCols = [];
+
+      if (ansSheet.getLastRow() === 0) {
+        var headerRow = [
+          "تاريخ ووقت التسجيل",
+          "رقم الطالب",
+          "اسم المستخدم",
+          "موضوع الحصة"
+        ];
+        var ansCount = ansCols.length ? ansCols.length : 10;
+        for (var q = 1; q <= Math.max(ansCount, 10); q++) {
+          headerRow.push("إجابة السؤال " + q);
+        }
+        ansSheet.appendRow(headerRow);
+      }
+
+      var newRow = [
+        data.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT+3", "yyyy-MM-dd HH:mm:ss"),
+        data.studentPhone || "",
+        data.studentName || "زائر",
+        data.lessonTitle || ""
+      ].concat(ansCols);
+
+      ansSheet.appendRow(newRow);
+
+      return createJsonResponse({
+        success: true,
+        status: "success",
+        message: "✓ تم تسجيل إجابات الطالب في ورقة Answers-AR بنجاح!"
+      });
+    }
+
+    // ج) تسجيل إجابة فردية (دعم توافقي سابق)
+    if (data.action === "student_submission") {
+      var subSheet = ss.getSheetByName(SUBMISSIONS_SHEET) || ss.insertSheet(SUBMISSIONS_SHEET);
+      if (subSheet.getLastRow() === 0) {
+        subSheet.appendRow(["التاريخ والوقت", "اسم الطالب", "رقم الجوال", "اسم الدرس", "السؤال", "إجابة الطالب", "صحيحة؟", "النتيجة"]);
+      }
+      subSheet.appendRow([
+        data.submittedAt || new Date().toISOString(),
+        data.studentName || "",
+        data.studentPhone || "",
+        data.lessonTitle || "",
+        data.questionText || "",
+        data.studentAnswer || "",
+        data.isCorrect ? "نعم ✓" : "لا ✗",
+        data.score || 0
+      ]);
+      return createJsonResponse({ status: "success", type: "submission_recorded" });
+    }
+
+    // د) تسجيل أحداث الكاميرا والدروس
+    var eventSheet = ss.getSheetByName(EVENTS_SHEET) || ss.insertSheet(EVENTS_SHEET);
+    if (eventSheet.getLastRow() === 0) {
+      eventSheet.appendRow(["التاريخ والوقت", "معرف الجلسة", "معرف الهدف", "عنوان الدرس", "الحدث", "الجهاز", "اللغة"]);
+    }
+    eventSheet.appendRow([
+      data.timestamp || new Date().toISOString(),
+      data.session_id || "session",
+      data.target_id || "lesson",
+      data.lesson_title || "",
+      data.action || "action",
+      data.device || "device",
+      data.language || "ar"
+    ]);
+    return createJsonResponse({ status: "success", type: "event_recorded" });
+  } catch (err) {
+    return createJsonResponse({ status: "error", error: err.toString() });
   }
-  
-  var timestamp = data.timestamp || Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd HH:mm:ss");
-  var sessionId = data.session_id || "unknown_session";
-  var targetId = data.target_id || "unknown_target";
-  var lessonTitle = data.lesson_title || "";
-  var action = data.action || "unknown_action";
-  var device = data.device || "unknown_device";
-  var language = data.language || "ar";
-  
-  // إضافة صف جديد بالبيانات
-  sheet.appendRow([
-    timestamp,
-    sessionId,
-    targetId,
-    lessonTitle,
-    action,
-    device,
-    language
-  ]);
-  
-  var lastRow = sheet.getLastRow();
-  
-  // تنسيق تاريخ ووقت العمود الأول
-  sheet.getRange(lastRow, 1).setNumberFormat("@");
-  
-  return { row: lastRow };
 }
 
-/**
- * إعداد وترويس الورقة تلقائياً
- */
-function setupHeaders(sheet) {
-  var headers = [
-    "timestamp",
-    "session_id",
-    "target_id",
-    "lesson_title",
-    "action",
-    "device",
-    "language"
-  ];
-  
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  
-  // تنسيق الترويسة (لون كحلي وخلفية متباينة)
-  var headerRange = sheet.getRange(1, 1, 1, headers.length);
-  headerRange.setBackground("#1e293b");
-  headerRange.setFontColor("#f8fafc");
-  headerRange.setFontWeight("bold");
-  headerRange.setHorizontalAlignment("center");
-  
-  // تجميد الصف الأول
-  sheet.setFrozenRows(1);
-  
-  // ضبط عرض الأعمدة تلقائياً
-  for (var i = 1; i <= headers.length; i++) {
-    sheet.autoResizeColumn(i);
-  }
-}
-
-/**
- * دالة اختبار سريعة يمكن تشغيلها من داخل محرر Apps Script
- */
-function testAddEvent() {
-  var sample = {
-    timestamp: Utilities.formatDate(new Date(), "GMT+3", "yyyy-MM-dd HH:mm:ss"),
-    session_id: "test_" + Math.floor(Math.random() * 10000),
-    target_id: "lesson_001",
-    lesson_title: "دورة الماء في الطبيعة",
-    action: "target_detected",
-    device: "iPhone Safari (Test)",
-    language: "ar"
-  };
-  
-  var res = recordEvent(sample);
-  Logger.log("Result: Event inserted at row " + res.row);
+function createJsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }

@@ -86,6 +86,7 @@ export interface SystemAnswerRecord {
   answerColumns: string[];    // العمود E وما بعده: إجابات الأسئلة
   syncedToSheet?: boolean;    // هل تم إرسالها وحفظها في Google Sheets
   syncedAt?: string;          // وقت اكتمال المزامنة
+  device?: string;            // نوع الجهاز: هاتف جوال، تابلت، أو كمبيوتر
 }
 
 export interface LessonQuiz {

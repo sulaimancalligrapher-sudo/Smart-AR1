@@ -32,6 +32,17 @@ export function saveStoredSystemAnswers(records: SystemAnswerRecord[]): void {
 }
 
 /**
+ * كشف دقيق لنوع جهاز الطالب (جوال، تابلت، أو كمبيوتر)
+ */
+export function detectUserDevice(): string {
+  if (typeof navigator === 'undefined') return 'كمبيوتر (Desktop)';
+  const ua = navigator.userAgent || '';
+  if (/iPad|tablet|(android(?!.*mobile))/i.test(ua)) return 'جهاز لوحي (Tablet)';
+  if (/mobile|iphone|ipod|android/i.test(ua)) return 'هاتف جوال (Mobile)';
+  return 'كمبيوتر (Desktop)';
+}
+
+/**
  * تسجيل سجل إجابات حصة في النظام أولاً قبل إرساله للشيت
  */
 export function recordSystemAnswer(
@@ -39,6 +50,7 @@ export function recordSystemAnswer(
 ): SystemAnswerRecord {
   const newRecord: SystemAnswerRecord = {
     ...data,
+    device: data.device || detectUserDevice(),
     id: `ans_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
   };
 

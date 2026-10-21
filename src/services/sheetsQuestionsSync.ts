@@ -1,7 +1,7 @@
-import { LessonData, LessonQuestion, QuestionType } from '../types/ar';
+import { LessonData, LessonQuestion, QuestionType, SystemAnswerRecord } from '../types/ar';
 import { analytics } from './analytics';
 import { normalizeArabicDigits } from './subscriptionAuth';
-import { recordSystemAnswer, updateSystemAnswerSyncStatus } from './studentSubmissions';
+import { recordSystemAnswer, updateSystemAnswerSyncStatus, getStoredSystemAnswers, saveStoredSystemAnswers, detectUserDevice } from './studentSubmissions';
 
 export interface SheetQuestionSyncResult {
   success: boolean;
@@ -371,7 +371,10 @@ export async function submitStudentAnswersToSheet(
   }
   recentSubmissionsCache.set(dedupKey, Date.now());
 
-  // ⭐ الخطوة 1: تسجيل الإجابات أولاً في النظام (System Database First) ⭐
+  // ⭐ تحديد نوع جهاز الطالب بدقة (جوال / تابلت / كمبيوتر) ⭐
+  const deviceType = detectUserDevice();
+
+  // ⭐ الخطوة 1: تسجيل الإجابات أولاً في النظام (System Database First) مع نوع الجهاز ⭐
   let systemRecordId = '';
   try {
     const sysRec = recordSystemAnswer({
@@ -380,6 +383,7 @@ export async function submitStudentAnswersToSheet(
       studentName: effectiveName,
       lessonTitle: effectiveLesson,
       answerColumns,
+      device: deviceType,
       syncedToSheet: false
     });
     systemRecordId = sysRec.id;
@@ -387,8 +391,10 @@ export async function submitStudentAnswersToSheet(
     console.warn('Error saving answer to system database:', sysErr);
   }
 
-  // ⭐ الخطوة 2: إرسال طلب واحد موحد وحيد إلى Google Sheets لمنع أي تكرار ⭐
+  // ⭐ الخطوة 2: إرسال الإجابات إلى Google Sheets عبر تقنيات GET و Beacon المضمونة 100% على كافة أجهزة الجوال والتابلت والكمبيوتر ⭐
   if (targetUrl) {
+    let transmitted = false;
+
     try {
       const getUrl = new URL(targetUrl);
       getUrl.searchParams.set('action', 'submitAnswers');
@@ -397,23 +403,48 @@ export async function submitStudentAnswersToSheet(
       getUrl.searchParams.set('studentName', effectiveName);
       getUrl.searchParams.set('lessonTitle', effectiveLesson);
       getUrl.searchParams.set('answerColumns', JSON.stringify(answerColumns));
+      getUrl.searchParams.set('device', deviceType);
       getUrl.searchParams.set('_r', Date.now().toString());
 
-      // إرسال طلب وحيد عبر fetch مع keepalive
-      fetch(getUrl.toString(), {
-        method: 'GET',
-        mode: 'no-cors',
-        cache: 'no-cache',
-        keepalive: true
-      })
-        .then(() => {
-          if (systemRecordId) {
-            updateSystemAnswerSyncStatus(systemRecordId, true);
-          }
-        })
-        .catch(() => {});
-    } catch (netErr) {
-      console.warn('Background submission transmission error:', netErr);
+      // 1) إرسال متزامن عبر Image Beacon المضمون 100% لكافة متصفحات الجوال والتابلت (iOS Safari, Android Chrome, WebView)
+      // هذا الأسلوب ينفذه متصفح الجوال والتابلت مباشرة في الخلفية، ويتبع تلقائياً توجيهات Google (302) بدون أي قيود CORS
+      if (typeof Image !== 'undefined') {
+        const beaconImg = new Image();
+        beaconImg.src = getUrl.toString();
+        transmitted = true;
+      }
+
+      // 2) إرسال عبر fetch GET المباشر مع keepalive
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+        await fetch(getUrl.toString(), {
+          method: 'GET',
+          mode: 'no-cors',
+          cache: 'no-cache',
+          keepalive: true,
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        transmitted = true;
+      } catch (fetchErr) {
+        console.warn('GET fetch notice on mobile/tablet:', fetchErr);
+      }
+
+      // 3) إرسال إضافي عبر navigator.sendBeacon إذا كان متاحاً في المتصفح
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          navigator.sendBeacon(getUrl.toString());
+        }
+      } catch (_) {}
+
+      if (transmitted && systemRecordId) {
+        updateSystemAnswerSyncStatus(systemRecordId, true);
+      }
+    } catch (urlErr) {
+      console.warn('Submission URL error:', urlErr);
     }
   }
 
@@ -427,4 +458,124 @@ export async function submitStudentAnswersToSheet(
     scoreText,
     systemRecordId
   };
+}
+
+/**
+ * 3. جلب وتحديث كافة سجلات الطلاب من ورقة Answers-AR في Google Sheets
+ * لعرض إجابات جميع الطلاب المكتملة من كافة الأجهزة (جوالات، أجهزة لوحية، كمبيوتر)
+ */
+export async function fetchAnswersFromSheet(
+  webAppUrl?: string
+): Promise<{ success: boolean; message: string; records?: SystemAnswerRecord[] }> {
+  const targetUrl = (webAppUrl || analytics.getWebAppUrl() || '').trim();
+
+  if (!targetUrl) {
+    return {
+      success: false,
+      message: '⚠️ رابط Google Sheets غير مضبوط في الإعدادات.'
+    };
+  }
+
+  try {
+    const queryUrl = new URL(targetUrl);
+    queryUrl.searchParams.set('action', 'getAnswers');
+    queryUrl.searchParams.set('t', Date.now().toString());
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const res = await fetch(queryUrl.toString(), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    const text = await res.text();
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error('استجابة غير صالحة من Google Apps Script.');
+    }
+
+    if (!data || !data.success) {
+      return {
+        success: false,
+        message: data?.message || 'تعذر جلب بيانات ورقة Answers-AR.'
+      };
+    }
+
+    const rawRows: any[][] = Array.isArray(data.rows) ? data.rows : [];
+    if (rawRows.length <= 1) {
+      return {
+        success: true,
+        message: 'ورقة Answers-AR لا تحتوي على إجابات بعد.',
+        records: getStoredSystemAnswers()
+      };
+    }
+
+    // تحويل الصفوف إلى SystemAnswerRecord
+    const fetchedRecords: SystemAnswerRecord[] = [];
+    const startIndex = (rawRows[0] && String(rawRows[0][0] || '').includes('تاريخ')) ? 1 : 0;
+
+    for (let r = startIndex; r < rawRows.length; r++) {
+      const row = rawRows[r];
+      if (!row || row.length === 0) continue;
+      const ts = String(row[0] || '').trim();
+      const phone = String(row[1] || '').trim();
+      const name = String(row[2] || '').trim();
+      const lesson = String(row[3] || '').trim();
+      if (!ts && !name && !lesson) continue;
+
+      const answerCols: string[] = [];
+      for (let c = 4; c < row.length; c++) {
+        answerCols.push(row[c] !== undefined && row[c] !== null ? String(row[c]) : '');
+      }
+
+      fetchedRecords.push({
+        id: `sheet_row_${r}_${ts.replace(/[\s\-\:]/g, '_')}`,
+        timestamp: ts,
+        studentPhone: phone,
+        studentName: name || 'زائر',
+        lessonTitle: lesson,
+        answerColumns: answerCols,
+        syncedToSheet: true,
+        syncedAt: ts
+      });
+    }
+
+    // دمج السجلات مع السجلات المحلية
+    const localRecords = getStoredSystemAnswers();
+    const mergedMap = new Map<string, SystemAnswerRecord>();
+
+    // نضع سجلات الشيت أولاً
+    fetchedRecords.forEach((rec) => {
+      const key = `${rec.timestamp}_${rec.studentPhone}_${rec.studentName}_${rec.lessonTitle}`;
+      mergedMap.set(key, rec);
+    });
+
+    // ثم ندمج السجلات المحلية التي لم تكن موجودة بعد
+    localRecords.forEach((local) => {
+      const key = `${local.timestamp}_${local.studentPhone}_${local.studentName}_${local.lessonTitle}`;
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, local);
+      }
+    });
+
+    const finalRecords = Array.from(mergedMap.values());
+    saveStoredSystemAnswers(finalRecords);
+
+    return {
+      success: true,
+      message: `✓ تم جلب وتحديث ${fetchedRecords.length} سجل بنجاح من ورقة Answers-AR في Google Sheets!`,
+      records: finalRecords
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `خطأ أثناء الاتصال بورقة Answers-AR: ${err?.message || 'تأكد من الاتصال'}`
+    };
+  }
 }

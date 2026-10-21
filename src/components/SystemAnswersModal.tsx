@@ -15,7 +15,10 @@ import {
   ArrowUpDown,
   Send,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Smartphone,
+  Tablet,
+  Monitor
 } from 'lucide-react';
 import { SystemAnswerRecord, LessonData } from '../types/ar';
 import {
@@ -24,6 +27,7 @@ import {
   updateSystemAnswerSyncStatus
 } from '../services/studentSubmissions';
 import { analytics } from '../services/analytics';
+import { fetchAnswersFromSheet } from '../services/sheetsQuestionsSync';
 
 interface SystemAnswersModalProps {
   isOpen: boolean;
@@ -40,15 +44,40 @@ export const SystemAnswersModal: React.FC<SystemAnswersModalProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterLesson, setFilterLesson] = useState<string>('all');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isFetchingFromSheet, setIsFetchingFromSheet] = useState<boolean>(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   const loadData = () => {
     setAnswers(getStoredSystemAnswers());
   };
 
+  const handleFetchFromSheet = async () => {
+    setIsFetchingFromSheet(true);
+    setSyncFeedback(null);
+    try {
+      const res = await fetchAnswersFromSheet();
+      if (res.success && res.records) {
+        setAnswers(res.records);
+        setSyncFeedback(`✓ تم تحديث السجلات بنجاح من ورقة Answers-AR (${res.records.length} سجل متاح)!`);
+      } else {
+        setSyncFeedback(res.message);
+      }
+    } catch (e: any) {
+      setSyncFeedback(`تعذر جلب السجلات: ${e?.message || 'تأكد من الاتصال'}`);
+    } finally {
+      setIsFetchingFromSheet(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       loadData();
+      // تحديث تلقائي لجلب إجابات الطلاب التي تمت من الجوال أو التابلت
+      fetchAnswersFromSheet().then((res) => {
+        if (res.success && res.records && res.records.length > 0) {
+          setAnswers(res.records);
+        }
+      }).catch(() => {});
     }
   }, [isOpen]);
 
@@ -125,6 +154,7 @@ export const SystemAnswersModal: React.FC<SystemAnswersModalProps> = ({
       'تاريخ ووقت التسجيل',
       'رقم الطالب',
       'اسم المستخدم',
+      'نوع الجهاز',
       'موضوع الحصة'
     ];
     for (let i = 1; i <= maxQuestionCount; i++) {
@@ -136,6 +166,7 @@ export const SystemAnswersModal: React.FC<SystemAnswersModalProps> = ({
         `"${a.timestamp}"`,
         `"${a.studentPhone || ''}"`,
         `"${a.studentName || 'زائر'}"`,
+        `"${a.device || 'غير محدد'}"`,
         `"${a.lessonTitle}"`
       ];
       const ansCols = Array.isArray(a.answerColumns) ? a.answerColumns : [];
@@ -210,13 +241,23 @@ export const SystemAnswersModal: React.FC<SystemAnswersModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleFetchFromSheet}
+              disabled={isFetchingFromSheet}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 shadow-sm"
+              title="جلب وتحديث كافة سجلات الطلاب والزوار المسجلة من كافة الأجهزة (جوالات، أجهزة لوحية، كمبيوتر) من ورقة Answers-AR"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isFetchingFromSheet ? 'animate-spin' : ''}`} />
+              <span>{isFetchingFromSheet ? 'جارٍ الجلب من الشيت...' : '📥 جلب من Google Sheets'}</span>
+            </button>
+
+            <button
               onClick={handleSyncAllToSheet}
               disabled={isSyncing || answers.length === 0}
               className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 shadow-sm"
-              title="إعادة مزامنة السجلات مع ورقة Answers-AR"
+              title="إعادة إرسال السجلات المحلية غير المزمنة إلى ورقة Answers-AR في Google Sheets"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'جارٍ المزامنة...' : '🔄 مزامنة مع Google Sheets'}</span>
+              <Send className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'جارٍ الإرسال...' : '📤 إرسال للشيت'}</span>
             </button>
 
             <button
@@ -309,6 +350,10 @@ export const SystemAnswersModal: React.FC<SystemAnswersModalProps> = ({
                         <span className="text-amber-400 font-mono text-[11px] block">العمود C</span>
                         اسم المستخدم
                       </th>
+                      <th className="p-3 whitespace-nowrap bg-slate-950 text-center">
+                        <span className="text-amber-400 font-mono text-[11px] block">كشف النظام</span>
+                        الجهاز
+                      </th>
                       <th className="p-3 whitespace-nowrap bg-slate-950">
                         <span className="text-amber-400 font-mono text-[11px] block">العمود D</span>
                         موضوع الحصة
@@ -351,6 +396,24 @@ export const SystemAnswersModal: React.FC<SystemAnswersModalProps> = ({
                             ) : (
                               <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/30 text-[11px]">
                                 {row.studentName}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-center whitespace-nowrap">
+                            {row.device?.includes('جوال') || row.device?.includes('Mobile') ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-violet-950/80 text-violet-300 border border-violet-500/40 text-[11px] font-bold shadow-sm">
+                                <Smartphone className="w-3.5 h-3.5 text-violet-400" />
+                                جوال
+                              </span>
+                            ) : row.device?.includes('تابلت') || row.device?.includes('Tablet') || row.device?.includes('لوحي') ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-500/40 text-[11px] font-bold shadow-sm">
+                                <Tablet className="w-3.5 h-3.5 text-amber-400" />
+                                تابلت
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[11px]">
+                                <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                                كمبيوتر
                               </span>
                             )}
                           </td>

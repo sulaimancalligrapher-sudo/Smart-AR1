@@ -85,6 +85,20 @@ class AnalyticsService {
   }
 
   public getWebAppUrl(): string {
+    if (typeof window !== 'undefined' && window.location) {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlFromQuery = searchParams.get('sheet') || searchParams.get('webapp');
+        if (urlFromQuery && urlFromQuery.trim()) {
+          const decoded = decodeURIComponent(urlFromQuery.trim());
+          if (decoded.startsWith('http')) {
+            localStorage.setItem(STORAGE_KEY_WEB_APP_URL, decoded);
+            return decoded;
+          }
+        }
+      } catch (_) {}
+    }
+
     const saved = localStorage.getItem(STORAGE_KEY_WEB_APP_URL);
     if (saved && saved.trim()) {
       return saved.trim();

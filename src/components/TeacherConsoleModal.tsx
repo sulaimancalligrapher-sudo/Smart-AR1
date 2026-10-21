@@ -1429,6 +1429,22 @@ function doGet(e) {
       });
     }
 
+    // د) جلب سجلات إجابات الطلاب من ورقة Answers-AR لكافة الأجهزة (جوالات، تابلت، كمبيوتر)
+    if (action === "getAnswers") {
+      var ansSheet = ss.getSheetByName(ANSWERS_SHEET);
+      if (!ansSheet) {
+        return createJsonResponse({
+          success: true,
+          rows: []
+        });
+      }
+      var rows = ansSheet.getDataRange().getValues();
+      return createJsonResponse({
+        success: true,
+        rows: rows
+      });
+    }
+
     return createJsonResponse({
       status: "ready",
       app: "Smart AR Book Web App",
