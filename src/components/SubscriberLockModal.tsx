@@ -47,9 +47,10 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    setSuccessMessage(null);
+    const cleanName = String(name || '').trim();
+    const cleanPhone = String(phone || '').trim();
 
-    if (!name.trim() || !phone.trim()) {
+    if (!cleanName || !cleanPhone) {
       setErrorMessage('يرجى ملء حقلي الاسم ورقم الهاتف.');
       return;
     }

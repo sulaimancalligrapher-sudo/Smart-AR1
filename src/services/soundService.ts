@@ -91,8 +91,7 @@ class SoundService {
       const a = new Audio();
       a.loop = true;
       a.volume = this.volume;
-      // Silent 1ms wav data to prime
-      a.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      a.preload = 'none';
       a.addEventListener('play', () => {
         this.isPlaying = true;
         this.isBlockedByAutoplay = false;
@@ -107,7 +106,10 @@ class SoundService {
         this.notify();
       });
       a.addEventListener('error', (e) => {
-        console.warn('Audio element error:', e);
+        // إذا تعذر تحميل الملف الصوتي أو تم حظره بواسطة المتصفح، يتم التعامل بهدوء تام
+        if (e && typeof e.stopPropagation === 'function') {
+          e.stopPropagation();
+        }
         this.isPlaying = false;
         this.notify();
       });

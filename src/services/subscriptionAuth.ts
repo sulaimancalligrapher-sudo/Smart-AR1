@@ -14,14 +14,56 @@ export const DEFAULT_SUBSCRIPTION_URL =
 
 /**
  * تحويل الأرقام العربية المشرقية (٠-٩) إلى أرقام لاتينية (0-9)
+ * بصورة آمنة تماماً ضد أي نوع بيانات (نصوص، أرقام، null)
  */
-export function normalizeArabicDigits(input: string): string {
+export function normalizeArabicDigits(input: unknown): string {
+  if (input == null) return '';
   const arabicNumerals = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  let output = input;
+  let output = String(input);
   for (let i = 0; i < 10; i++) {
     output = output.replace(new RegExp(arabicNumerals[i], 'g'), i.toString());
   }
   return output.trim();
+}
+
+const STORAGE_KEY_VISITOR_NAME = 'smart_ar_visitor_name';
+
+/**
+ * جلب اسم الزائر المخزن محلياً في المتصفح لاستخدامه في كافة الدروس المفتوحة
+ */
+export function getStoredVisitorName(): string {
+  try {
+    return localStorage.getItem(STORAGE_KEY_VISITOR_NAME) || '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * حفظ اسم الزائر في المتصفح ليبقى مسجلاً في الصفحة وكافة الدروس المفتوحة
+ */
+export function saveStoredVisitorName(name: string): void {
+  try {
+    const trimmed = String(name || '').trim();
+    if (trimmed) {
+      localStorage.setItem(STORAGE_KEY_VISITOR_NAME, trimmed);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_VISITOR_NAME);
+    }
+  } catch (err) {
+    console.warn('تعذر حفظ اسم الزائر:', err);
+  }
+}
+
+/**
+ * تسجيل خروج الزائر ومسح اسمه لإتاحة إدخال اسم جديد
+ */
+export function clearStoredVisitorName(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_VISITOR_NAME);
+  } catch (err) {
+    console.warn('تعذر مسح اسم الزائر:', err);
+  }
 }
 
 /**
@@ -78,8 +120,9 @@ export function getSubscriptionExternalUrl(): string {
 
 export function setSubscriptionExternalUrl(url: string): void {
   try {
-    if (url.trim()) {
-      localStorage.setItem(STORAGE_KEY_EXTERNAL_URL, url.trim());
+    const trimmed = String(url || '').trim();
+    if (trimmed) {
+      localStorage.setItem(STORAGE_KEY_EXTERNAL_URL, trimmed);
     } else {
       localStorage.removeItem(STORAGE_KEY_EXTERNAL_URL);
     }
@@ -93,12 +136,12 @@ export function setSubscriptionExternalUrl(url: string): void {
  * مع آلية التحقق السريع والتخزين المحلي
  */
 export async function verifySubscriberWithSheet(
-  name: string,
-  phone: string,
+  name: unknown,
+  phone: unknown,
   webAppUrl?: string
 ): Promise<{ success: boolean; message: string; subscriber?: SubscriberInfo }> {
-  const cleanName = name.trim();
-  const cleanPhone = normalizeArabicDigits(phone.trim().replace(/[\s\-\(\)]/g, ''));
+  const cleanName = String(name || '').trim();
+  const cleanPhone = normalizeArabicDigits(String(phone || '').replace(/[\s\-\(\)]/g, ''));
 
   if (!cleanName || !cleanPhone) {
     return {

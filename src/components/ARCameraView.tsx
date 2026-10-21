@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume1, Volume2, VolumeX, Music } from 'lucide-react';
+import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume1, Volume2, VolumeX, Music, User } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData, getActiveLessonModel, getLessonModelSound, isLessonRestricted } from '../types/ar';
@@ -21,7 +21,9 @@ interface ARCameraViewProps {
   showFloatingModel?: boolean;
   isAdmin?: boolean;
   subscriber?: SubscriberInfo | null;
+  visitorName?: string;
   onSubscriberLogout?: () => void;
+  onVisitorLogout?: () => void;
   hideScanReticle?: boolean;
 }
 
@@ -203,7 +205,9 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   showFloatingModel = true,
   isAdmin = false,
   subscriber,
+  visitorName,
   onSubscriberLogout,
+  onVisitorLogout,
   hideScanReticle = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -954,9 +958,24 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 </button>
               )}
             </div>
+          ) : visitorName ? (
+            <div className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-sky-950/90 border border-sky-500/50 text-[10px] sm:text-xs text-sky-300 font-bold shadow-md animate-fadeIn">
+              <User className="w-3 h-3 text-sky-400 flex-shrink-0" />
+              <span className="truncate max-w-[70px] sm:max-w-[110px]">{visitorName}</span>
+              {onVisitorLogout && (
+                <button
+                  type="button"
+                  onClick={onVisitorLogout}
+                  className="mr-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-rose-300 text-[9px] font-bold border border-slate-600/40 cursor-pointer transition-all active:scale-95"
+                  title="تسجيل خروج الزائر لتغيير الاسم"
+                >
+                  خروج ✕
+                </button>
+              )}
+            </div>
           ) : (
             <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700 text-[10px] text-slate-300 font-medium shadow-md">
-              <span>👤 زائر مجاني</span>
+              <span>👤 وضع الزائر</span>
             </div>
           )}
 

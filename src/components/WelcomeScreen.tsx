@@ -14,7 +14,8 @@ import {
   LogOut,
   Scan,
   Smartphone,
-  KeyRound
+  KeyRound,
+  User
 } from 'lucide-react';
 import { LessonData } from '../types/ar';
 import { soundService } from '../services/soundService';
@@ -25,7 +26,9 @@ interface WelcomeScreenProps {
   lessons: LessonData[];
   isAdmin: boolean;
   subscriber?: SubscriberInfo | null;
+  visitorName?: string;
   onSubscriberLogout?: () => void;
+  onVisitorLogout?: () => void;
   onOpenSubscriberLogin?: () => void;
   onOpenAdminPortal?: () => void;
   onAdminLogout?: () => void;
@@ -36,7 +39,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   lessons,
   isAdmin,
   subscriber,
+  visitorName,
   onSubscriberLogout,
+  onVisitorLogout,
   onOpenSubscriberLogin,
   onOpenAdminPortal,
   onAdminLogout
@@ -100,6 +105,22 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </button>
               )}
             </div>
+          ) : visitorName ? (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 text-xs font-semibold shadow-sm">
+                <User className="w-3.5 h-3.5 text-sky-400" />
+                <span>الزائر: {visitorName}</span>
+              </div>
+              {onVisitorLogout && (
+                <button
+                  onClick={onVisitorLogout}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-rose-400 border border-slate-700 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                  title="تسجيل خروج الزائر"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           ) : (
             <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-300 text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -112,7 +133,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       {/* Main Student Experience */}
       <main className="relative z-10 max-w-xl mx-auto w-full py-8 sm:py-12 flex flex-col items-center text-center space-y-6">
         
-        {/* كارت حالة المستخدم (مشترك مفعل مع زر خروج سريع للاختبار / أو زائر عادي مع زر تسجيل دخول) */}
+        {/* كارت حالة المستخدم (مشترك مفعل / زائر محفوظ اسمه مع زر خروج / أو زائر جديد مع زر دخول المشترك) */}
         {subscriber ? (
           <div className="w-full max-w-md p-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/50 flex items-center justify-between gap-3 shadow-xl animate-fadeIn text-right">
             <div className="flex items-center gap-2.5">
@@ -127,7 +148,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   </span>
                 </div>
                 <div className="text-[10px] text-emerald-300">
-                  جميع الدروس مفتوحة لك بالكامل الآن
+                  كافة الدروس (المفتوحة والمقيدة) تُسجل باسمك ورقمك
                 </div>
               </div>
             </div>
@@ -138,9 +159,50 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 title="تسجيل الخروج والتحول لوضع الزائر المجاني لتجربة حظر الدروس المقيدة"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>خروج (تجربة زائر)</span>
+                <span>خروج المشترك</span>
               </button>
             )}
+          </div>
+        ) : visitorName ? (
+          <div className="w-full max-w-md p-3.5 rounded-2xl bg-slate-900/95 border border-sky-500/40 flex items-center justify-between gap-3 shadow-lg text-right animate-fadeIn">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-300 flex items-center justify-center border border-sky-400/30 flex-shrink-0">
+                <User className="w-4 h-4 text-sky-400" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>مرحباً، {visitorName}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 font-semibold">
+                    وضع الزائر
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  تُسجل إجاباتك في الدروس المفتوحة باسمك تلقائياً دون تكرار
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {onVisitorLogout && (
+                <button
+                  onClick={onVisitorLogout}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-rose-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 active:scale-95 shadow-sm"
+                  title="تسجيل خروج الزائر لمسح الاسم أو كتابة اسم آخر"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>خروج الزائر</span>
+                </button>
+              )}
+              {onOpenSubscriberLogin && (
+                <button
+                  onClick={onOpenSubscriberLogin}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 flex-shrink-0 active:scale-95 shadow-sm"
+                  title="دخول المشترك لتفعيل الدروس المقيدة"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">دخول المشترك</span>
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="w-full max-w-md p-3 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between gap-3 shadow-lg text-right">

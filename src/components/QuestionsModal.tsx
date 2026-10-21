@@ -16,7 +16,8 @@ import {
   KeyRound,
   UserCheck,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  LogOut
 } from 'lucide-react';
 import { LessonData, LessonQuestion, isLessonRestricted } from '../types/ar';
 import {
@@ -24,7 +25,10 @@ import {
   getStoredSubscriber,
   saveStoredSubscriber,
   verifySubscriberWithSheet,
-  normalizeArabicDigits
+  normalizeArabicDigits,
+  getStoredVisitorName,
+  saveStoredVisitorName,
+  clearStoredVisitorName
 } from '../services/subscriptionAuth';
 import { submitStudentAnswersToSheet } from '../services/sheetsQuestionsSync';
 import { recordStudentSubmission } from '../services/studentSubmissions';
@@ -33,8 +37,11 @@ interface QuestionsModalProps {
   lesson: LessonData;
   questions: LessonQuestion[];
   subscriber?: SubscriberInfo | null;
+  visitorName?: string;
   webAppUrl?: string;
   onSubscriberLogin?: (subscriber: SubscriberInfo) => void;
+  onVisitorNameChange?: (name: string) => void;
+  onVisitorLogout?: () => void;
   onClose: () => void;
 }
 
@@ -42,8 +49,11 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   lesson,
   questions,
   subscriber,
+  visitorName,
   webAppUrl,
   onSubscriberLogin,
+  onVisitorNameChange,
+  onVisitorLogout,
   onClose
 }) => {
   // فحص هل الدرس مقيد للمشتركين أم مفتوح للزوار
@@ -60,6 +70,17 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
     }
   }, [subscriber]);
 
+  // اسم الزائر المحفوظ في النظام
+  const [savedVisitorName, setSavedVisitorName] = useState<string>(() => {
+    return visitorName || getStoredVisitorName() || '';
+  });
+
+  useEffect(() => {
+    if (visitorName !== undefined) {
+      setSavedVisitorName(visitorName);
+    }
+  }, [visitorName]);
+
   // مراحل النافذة:
   // 'initial_gate': نافذة البداية (تسجيل اسم الزائر أو الترحيب بالمشترك/تسجيل دخوله)
   // 'answering': مرحلة حل واستعراض الأسئلة
@@ -72,8 +93,11 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
 
   // مدخلات الزائر في المرحلة الأولى
   const [visitorNameInput, setVisitorNameInput] = useState<string>(() => {
-    return localStorage.getItem('smart_ar_student_name') || '';
+    return savedVisitorName || getStoredVisitorName() || '';
   });
+
+  // وضع تعديل اسم الزائر يدوياً
+  const [isEditingVisitorName, setIsEditingVisitorName] = useState<boolean>(false);
 
   // مدخلات تسجيل دخول المشترك في الوضع المقيد
   const [loginNameInput, setLoginNameInput] = useState<string>('');
@@ -149,13 +173,28 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   // 1. الوضع الأول (المفتوح للزائر): تسجيل الاسم والانتقال للأسئلة بدون رقم
   const handleStartVisitorAnswering = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const finalName = visitorNameInput.trim() || 'زائر';
+    const finalName = String(visitorNameInput || savedVisitorName || '').trim() || 'زائر';
     setStudentName(finalName);
     setStudentPhone(''); // بدون رقم كما هو محدد في المطلوب
-    try {
-      localStorage.setItem('smart_ar_student_name', finalName);
-    } catch (_) {}
+    saveStoredVisitorName(finalName);
+    setSavedVisitorName(finalName);
+    setIsEditingVisitorName(false);
+    if (onVisitorNameChange) {
+      onVisitorNameChange(finalName);
+    }
     setModalStage('answering');
+  };
+
+  // خروج الزائر ومسح اسمه لإتاحة تسجيل اسم جديد
+  const handleClearVisitor = () => {
+    clearStoredVisitorName();
+    setSavedVisitorName('');
+    setVisitorNameInput('');
+    setStudentName('');
+    setIsEditingVisitorName(true);
+    if (onVisitorLogout) {
+      onVisitorLogout();
+    }
   };
 
   // 2. الوضع الثاني (المقيد للمشترك): الدخول المباشر للمشترك المسجل
@@ -172,8 +211,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
     e.preventDefault();
     setLoginError(null);
 
-    const cName = loginNameInput.trim();
-    const cPhone = normalizeArabicDigits(loginPhoneInput.trim().replace(/[\s\-\(\)]/g, ''));
+    const cName = String(loginNameInput || '').trim();
+    const cPhone = normalizeArabicDigits(String(loginPhoneInput || '').replace(/[\s\-\(\)]/g, ''));
 
     if (!cName || !cPhone) {
       setLoginError('يرجى إدخال اسم المشترك ورقم هاتفه للمتابعة.');
@@ -212,13 +251,18 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
     hasSubmittedRef.current = true;
     setIsSubmitting(true);
 
-    // في الوضع المفتوح للزائر: الاسم هو اسم الزائر وبدون رقم
-    // في الوضع المقيد للمشترك: الاسم هو اسم المشترك والرقم هو رقم المشترك
-    const rawName = studentName || activeSub?.name || visitorNameInput || '';
-    const rawPhone = !isRestricted ? '' : (studentPhone || activeSub?.phone || '');
+    // ⭐ القاعدة الأساسية:
+    // إذا كان المستخدم مشتركاً نشطاً (تم الدخول بحسابه) -> يُسجل كل شيء باسم المشترك ورقمه
+    // سواء كان الدرس مقيداً أو مفتوحاً!
+    // وإذا لم يكن مشتركاً (زائر) -> يُسجل باسم الزائر وبدون رقم هاتف.
+    const isSubscriber = Boolean(activeSub && activeSub.name);
+    const rawName = isSubscriber
+      ? activeSub!.name
+      : (studentName || savedVisitorName || visitorNameInput || getStoredVisitorName() || 'زائر');
+    const rawPhone = isSubscriber ? activeSub!.phone : '';
 
-    const effectiveName = String(rawName != null ? rawName : '').trim() || (!isRestricted ? 'زائر' : 'مشترك');
-    const effectivePhone = !isRestricted ? '' : String(rawPhone != null ? rawPhone : '').trim();
+    const effectiveName = String(rawName != null ? rawName : '').trim() || (isSubscriber ? 'مشترك' : 'زائر');
+    const effectivePhone = isSubscriber ? String(rawPhone != null ? rawPhone : '').trim() : '';
 
     try {
       // تقييم الإجابات وفق المعايير المحددة بدقة
@@ -368,47 +412,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
         {/* ======================================================== */}
         {modalStage === 'initial_gate' && (
           <div className="p-6 sm:p-8 flex-1 flex flex-col items-center justify-center text-center space-y-6">
-            {!isRestricted ? (
-              /* الوضع الأول: المفتوح للزائر - تسجيل الاسم فقط */
-              <div className="w-full max-w-md bg-slate-950/90 border border-slate-800 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
-                <div className="w-14 h-14 rounded-2xl bg-sky-500/20 border border-sky-400/30 text-sky-400 flex items-center justify-center mx-auto shadow-inner">
-                  <User className="w-7 h-7" />
-                </div>
-
-                <div className="space-y-1.5">
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30 font-bold">
-                    الوضع المفتوح للزائر
-                  </span>
-                  <h4 className="text-base sm:text-lg font-black text-white">
-                    تسجيل اسمك للبدء في حل الأسئلة
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    مرحباً بك! يرجى كتابة اسمك الكريم ليتم تسجيل إجاباتك في النظام باسمك (بدون رقم هاتف):
-                  </p>
-                </div>
-
-                <form onSubmit={handleStartVisitorAnswering} className="space-y-4">
-                  <input
-                    type="text"
-                    required
-                    placeholder="اكتب اسمك الكريم هنا (مثال: أحمد، سارة)..."
-                    value={visitorNameInput}
-                    onChange={(e) => setVisitorNameInput(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 text-center"
-                    autoFocus
-                  />
-
-                  <button
-                    type="submit"
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-sky-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
-                  >
-                    <span>🚀 بدء الإجابة على الأسئلة</span>
-                    <ArrowRight className="w-4 h-4 rotate-180" />
-                  </button>
-                </form>
-              </div>
-            ) : activeSub ? (
-              /* الوضع الثاني (أو المشترك المسجل): نافذة ترحيب باسم المشترك وزر دخول الأسئلة */
+            {activeSub ? (
+              /* 1. حساب المشترك المسجل (ينطبق على كافة الدروس المفتوحة والمقيدة): يتم تسجيل كل شيء باسمه ورقمه */
               <div className="w-full max-w-md bg-slate-950/90 border border-emerald-500/30 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
                 <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
                   <UserCheck className="w-7 h-7" />
@@ -416,7 +421,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
 
                 <div className="space-y-2">
                   <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/30 font-bold">
-                    حساب مشترك مفعل ✓
+                    حساب مشترك معتمد 💎
                   </span>
                   <h4 className="text-lg sm:text-xl font-black text-white">
                     مرحباً بك، {activeSub.name}! 👋
@@ -425,7 +430,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                     رقم المشترك المسجل: <span className="font-mono text-emerald-300 font-bold">{activeSub.phone}</span>
                   </p>
                   <p className="text-xs text-slate-400 leading-relaxed pt-1">
-                    أنت الآن في الوضع المخصص للمشتركين لدرس «{lesson.title}». ستُسجل كافة إجاباتك ونتائج تفكيرك باسمك ورقمك مباشرة.
+                    أنت مسجل بحساب المشترك لدرس «{lesson.title}». ستُسجل كافة إجاباتك في النظام باسمك ورقمك مباشرة وبدون أي تكرار.
                   </p>
                 </div>
 
@@ -438,8 +443,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                   <ArrowRight className="w-4 h-4 rotate-180" />
                 </button>
               </div>
-            ) : (
-              /* الوضع الثاني: المقيد للمشترك - لم يسجل دخوله بعد */
+            ) : isRestricted ? (
+              /* 2. الوضع المقيد للمشترك - لم يسجل دخوله بعد */
               <div className="w-full max-w-md bg-slate-950/90 border border-amber-500/40 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
                 <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center mx-auto shadow-inner">
                   <Lock className="w-7 h-7" />
@@ -512,6 +517,85 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                   </button>
                 </form>
               </div>
+            ) : savedVisitorName && !isEditingVisitorName ? (
+              /* 3. الوضع المفتوح للزائر: الاسم محفوظ مسبقاً (لا يكرر كتابة اسمه) */
+              <div className="w-full max-w-md bg-slate-950/90 border border-sky-500/40 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-sky-500/20 border border-sky-400/30 text-sky-400 flex items-center justify-center mx-auto shadow-inner">
+                  <User className="w-7 h-7" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30 font-bold">
+                    الوضع المفتوح للزائر
+                  </span>
+                  <h4 className="text-lg sm:text-xl font-black text-white">
+                    مرحباً بك، {savedVisitorName}! 👋
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    تم حفظ اسمك في الصفحة، وسيتم تسجيل إجابات هذا الدرس وكافة الدروس المفتوحة باسمك تلقائياً دون تكرار كتابته.
+                  </p>
+                </div>
+
+                <div className="space-y-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleStartVisitorAnswering}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-sky-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <span>🚀 متابعة الإجابة باسم ({savedVisitorName})</span>
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearVisitor}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-300 border border-slate-700/60 font-semibold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    title="تسجيل خروج الزائر لتغيير الاسم"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>خروج الزائر / تغيير الاسم</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* 4. الوضع المفتوح للزائر: تسجيل الاسم للمرة الأولى */
+              <div className="w-full max-w-md bg-slate-950/90 border border-slate-800 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl">
+                <div className="w-14 h-14 rounded-2xl bg-sky-500/20 border border-sky-400/30 text-sky-400 flex items-center justify-center mx-auto shadow-inner">
+                  <User className="w-7 h-7" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-500/30 font-bold">
+                    الوضع المفتوح للزائر
+                  </span>
+                  <h4 className="text-base sm:text-lg font-black text-white">
+                    تسجيل اسم الزائر للبدء في حل الأسئلة
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    مرحباً بك! يرجى كتابة اسمك الكريم ليتم تسجيله في الصفحة وكافة الدروس المفتوحة باسمك تلقائياً (دون تكرار):
+                  </p>
+                </div>
+
+                <form onSubmit={handleStartVisitorAnswering} className="space-y-4">
+                  <input
+                    type="text"
+                    required
+                    placeholder="اكتب اسمك الكريم هنا (مثال: أحمد، سارة)..."
+                    value={visitorNameInput}
+                    onChange={(e) => setVisitorNameInput(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 text-center"
+                    autoFocus
+                  />
+
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-sky-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <span>🚀 حفظ الاسم وبدء حل الأسئلة</span>
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                  </button>
+                </form>
+              </div>
             )}
           </div>
         )}
@@ -544,6 +628,15 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                     <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-sky-950 text-sky-300 border border-sky-500/40">
                       وضع الزائر (بدون رقم)
                     </span>
+                    <button
+                      type="button"
+                      onClick={handleClearVisitor}
+                      className="px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-300 text-[10px] flex items-center gap-1 border border-slate-700/60 transition-colors cursor-pointer"
+                      title="تسجيل خروج الزائر لتغيير الاسم"
+                    >
+                      <LogOut className="w-2.5 h-2.5" />
+                      <span>خروج الزائر</span>
+                    </button>
                   </div>
                 )}
               </div>

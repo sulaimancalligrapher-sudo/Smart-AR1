@@ -32,7 +32,10 @@ import {
   getStoredSubscriber,
   saveStoredSubscriber,
   clearStoredSubscriber,
-  getSubscriptionExternalUrl
+  getSubscriptionExternalUrl,
+  getStoredVisitorName,
+  saveStoredVisitorName,
+  clearStoredVisitorName
 } from './services/subscriptionAuth';
 
 type ActiveModalType =
@@ -88,6 +91,19 @@ export default function App() {
 
   const [lockedLessonTarget, setLockedLessonTarget] = useState<LessonData | null>(null);
   const [isSubscriberLockModalOpen, setIsSubscriberLockModalOpen] = useState<boolean>(false);
+
+  // 👤 نظام اسم الزائر (للدروس المفتوحة - يُسجل في الصفحة ويُحفظ تلقائياً)
+  const [visitorName, setVisitorName] = useState<string>(() => getStoredVisitorName());
+
+  const handleVisitorNameChange = (name: string) => {
+    saveStoredVisitorName(name);
+    setVisitorName(name);
+  };
+
+  const handleVisitorLogout = () => {
+    clearStoredVisitorName();
+    setVisitorName('');
+  };
 
   // كشف الدخول عبر الرابط الخاص بالإدارة
   useEffect(() => {
@@ -311,7 +327,9 @@ export default function App() {
             lessons={lessons}
             isAdmin={isAdmin}
             subscriber={currentSubscriber}
+            visitorName={visitorName}
             onSubscriberLogout={handleSubscriberLogout}
+            onVisitorLogout={handleVisitorLogout}
             onOpenSubscriberLogin={() => {
               const restricted = lessons.find((l) => isLessonRestricted(l)) || lessons[0] || null;
               setLockedLessonTarget(restricted);
@@ -328,7 +346,9 @@ export default function App() {
           activeLesson={activeLesson}
           isAdmin={isAdmin}
           subscriber={currentSubscriber}
+          visitorName={visitorName}
           onSubscriberLogout={handleSubscriberLogout}
+          onVisitorLogout={handleVisitorLogout}
           onTargetDetected={handleTargetDetected}
           onTargetLost={handleTargetLost}
           onCloseCamera={handleCloseCamera}
@@ -483,8 +503,11 @@ export default function App() {
           lesson={activeLesson}
           questions={getLessonQuestions(activeLesson)}
           subscriber={currentSubscriber}
+          visitorName={visitorName}
           webAppUrl={analytics.getWebAppUrl()}
           onSubscriberLogin={handleSubscriberLoginSuccess}
+          onVisitorNameChange={handleVisitorNameChange}
+          onVisitorLogout={handleVisitorLogout}
           onClose={() => {
             setActiveModal('none');
             setShowFloatingModel(true);
