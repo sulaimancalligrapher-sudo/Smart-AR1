@@ -122,6 +122,22 @@ export const DEFAULT_TRANSLATION_ITEMS: TranslationItem[] = [
     th: 'เข้าถึงบทเรียนเชิงโต้ตอบทั้งหมด'
   },
   {
+    id: 'welcome_custom_subscriber_badge',
+    group: 'group1_welcome',
+    labelAr: 'شارة المشترك الخاص (منهج مخصص)',
+    ar: 'مشترك خاص ✦',
+    en: 'Special Member ✦',
+    th: 'สมาชิกระดับพิเศษ ✦'
+  },
+  {
+    id: 'welcome_custom_subscriber_desc',
+    group: 'group1_welcome',
+    labelAr: 'وصف حالة المشترك الخاص',
+    ar: 'وصول مخصص للدروس المعتمدة لك',
+    en: 'Custom access to your assigned lessons',
+    th: 'เข้าถึงบทเรียนที่ได้รับมอบหมายพิเศษ'
+  },
+  {
     id: 'welcome_visitor_badge',
     group: 'group1_welcome',
     labelAr: 'شارة وضع الزائر',

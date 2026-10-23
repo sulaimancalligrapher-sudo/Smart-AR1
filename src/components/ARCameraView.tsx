@@ -689,9 +689,25 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
                 // فحص هل المستخدم مشترك مفعل (من الـ Ref أو الـ LocalStorage مباشرة لتفادي أي إغلاق قديم Stale Closure)
                 const activeSubscriber = subscriberRef.current || getStoredSubscriber();
-                const isRestrictedForVisitor = isLessonRestricted(latestLesson) && !activeSubscriber;
+                let isRestricted = false;
 
-                if (isRestrictedForVisitor) {
+                if (!activeSubscriber) {
+                  isRestricted = isLessonRestricted(latestLesson);
+                } else if (activeSubscriber.isCustomSubscriber && activeSubscriber.allowedLessons && activeSubscriber.allowedLessons.length > 0) {
+                  // إذا كان المشترك مخصصاً بدروس محددة، نتحقق هل هذا الدرس ضمن دروسه المصرح بها
+                  const lessonTitle = latestLesson.title.trim();
+                  const targetIndexStr = String((latestLesson.targetIndex ?? 0) + 1);
+                  const targetId = latestLesson.targetId || '';
+                  const isAllowed = activeSubscriber.allowedLessons.some((al) => {
+                    const clean = al.trim();
+                    return clean === lessonTitle || clean === targetIndexStr || clean === targetId;
+                  });
+                  if (!isAllowed) {
+                    isRestricted = true;
+                  }
+                }
+
+                if (isRestricted) {
                   // إخفاء المجسم فوراً لهذا الهدف وكتم أي صوت
                   const group = anchorContentGroupsRef.current.get(targetIdx);
                   if (group) group.visible = false;

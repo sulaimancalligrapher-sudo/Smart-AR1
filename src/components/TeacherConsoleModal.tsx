@@ -5,8 +5,9 @@ import {
   HelpCircle, Brain, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
   Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown,
   Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User,
-  DownloadCloud, UploadCloud, Loader2, Smartphone, Tablet, Monitor, Search, Eye, Globe, Settings
+  DownloadCloud, UploadCloud, Loader2, Smartphone, Tablet, Monitor, Search, Eye, Globe, Settings, Users
 } from 'lucide-react';
+import { SubscribersManagerView } from './SubscribersManagerView';
 import { analytics, DEFAULT_SHEETS_WEB_APP_URL } from '../services/analytics';
 import {
   AnalyticsLogItem,
@@ -161,7 +162,7 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   currentLanguage: initialLang,
   onLanguageChange
 }) => {
-  const [activeTab, setActiveTab] = useState<'lessons' | 'sheets' | 'translations'>('lessons');
+  const [activeTab, setActiveTab] = useState<'lessons' | 'subscribers' | 'sheets' | 'translations'>('lessons');
   const [currentLang, setCurrentLang] = useState<AppLanguage>(() => initialLang || getStoredLanguage());
 
   const handleLangChange = (newLang: AppLanguage) => {
@@ -1413,32 +1414,91 @@ function doGet(e) {
     var action = (e.parameter && e.parameter.action) ? e.parameter.action : "";
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    // أ) التحقق من المشترك في ورقة SubData
+    // أ) التحقق من المشترك في ورقة SubData (الأعمدة A, B, C, AB, AC, AD+)
     if (action === "verifySubscriber") {
       var phone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
       var name = (e.parameter.name || "").toString().trim().toLowerCase();
+      var deviceId = (e.parameter.deviceId || "").toString().trim();
 
       var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
       if (!subSheet) {
         subSheet = ss.insertSheet(SUBSCRIBERS_SHEET);
-        subSheet.appendRow(["رقم المشترك / الجوال", "اسم المشترك"]);
+        var header = ["رقم المشترك (A)", "اسم المشترك (B)", "الدروس المخصصة (C)"];
+        for (var col = 4; col <= 27; col++) { header.push("بيانات إضافية"); }
+        header.push("السماح بالدخول (AB)");
+        header.push("عدد الأجهزة المسموحة (AC)");
+        header.push("الأجهزة المسجلة (AD+)");
+        subSheet.appendRow(header);
         return createJsonResponse({
           success: false,
-          message: "تم إنشاء ورقة SubData تلقائياً في الشيت، يرجى وضع أرقام المشتركين في العمود A وأسمائهم في العمود B."
+          message: "تم إنشاء ورقة SubData تلقائياً في الشيت بالأعمدة المطلوبة."
         });
       }
 
       var subData = subSheet.getDataRange().getValues();
       for (var i = 1; i < subData.length; i++) {
-        var rowPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
-        var rowName = (subData[i][1] || "").toString().trim().toLowerCase();
+        var row = subData[i];
+        var rowPhone = (row[0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var rowName = (row[1] || "").toString().trim().toLowerCase();
 
         if (rowPhone && phone && rowPhone === phone) {
           if (!name || rowName.indexOf(name) !== -1 || name.indexOf(rowName) !== -1) {
+            // 1. فحص حالة السماح بالدخول في العمود AB (index 27)
+            var allowVal = (row[27] || "").toString().trim().toLowerCase();
+            if (allowVal === "لا" || allowVal === "no" || allowVal === "false" || allowVal === "معطل" || allowVal === "blocked") {
+              return createJsonResponse({
+                success: false,
+                message: "⚠️ عذراً، هذا الحساب موقوف حالياً (تم حظر الدخول: لا). يرجى مراجعة المعلم."
+              });
+            }
+
+            // 2. فحص عدد الأجهزة المسموحة (العمود AC - index 28) وبصمات الأجهزة (العمود AD وما بعده)
+            var maxDevices = parseInt(row[28], 10);
+            if (isNaN(maxDevices) || maxDevices <= 0) { maxDevices = 1; }
+
+            var registeredTokens = [];
+            for (var c = 29; c < row.length; c++) {
+              var tok = (row[c] || "").toString().trim();
+              if (tok) { registeredTokens.push({ token: tok, colIndex: c + 1 }); }
+            }
+
+            var isDeviceFound = false;
+            for (var d = 0; d < registeredTokens.length; d++) {
+              if (registeredTokens[d].token === deviceId) {
+                isDeviceFound = true;
+                break;
+              }
+            }
+
+            if (!isDeviceFound && deviceId) {
+              if (registeredTokens.length >= maxDevices) {
+                return createJsonResponse({
+                  success: false,
+                  message: "⚠️ عذراً، تجاوزت الحد الأقصى للأجهزة المسموحة (" + maxDevices + " جهاز). يرجى طلب تصفير الأجهزة من المعلم."
+                });
+              }
+              var targetCol = 30 + registeredTokens.length;
+              subSheet.getRange(i + 1, targetCol).setValue(deviceId);
+              registeredTokens.push({ token: deviceId, colIndex: targetCol });
+            }
+
+            // 3. فحص الدروس المخصصة في العمود C (index 2)
+            var customLessonsRaw = (row[2] || "").toString().trim();
+            var isCustom = false;
+            var allowedList = [];
+            if (customLessonsRaw && customLessonsRaw !== "الكل" && customLessonsRaw !== "*") {
+              isCustom = true;
+              allowedList = customLessonsRaw.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+            }
+
             return createJsonResponse({
               success: true,
-              name: subData[i][1] || e.parameter.name,
-              phone: subData[i][0] || e.parameter.phone
+              name: row[1] || e.parameter.name,
+              phone: row[0] || e.parameter.phone,
+              isCustomSubscriber: isCustom,
+              allowedLessons: allowedList,
+              maxDevices: maxDevices,
+              deviceCount: registeredTokens.length
             });
           }
         }
@@ -1448,6 +1508,108 @@ function doGet(e) {
         success: false,
         message: "عذراً، هذا الاسم أو الرقم غير مسجل في ورقة المشتركين (SubData)."
       });
+    }
+
+    // جلب قائمة المشتركين كاملة لتبويب المشتركين في لوحة المعلم
+    if (action === "getSubscribers") {
+      var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
+      if (!subSheet) {
+        return createJsonResponse({ success: true, subscribers: [] });
+      }
+      var subData = subSheet.getDataRange().getValues();
+      var list = [];
+      for (var i = 1; i < subData.length; i++) {
+        var r = subData[i];
+        if (!r[0] && !r[1]) continue;
+        var rAllow = (r[27] || "").toString().trim().toLowerCase();
+        var isAllw = !(rAllow === "لا" || rAllow === "no" || rAllow === "معطل" || rAllow === "false");
+        var maxDev = parseInt(r[28], 10) || 1;
+        var devs = [];
+        for (var c = 29; c < r.length; c++) {
+          var dt = (r[c] || "").toString().trim();
+          if (dt) devs.push(dt);
+        }
+        list.push({
+          phone: (r[0] || "").toString().trim(),
+          name: (r[1] || "").toString().trim(),
+          allowedLessons: (r[2] || "").toString().trim(),
+          isAllowed: isAllw,
+          maxDevices: maxDev,
+          registeredDevices: devs
+        });
+      }
+      return createJsonResponse({ success: true, subscribers: list });
+    }
+
+    // حفظ أو تحديث مشترك من لوحة المعلم
+    if (action === "saveSubscriber") {
+      var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET) || ss.insertSheet(SUBSCRIBERS_SHEET);
+      var subPhone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+      var subName = (e.parameter.name || "").toString().trim();
+      var subAllowedLessons = (e.parameter.allowedLessons || "").toString().trim();
+      var subIsAllowed = (e.parameter.isAllowed || "نعم").toString().trim();
+      var subMaxDevices = parseInt(e.parameter.maxDevices, 10) || 1;
+
+      var subData = subSheet.getDataRange().getValues();
+      var foundRow = -1;
+      for (var i = 1; i < subData.length; i++) {
+        var exPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        if (exPhone === subPhone) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+
+      if (foundRow > 0) {
+        subSheet.getRange(foundRow, 2).setValue(subName);
+        subSheet.getRange(foundRow, 3).setValue(subAllowedLessons);
+        subSheet.getRange(foundRow, 28).setValue(subIsAllowed);
+        subSheet.getRange(foundRow, 29).setValue(subMaxDevices);
+      } else {
+        var rowArr = [subPhone, subName, subAllowedLessons];
+        while (rowArr.length < 27) { rowArr.push(""); }
+        rowArr.push(subIsAllowed);
+        rowArr.push(subMaxDevices);
+        subSheet.appendRow(rowArr);
+      }
+      return createJsonResponse({ success: true, message: "✓ تم حفظ وتحديث بيانات المشترك بنجاح في ورقة SubData." });
+    }
+
+    // حذف مشترك من ورقة SubData
+    if (action === "deleteSubscriber") {
+      var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
+      if (subSheet) {
+        var subPhone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var subData = subSheet.getDataRange().getValues();
+        for (var i = 1; i < subData.length; i++) {
+          var exPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+          if (exPhone === subPhone) {
+            subSheet.deleteRow(i + 1);
+            break;
+          }
+        }
+      }
+      return createJsonResponse({ success: true, message: "✓ تم حذف المشترك من ورقة SubData." });
+    }
+
+    // تصفير أجهزة مشترك للسماح له بالتسجيل بجهاز جديد
+    if (action === "resetSubscriberDevices") {
+      var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
+      if (subSheet) {
+        var subPhone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var subData = subSheet.getDataRange().getValues();
+        for (var i = 1; i < subData.length; i++) {
+          var exPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+          if (exPhone === subPhone) {
+            var lastCol = subSheet.getLastColumn();
+            if (lastCol >= 30) {
+              subSheet.getRange(i + 1, 30, 1, lastCol - 29).clearContent();
+            }
+            break;
+          }
+        }
+      }
+      return createJsonResponse({ success: true, message: "✓ تم تصفير الأجهزة المسجلة بنجاح." });
     }
 
     // ب) جلب بنك الأسئلة من ورقة Questions-AR
@@ -1813,7 +1975,21 @@ function createJsonResponse(obj) {
               <span>الدروس</span>
             </button>
 
-            {/* 2. قسم الترجمة */}
+            {/* 2. قسم المشتركين */}
+            <button
+              onClick={() => setActiveTab('subscribers')}
+              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'subscribers'
+                  ? 'bg-slate-900 text-purple-400 border-slate-700 shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 border-transparent'
+              }`}
+              title="إدارة المشتركين وورقة SubData"
+            >
+              <Users className="w-4 h-4" />
+              <span>المشتركين</span>
+            </button>
+
+            {/* 3. قسم الترجمة */}
             <button
               onClick={() => setActiveTab('translations')}
               className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -4151,27 +4327,49 @@ function createJsonResponse(obj) {
               </div>
 
               {/* إرشادات هيكل ورقة SubData للمشتركين */}
-              <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-500/20 text-xs text-amber-200/90 space-y-1.5">
-                <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>طريقة إضافة المشتركين في Google Sheets (ورقة SubData):</span>
+              <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/30 text-xs text-purple-200/90 space-y-2">
+                <div className="font-bold text-purple-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                    <span>هيكل ورقة SubData المتطورة في Google Sheets:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('subscribers')}
+                    className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                  >
+                    الانتقال لجدول المشتركين ↗
+                  </button>
                 </div>
-                <p className="text-[11px] leading-relaxed">
-                  عند نسخ كود سكريبت Apps Script أعلاه، يتم إنشاء ورقة اسمها <code className="font-mono bg-black/40 px-1 rounded text-amber-300">SubData</code> تلقائياً في الشيت:
+                <p className="text-[11px] leading-relaxed text-slate-300">
+                  يمكنك إدارة المشتركين بالكامل من تبويب <strong>المشتركين</strong> أعلاه أو مباشرة من شيت جوجل <code className="font-mono bg-black/40 px-1 rounded text-purple-300">SubData</code>:
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 font-mono text-[11px]">
                   <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
-                    <span className="text-amber-400 font-bold block">العمود A:</span>
-                    رقم المشترك أو رقم الجوال (مثل: 0501234567)
+                    <span className="text-cyan-400 font-bold block">العمود A:</span>
+                    رقم المشترك
                   </div>
                   <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
-                    <span className="text-amber-400 font-bold block">العمود B:</span>
-                    اسم المشترك (مثل: محمد خالد)
+                    <span className="text-cyan-400 font-bold block">العمود B:</span>
+                    اسم المشترك
+                  </div>
+                  <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
+                    <span className="text-purple-400 font-bold block">العمود C:</span>
+                    الدروس المخصصة
+                  </div>
+                  <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
+                    <span className="text-emerald-400 font-bold block">العمود AB:</span>
+                    السماح بالدخول (نعم/لا)
+                  </div>
+                  <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
+                    <span className="text-indigo-400 font-bold block">العمود AC:</span>
+                    عدد الأجهزة (1، 2...)
+                  </div>
+                  <div className="p-2 rounded bg-slate-900/80 border border-slate-800">
+                    <span className="text-amber-400 font-bold block">العمود AD+:</span>
+                    بصمات الأجهزة المسجلة
                   </div>
                 </div>
-                <p className="text-[10px] text-slate-400 pt-0.5">
-                  💡 عند كتابة الطالب اسمه ورقمه لأول مرة في التطبيق، تتم مطابقتها في ثانية واحدة مع هذه الورقة وتفعيل حسابه تلقائياً لجميع الدروس المقيدة.
-                </p>
               </div>
             </div>
 
@@ -4384,6 +4582,16 @@ function createJsonResponse(obj) {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Tab 2: Subscribers Manager (إدارة المشتركين وورقة SubData) */}
+        {activeTab === 'subscribers' && (
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 text-slate-100">
+            <SubscribersManagerView
+              lessons={editableLessons}
+              webAppUrl={webAppUrl}
+            />
           </div>
         )}
 

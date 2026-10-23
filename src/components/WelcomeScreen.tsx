@@ -181,12 +181,24 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <div>
                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span>{subscriber.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-semibold">
-                    {t('welcome_subscriber_badge', currentLanguage)}
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${
+                      subscriber.isCustomSubscriber
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-400/40'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                    }`}
+                  >
+                    {subscriber.isCustomSubscriber
+                      ? t('welcome_custom_subscriber_badge', currentLanguage)
+                      : t('welcome_subscriber_badge', currentLanguage)}
                   </span>
                 </div>
-                <div className="text-[10px] text-emerald-300">
-                  {t('welcome_subscriber_desc', currentLanguage)}
+                <div className={`text-[10px] ${subscriber.isCustomSubscriber ? 'text-purple-300' : 'text-emerald-300'}`}>
+                  {subscriber.isCustomSubscriber && subscriber.allowedLessons && subscriber.allowedLessons.length > 0
+                    ? `${t('welcome_custom_subscriber_desc', currentLanguage)} (${subscriber.allowedLessons.length} دروس)`
+                    : subscriber.isCustomSubscriber
+                    ? t('welcome_custom_subscriber_desc', currentLanguage)
+                    : t('welcome_subscriber_desc', currentLanguage)}
                 </div>
               </div>
             </div>

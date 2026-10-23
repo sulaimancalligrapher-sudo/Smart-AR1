@@ -1,9 +1,16 @@
 import { analytics } from './analytics';
+import { getClientDeviceId } from './deviceFingerprint';
+import { getCachedSubscribers, saveCachedSubscribers } from './subscribersManagement';
 
 export interface SubscriberInfo {
   name: string;
   phone: string;
   loginAt: string;
+  allowedLessons?: string[]; // قائمة عناوين الدروس المخصصة لهذا المشترك
+  isCustomSubscriber?: boolean; // هل هو مشترك خاص بمهام ودروس محددة
+  isAllowed?: boolean; // حالة السماح بالدخول
+  maxDevices?: number; // عدد الأجهزة المسموحة
+  deviceCount?: number; // عدد الأجهزة المسجلة
 }
 
 const STORAGE_KEY_SUBSCRIBER = 'smart_ar_active_subscriber';
@@ -78,7 +85,12 @@ export function getStoredSubscriber(): SubscriberInfo | null {
     return {
       name: String(parsed.name || '').trim(),
       phone: String(parsed.phone || '').trim(),
-      loginAt: parsed.loginAt
+      loginAt: parsed.loginAt,
+      allowedLessons: Array.isArray(parsed.allowedLessons) ? parsed.allowedLessons : undefined,
+      isCustomSubscriber: Boolean(parsed.isCustomSubscriber),
+      isAllowed: parsed.isAllowed !== false,
+      maxDevices: typeof parsed.maxDevices === 'number' ? parsed.maxDevices : 1,
+      deviceCount: typeof parsed.deviceCount === 'number' ? parsed.deviceCount : 1
     };
   } catch {
     return null;
@@ -133,7 +145,11 @@ export function setSubscriptionExternalUrl(url: string): void {
 
 /**
  * التحقق من المشترك في ورقة SubData عبر Google Apps Script
- * مع آلية التحقق السريع والتخزين المحلي
+ * يفحص:
+ * 1. صحة الاسم ورقم الهاتف
+ * 2. حالة السماح بالدخول في العمود AB (نعم / لا)
+ * 3. عدد الأجهزة المسموحة في العمود AC ومطابقة بصمة الجهاز في العمود AD+
+ * 4. الدروس المخصصة للمشترك في العمود C
  */
 export async function verifySubscriberWithSheet(
   name: unknown,
@@ -142,6 +158,7 @@ export async function verifySubscriberWithSheet(
 ): Promise<{ success: boolean; message: string; subscriber?: SubscriberInfo }> {
   const cleanName = String(name || '').trim();
   const cleanPhone = normalizeArabicDigits(String(phone || '').replace(/[\s\-\(\)]/g, ''));
+  const currentDeviceId = getClientDeviceId();
 
   if (!cleanName || !cleanPhone) {
     return {
@@ -150,41 +167,120 @@ export async function verifySubscriberWithSheet(
     };
   }
 
-  // 1. حساب تجريبي سريع للتطوير والاختبار المحلي الفوري إذا استخدم 123
+  // 1. حساب تجريبي سريع (123: مشترك مفعل عام)
   if (cleanPhone === '123' || cleanPhone === '000') {
     const demoSub: SubscriberInfo = {
       name: cleanName,
       phone: cleanPhone,
-      loginAt: new Date().toISOString()
+      loginAt: new Date().toISOString(),
+      isCustomSubscriber: false,
+      allowedLessons: [],
+      isAllowed: true,
+      maxDevices: 1,
+      deviceCount: 1
     };
     saveStoredSubscriber(demoSub);
     return {
       success: true,
-      message: '✓ تم تفعيل الاشتراك بنجاح (وضع التجربة السريع)!',
+      message: '✓ تم تفعيل الاشتراك بنجاح (وضع التجربة السريع: مشترك عام)!',
       subscriber: demoSub
+    };
+  }
+
+  // 2. حساب تجريبي سريع (999: مشترك خاص بدروس محددة)
+  if (cleanPhone === '999') {
+    const demoCustomSub: SubscriberInfo = {
+      name: cleanName || 'طالب مخصص',
+      phone: cleanPhone,
+      loginAt: new Date().toISOString(),
+      isCustomSubscriber: true,
+      allowedLessons: ['الخلية النباتية والحيوانية', 'المجموعة الشمسية', 'درس رقم 1'],
+      isAllowed: true,
+      maxDevices: 1,
+      deviceCount: 1
+    };
+    saveStoredSubscriber(demoCustomSub);
+    return {
+      success: true,
+      message: '✓ تم تفعيل الاشتراك بنجاح (وضع التجربة السريع: مشترك خاص)!',
+      subscriber: demoCustomSub
     };
   }
 
   const targetUrl = (webAppUrl || analytics.getWebAppUrl() || '').trim();
 
-  // 2. إذا لم يكن رابط Google Apps Script مضافاً في الإعدادات
+  // 3. التحقق محلياً في الكاش إذا لم يتم ربط رابط Google Apps Script بعد
   if (!targetUrl) {
+    const cachedSubs = getCachedSubscribers();
+    const foundSub = cachedSubs.find((s) => s.phone === cleanPhone);
+
+    if (foundSub) {
+      // فحص الحظر (العمود AB)
+      if (!foundSub.isAllowed) {
+        return {
+          success: false,
+          message: '⚠️ عذراً، هذا الحساب موقوف حالياً (تم حظر الدخول: لا). يرجى مراجعة المعلم أو الإدارة.'
+        };
+      }
+
+      // فحص حد الأجهزة (العمود AC و AD+)
+      const registered = foundSub.registeredDevices || [];
+      if (!registered.includes(currentDeviceId)) {
+        if (registered.length >= (foundSub.maxDevices || 1)) {
+          return {
+            success: false,
+            message: `⚠️ عذراً، لا يمكن الدخول: تم الوصول للحد الأقصى لعدد الأجهزة المسموحة (${foundSub.maxDevices} جهاز). يرجى طلب تصفير الأجهزة من المعلم.`
+          };
+        }
+        // تسجيل الجهاز الجديد
+        registered.push(currentDeviceId);
+        foundSub.registeredDevices = registered;
+        saveCachedSubscribers(cachedSubs);
+      }
+
+      const allowedList = foundSub.allowedLessons
+        ? foundSub.allowedLessons.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+      const isCustom = allowedList.length > 0;
+
+      const confirmedSub: SubscriberInfo = {
+        name: foundSub.name || cleanName,
+        phone: foundSub.phone,
+        loginAt: new Date().toISOString(),
+        isCustomSubscriber: isCustom,
+        allowedLessons: allowedList,
+        isAllowed: true,
+        maxDevices: foundSub.maxDevices || 1,
+        deviceCount: registered.length
+      };
+
+      saveStoredSubscriber(confirmedSub);
+      return {
+        success: true,
+        message: isCustom
+          ? `✓ أهلاً بك يا ${confirmedSub.name}! تم تفعيل اشتراكك الخاص (${allowedList.length} دروس مخصصة).`
+          : `✓ أهلاً بك يا ${confirmedSub.name}! تم التحقق من الاشتراك بنجاح.`,
+        subscriber: confirmedSub
+      };
+    }
+
     return {
       success: false,
       message:
-        '⚠️ رابط Google Sheets غير مضبوط في لوحة الإدارة بعد. يمكنك تجربة الدخول السريع برقم 123، أو ضبط الرابط من لوحة الإدارة (تبويب Google Sheets).'
+        '⚠️ لم يتم العثور على هذا الرقم في ورقة المشتركين. يمكنك تجربة الدخول السريع برقم 123 (مشترك عام) أو 999 (مشترك خاص)، أو ضبط رابط Google Apps Script من لوحة الإدارة.'
     };
   }
 
-  // 3. الاستعلام السريع عبر Google Apps Script (GET Query parameter) لتفادي قيود CORS
+  // 4. الاستعلام الحي السحابي عبر Google Apps Script
   try {
     const queryUrl = new URL(targetUrl);
     queryUrl.searchParams.set('action', 'verifySubscriber');
     queryUrl.searchParams.set('phone', cleanPhone);
     queryUrl.searchParams.set('name', cleanName);
+    queryUrl.searchParams.set('deviceId', currentDeviceId);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 9000); // مهلة 9 ثوانٍ
+    const timeoutId = setTimeout(() => controller.abort(), 9500);
 
     const res = await fetch(queryUrl.toString(), {
       method: 'GET',
@@ -206,15 +302,28 @@ export async function verifySubscriberWithSheet(
     }
 
     if (data && data.success) {
+      const allowedLessonsList: string[] = Array.isArray(data.allowedLessons)
+        ? data.allowedLessons
+        : (data.allowedLessons ? String(data.allowedLessons).split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+      const isCustom = Boolean(data.isCustomSubscriber || (allowedLessonsList.length > 0));
+
       const confirmedSub: SubscriberInfo = {
         name: String(data.name || cleanName).trim(),
         phone: String(data.phone || cleanPhone).trim(),
-        loginAt: new Date().toISOString()
+        loginAt: new Date().toISOString(),
+        isCustomSubscriber: isCustom,
+        allowedLessons: allowedLessonsList,
+        isAllowed: true,
+        maxDevices: parseInt(data.maxDevices, 10) || 1,
+        deviceCount: parseInt(data.deviceCount, 10) || 1
       };
+
       saveStoredSubscriber(confirmedSub);
       return {
         success: true,
-        message: `✓ أهلاً بك يا ${confirmedSub.name}! تم التحقق من الاشتراك بنجاح.`,
+        message: isCustom
+          ? `✓ أهلاً بك يا ${confirmedSub.name}! تم تفعيل اشتراكك الخاص (${allowedLessonsList.length} دروس مخصصة).`
+          : `✓ أهلاً بك يا ${confirmedSub.name}! تم التحقق من الاشتراك بنجاح.`,
         subscriber: confirmedSub
       };
     } else {
