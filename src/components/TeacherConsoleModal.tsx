@@ -42,6 +42,7 @@ import { SystemAnswersModal } from './SystemAnswersModal';
 import { getCameraShowTargetCards, setCameraShowTargetCards } from '../services/adminAuth';
 import { TranslationManagerView } from './TranslationManagerView';
 import { AppLanguage, getStoredLanguage, saveStoredLanguage } from '../services/translationService';
+import { getAppBranding, saveAppBranding, resetAppBranding, AppBrandingConfig } from '../services/brandingService';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -281,6 +282,44 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     setCameraShowTargetCards(next);
   };
 
+  // Branding state for app identity (custom logo, title, and subtitle)
+  const [branding, setBranding] = useState<AppBrandingConfig>(() => getAppBranding());
+  const [brandingSavedNotice, setBrandingSavedNotice] = useState<string | null>(null);
+  const brandingLogoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBrandingLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const optimized = await optimizeImageFile(file, 300, 300, 0.85);
+      setBranding((prev) => ({ ...prev, logoUrl: optimized }));
+      setBrandingSavedNotice('تم رفع الصورة ومعاينتها. اضغط حفظ لتطبيق التغيير.');
+      setTimeout(() => setBrandingSavedNotice(null), 4000);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setBranding((prev) => ({ ...prev, logoUrl: reader.result as string }));
+          setBrandingSavedNotice('تم رفع الصورة ومعاينتها. اضغط حفظ لتطبيق التغيير.');
+          setTimeout(() => setBrandingSavedNotice(null), 4000);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveBranding = () => {
+    saveAppBranding(branding);
+    setBrandingSavedNotice('✓ تم حفظ هوية التطبيق وتحديث الشعار والعناوين فوراً');
+    setTimeout(() => setBrandingSavedNotice(null), 4000);
+  };
+
+  const handleResetBranding = () => {
+    const def = resetAppBranding();
+    setBranding(def);
+    setBrandingSavedNotice('✓ تمت استعادة الهوية والعناوين الافتراضية');
+    setTimeout(() => setBrandingSavedNotice(null), 4000);
+  };
 
   // Question Form State
   const [newQType, setNewQType] = useState<QuestionType>('multiple_choice');
@@ -3809,6 +3848,174 @@ function createJsonResponse(obj) {
                     <span>مسح جميع الدروس ({editableLessons.length})</span>
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* 🎨 تخصيص هوية التطبيق (الشعار والعناوين) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                    <Sparkles className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                      <span>تخصيص هوية التطبيق (الشعار والعناوين)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-500/40">
+                        مباشر
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      تغيير شعار الكتاب، اسم التطبيق، والوصف الترحيبي ليتناسب مع مدرستك أو مادتك الدراسية
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleResetBranding}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-[11px] font-semibold border border-slate-700/80 transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                  title="استعادة الشعار والعناوين الافتراضية الأصلية"
+                >
+                  <RefreshCw className="w-3 h-3 text-slate-400" />
+                  <span>استعادة الافتراضي</span>
+                </button>
+              </div>
+
+              {brandingSavedNotice && (
+                <div className="p-2.5 rounded-xl bg-purple-950/70 border border-purple-500/50 text-purple-200 text-xs font-medium flex items-center gap-2 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                  <span>{brandingSavedNotice}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                {/* 1. حقل الشعار ومعاينته */}
+                <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800/80 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-200 mb-1 flex items-center gap-1.5">
+                      <Image className="w-3.5 h-3.5 text-purple-400" />
+                      <span>شعار التطبيق (صورة أو رابط)</span>
+                    </label>
+                    <p className="text-[10px] text-slate-400 mb-2.5 leading-relaxed">
+                      يحل محل أيقونة الكتاب الافتراضية في أعلى الصفحة الرئيسية
+                    </p>
+
+                    {/* معاينة الشعار */}
+                    <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-950 border border-slate-800 mb-3">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600/30 via-indigo-600/20 to-cyan-500/30 border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-inner">
+                        {branding.logoUrl ? (
+                          <img
+                            src={branding.logoUrl}
+                            alt="شعار التطبيق"
+                            className="w-full h-full object-contain p-1"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '';
+                            }}
+                          />
+                        ) : (
+                          <BookOpen className="w-7 h-7 text-purple-300" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">
+                          {branding.logoUrl ? 'شعار مخصص' : 'الشعار الافتراضي'}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate">
+                          {branding.logoUrl ? 'جاهز للتطبيق' : 'أيقونة الكتاب الذكي'}
+                        </div>
+                        {branding.logoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setBranding((prev) => ({ ...prev, logoUrl: '' }))}
+                            className="text-[10px] text-rose-400 hover:text-rose-300 underline mt-0.5 cursor-pointer"
+                          >
+                            إزالة الشعار
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* إدخال الرابط */}
+                    <input
+                      type="url"
+                      value={branding.logoUrl}
+                      onChange={(e) => setBranding((prev) => ({ ...prev, logoUrl: e.target.value }))}
+                      placeholder="https://... رابط صورة الشعار"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 mb-2"
+                    />
+
+                    {/* رفع من الجهاز */}
+                    <input
+                      ref={brandingLogoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleBrandingLogoUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => brandingLogoInputRef.current?.click()}
+                      className="w-full py-2 px-3 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>رفع صورة الشعار من الجهاز</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2 & 3. العناوين والنصوص */}
+                <div className="md:col-span-2 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800/80 space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    {/* حقل عنوان التطبيق */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-200 mb-1 flex items-center gap-1.5">
+                        <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>عنوان التطبيق المخصص</span>
+                      </label>
+                      <p className="text-[10px] text-slate-400 mb-1.5">
+                        النص الرئيسي الكبير في واجهة التطبيق (الافتراضي: كتابي الذكي)
+                      </p>
+                      <input
+                        type="text"
+                        value={branding.customTitle}
+                        onChange={(e) => setBranding((prev) => ({ ...prev, customTitle: e.target.value }))}
+                        placeholder="مثال: كتاب العلوم التفاعلي - الصف الرابع"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    {/* حقل الوصف الترحيبي الفرعي */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-200 mb-1 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>الوصف الترحيبي الفرعي المخصص</span>
+                      </label>
+                      <p className="text-[10px] text-slate-400 mb-1.5">
+                        النص التوضيحي تحت العنوان الرئيسي في الصفحة الترحيبية
+                      </p>
+                      <textarea
+                        rows={2}
+                        value={branding.customSubtitle}
+                        onChange={(e) => setBranding((prev) => ({ ...prev, customSubtitle: e.target.value }))}
+                        placeholder="مثال: منهج العلوم التجريبي - مدرسة المستقبل الأهلية، وجّه الكاميرا نحو الكتاب لبدء الاستكشاف"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* زر حفظ الهوية */}
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSaveBranding}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-purple-900/30 cursor-pointer flex items-center gap-2 active:scale-95"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>حفظ هوية التطبيق وتطبيقها فوراً</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 

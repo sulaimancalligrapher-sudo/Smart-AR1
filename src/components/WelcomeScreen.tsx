@@ -23,6 +23,7 @@ import { SubscriberInfo } from '../services/subscriptionAuth';
 import { AppLanguage } from '../types/translation';
 import { t } from '../services/translationService';
 import { LanguageDropdown } from './LanguageDropdown';
+import { getAppBranding, AppBrandingConfig } from '../services/brandingService';
 
 interface WelcomeScreenProps {
   onStartCamera: () => void;
@@ -54,6 +55,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onLanguageChange
 }) => {
   const isRTL = currentLanguage === 'ar';
+  const [branding, setBranding] = React.useState<AppBrandingConfig>(() => getAppBranding());
+
+  React.useEffect(() => {
+    const handleBrandingUpdate = (e: any) => {
+      if (e.detail) setBranding(e.detail);
+    };
+    window.addEventListener('smart_ar_branding_updated', handleBrandingUpdate);
+    return () => window.removeEventListener('smart_ar_branding_updated', handleBrandingUpdate);
+  }, []);
 
   return (
     <div
@@ -67,15 +77,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       {/* Top Header Bar */}
       <header className="relative z-50 max-w-2xl mx-auto w-full flex items-center justify-between py-2.5 border-b border-white/10 gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20 flex-shrink-0">
-            <BookOpen className="w-5 h-5 text-white" />
-          </div>
+          {branding.logoUrl ? (
+            <img
+              src={branding.logoUrl}
+              alt="Logo"
+              className="w-10 h-10 rounded-2xl object-contain bg-white/10 p-1 shadow-lg shadow-sky-500/20 border border-white/20 flex-shrink-0"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20 flex-shrink-0">
+              <BookOpen className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-black tracking-tight text-white truncate">
-              {currentLanguage === 'ar' ? 'كتابي الذكي' : currentLanguage === 'en' ? 'Smart-AR' : 'สมาร์ท-AR'}
+              {branding.customTitle || (currentLanguage === 'ar' ? 'كتابي الذكي' : currentLanguage === 'en' ? 'Smart-AR' : 'สมาร์ท-AR')}
             </h1>
             <p className="text-[11px] text-slate-400 font-medium truncate">
-              {currentLanguage === 'ar' ? 'الواقع المعزز التعليمي (WebAR)' : currentLanguage === 'en' ? 'Educational WebAR' : 'การเรียนรู้ WebAR'}
+              {branding.customSubtitle || (currentLanguage === 'ar' ? 'الواقع المعزز التعليمي (WebAR)' : currentLanguage === 'en' ? 'Educational WebAR' : 'การเรียนรู้ WebAR')}
             </p>
           </div>
         </div>
@@ -113,13 +131,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold shadow-sm">
                 <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                <span>المشترك: {subscriber.name}</span>
+                <span>{subscriber.name}</span>
               </div>
               {onSubscriberLogout && (
                 <button
                   onClick={onSubscriberLogout}
                   className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer text-xs"
-                  title="تسجيل الخروج من الاشتراك"
+                  title={t('welcome_logout_subscriber', currentLanguage)}
                 >
                   <LogOut className="w-3.5 h-3.5 text-rose-400" />
                 </button>
@@ -129,13 +147,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 text-xs font-semibold shadow-sm">
                 <User className="w-3.5 h-3.5 text-sky-400" />
-                <span>الزائر: {visitorName}</span>
+                <span>{visitorName}</span>
               </div>
               {onVisitorLogout && (
                 <button
                   onClick={onVisitorLogout}
                   className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-rose-400 border border-slate-700 transition-colors cursor-pointer text-xs flex items-center gap-1"
-                  title="تسجيل خروج الزائر"
+                  title={t('welcome_logout_visitor', currentLanguage)}
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
@@ -155,20 +173,20 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         
         {/* كارت حالة المستخدم (مشترك مفعل / زائر محفوظ اسمه مع زر خروج / أو زائر جديد مع زر دخول المشترك) */}
         {subscriber ? (
-          <div className="w-full max-w-md p-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/50 flex items-center justify-between gap-3 shadow-xl animate-fadeIn text-right">
+          <div className="w-full max-w-md p-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/50 flex items-center justify-between gap-3 shadow-xl animate-fadeIn">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-400/30 flex-shrink-0">
                 <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
               </div>
               <div>
                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>مرحباً، {subscriber.name}</span>
+                  <span>{subscriber.name}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-semibold">
-                    مشترك مفعل ✓
+                    {t('welcome_subscriber_badge', currentLanguage)}
                   </span>
                 </div>
                 <div className="text-[10px] text-emerald-300">
-                  كافة الدروس (المفتوحة والمقيدة) تُسجل باسمك ورقمك
+                  {t('welcome_subscriber_desc', currentLanguage)}
                 </div>
               </div>
             </div>
@@ -176,28 +194,28 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <button
                 onClick={onSubscriberLogout}
                 className="px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 shadow-sm active:scale-95 flex-shrink-0"
-                title="تسجيل الخروج والتحول لوضع الزائر المجاني لتجربة حظر الدروس المقيدة"
+                title={t('welcome_logout_subscriber', currentLanguage)}
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>خروج المشترك</span>
+                <span>{t('welcome_logout_subscriber', currentLanguage)}</span>
               </button>
             )}
           </div>
         ) : visitorName ? (
-          <div className="w-full max-w-md p-3.5 rounded-2xl bg-slate-900/95 border border-sky-500/40 flex items-center justify-between gap-3 shadow-lg text-right animate-fadeIn">
+          <div className="w-full max-w-md p-3.5 rounded-2xl bg-slate-900/95 border border-sky-500/40 flex items-center justify-between gap-3 shadow-lg animate-fadeIn">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-300 flex items-center justify-center border border-sky-400/30 flex-shrink-0">
                 <User className="w-4 h-4 text-sky-400" />
               </div>
               <div>
                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>مرحباً، {visitorName}</span>
+                  <span>{visitorName}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 font-semibold">
-                    وضع الزائر
+                    {t('welcome_visitor_badge', currentLanguage)}
                   </span>
                 </div>
                 <div className="text-[10px] text-slate-400">
-                  تُسجل إجاباتك في الدروس المفتوحة باسمك تلقائياً دون تكرار
+                  {t('welcome_visitor_desc', currentLanguage)}
                 </div>
               </div>
             </div>
@@ -206,31 +224,30 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <button
                   onClick={onVisitorLogout}
                   className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-rose-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 active:scale-95 shadow-sm"
-                  title="تسجيل خروج الزائر لمسح الاسم أو كتابة اسم آخر"
+                  title={t('welcome_logout_visitor', currentLanguage)}
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>خروج الزائر</span>
+                  <span>{t('welcome_logout_visitor', currentLanguage)}</span>
                 </button>
               )}
               {onOpenSubscriberLogin && (
                 <button
                   onClick={onOpenSubscriberLogin}
                   className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 flex-shrink-0 active:scale-95 shadow-sm"
-                  title="دخول المشترك لتفعيل الدروس المقيدة"
+                  title={t('welcome_subscriber_login_btn', currentLanguage)}
                 >
                   <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline">دخول المشترك</span>
+                  <span className="hidden sm:inline">{t('welcome_subscriber_login_btn', currentLanguage)}</span>
                 </button>
               )}
             </div>
           </div>
         ) : (
-          <div className="w-full max-w-md p-3 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between gap-3 shadow-lg text-right">
+          <div className="w-full max-w-md p-3 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between gap-3 shadow-lg">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
               <div className="text-xs text-slate-300 font-medium">
-                <span className="text-amber-300 font-bold block sm:inline">أنت في وضع الزائر: </span>
-                <span>الدروس المقيدة ستطلب تسجيل الدخول.</span>
+                <span>{t('welcome_visitor_alert', currentLanguage)}</span>
               </div>
             </div>
             {onOpenSubscriberLogin && (
@@ -239,7 +256,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-1 flex-shrink-0 active:scale-95 shadow-sm"
               >
                 <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                <span>دخول المشترك</span>
+                <span>{t('welcome_subscriber_login_btn', currentLanguage)}</span>
               </button>
             )}
           </div>

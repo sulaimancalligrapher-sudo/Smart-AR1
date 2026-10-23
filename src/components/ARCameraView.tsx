@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume1, Volume2, VolumeX, Music, User } from 'lucide-react';
+import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume1, Volume2, VolumeX, Music, User, SlidersHorizontal, LogOut, Globe } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LessonData, getActiveLessonModel, getLessonModelSound, isLessonRestricted } from '../types/ar';
@@ -248,6 +248,22 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   const [activeModelSoundTitle, setActiveModelSoundTitle] = useState<string | null>(null);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const volumeControlRef = useRef<HTMLDivElement>(null);
+  const [showMobileToolsMenu, setShowMobileToolsMenu] = useState(false);
+  const mobileToolsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutsideTools(event: MouseEvent | TouchEvent) {
+      if (mobileToolsMenuRef.current && !mobileToolsMenuRef.current.contains(event.target as Node)) {
+        setShowMobileToolsMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutsideTools);
+    document.addEventListener('touchstart', handleClickOutsideTools);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideTools);
+      document.removeEventListener('touchstart', handleClickOutsideTools);
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = soundService.subscribe((state) => {
@@ -949,8 +965,9 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-          {/* 🌐 زر اللغات المنسدل المدمج والمصمم بعناية */}
+        {/* Desktop Controls (شاشات الكمبيوتر والتابلت: أزرار واسعة ومنفصلة) */}
+        <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+          {/* 🌐 زر اللغات المنسدل */}
           {onLanguageChange && (
             <LanguageDropdown
               currentLanguage={currentLanguage}
@@ -958,49 +975,50 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
               compact={true}
             />
           )}
-          {/* شارة المشترك المفعل مع اسمه وزر تسجيل الخروج السريع للاختبار */}
+
+          {/* شارة المشترك أو الزائر */}
           {subscriber ? (
-            <div className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-[10px] sm:text-xs text-emerald-300 font-bold shadow-md animate-fadeIn">
-              <Sparkles className="w-3 h-3 text-amber-300 animate-pulse flex-shrink-0" />
-              <span className="truncate max-w-[70px] sm:max-w-[110px]">{subscriber.name}</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-xs text-emerald-300 font-bold shadow-md animate-fadeIn">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse flex-shrink-0" />
+              <span className="truncate max-w-[110px]">{subscriber.name}</span>
               {onSubscriberLogout && (
                 <button
                   type="button"
                   onClick={onSubscriberLogout}
-                  className="mr-0.5 px-1.5 py-0.5 rounded-full bg-rose-500/30 hover:bg-rose-500/60 text-rose-200 text-[9px] font-bold border border-rose-400/40 cursor-pointer transition-all active:scale-95"
-                  title="تسجيل الخروج والتحول لوضع الزائر المجاني لتجربة حظر الدروس المقيدة"
+                  className="mr-0.5 px-1.5 py-0.5 rounded-full bg-rose-500/30 hover:bg-rose-500/60 text-rose-200 text-[10px] font-bold border border-rose-400/40 cursor-pointer transition-all active:scale-95"
+                  title="تسجيل الخروج والتحول لوضع الزائر"
                 >
                   خروج ✕
                 </button>
               )}
             </div>
           ) : visitorName ? (
-            <div className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-sky-950/90 border border-sky-500/50 text-[10px] sm:text-xs text-sky-300 font-bold shadow-md animate-fadeIn">
-              <User className="w-3 h-3 text-sky-400 flex-shrink-0" />
-              <span className="truncate max-w-[70px] sm:max-w-[110px]">{visitorName}</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-950/90 border border-sky-500/50 text-xs text-sky-300 font-bold shadow-md animate-fadeIn">
+              <User className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+              <span className="truncate max-w-[110px]">{visitorName}</span>
               {onVisitorLogout && (
                 <button
                   type="button"
                   onClick={onVisitorLogout}
-                  className="mr-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-rose-300 text-[9px] font-bold border border-slate-600/40 cursor-pointer transition-all active:scale-95"
-                  title="تسجيل خروج الزائر لتغيير الاسم"
+                  className="mr-0.5 px-1.5 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-rose-300 text-[10px] font-bold border border-slate-600/40 cursor-pointer transition-all active:scale-95"
+                  title="تسجيل خروج الزائر"
                 >
                   خروج ✕
                 </button>
               )}
             </div>
           ) : (
-            <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700 text-[10px] text-slate-300 font-medium shadow-md">
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700 text-[11px] text-slate-300 font-medium shadow-md">
               <span>👤 وضع الزائر</span>
             </div>
           )}
 
-          {/* زر خفض ورفع صوت المجسم (أيقونة فقط بدون نص) - يظهر حصراً إذا كان للمجسم رابط صوت خاص */}
+          {/* زر خفض ورفع صوت المجسم */}
           {hasModelSound && (
             <div className="relative" ref={volumeControlRef}>
               <button
                 onClick={() => setShowVolumeSlider((prev) => !prev)}
-                className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center backdrop-blur-md ${
+                className={`p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center backdrop-blur-md ${
                   soundState.isMuted || soundState.volume === 0
                     ? 'bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 border-rose-300/40'
                     : soundState.isPlaying
@@ -1015,19 +1033,19 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 aria-label="التحكم بالصوت"
               >
                 {soundState.isMuted || soundState.volume === 0 ? (
-                  <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-300" />
+                  <VolumeX className="w-4 h-4 text-rose-300" />
                 ) : soundState.volume < 0.5 ? (
-                  <Volume1 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
+                  <Volume1 className="w-4 h-4 text-emerald-300" />
                 ) : (
                   <Volume2
-                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300 ${
+                    className={`w-4 h-4 text-emerald-300 ${
                       soundState.isPlaying ? 'animate-pulse' : ''
                     }`}
                   />
                 )}
               </button>
 
-              {/* شريط رفع وخفض الصوت يظهر عند النقر على الأيقونة */}
+              {/* شريط رفع وخفض الصوت */}
               {showVolumeSlider && (
                 <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 backdrop-blur-xl border border-white/20 p-3 rounded-2xl shadow-2xl flex flex-col items-center gap-2.5 min-w-[140px] animate-in fade-in zoom-in-95 duration-150">
                   <div className="flex items-center justify-between w-full px-1 gap-2">
@@ -1035,7 +1053,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                       onClick={() => soundService.toggleMute()}
                       className="p-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
                       title={soundState.isMuted ? 'إلغاء الكتم' : 'كتم'}
-                      aria-label="كتم أو تشغيل"
                     >
                       {soundState.isMuted || soundState.volume === 0 ? (
                         <VolumeX className="w-4 h-4 text-rose-400" />
@@ -1048,7 +1065,6 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                     </span>
                   </div>
 
-                  {/* شريط التمرير للتحكم السلس في رفع وخفض الصوت */}
                   <input
                     type="range"
                     min="0"
@@ -1075,7 +1091,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           {/* زر التبديل الفوري بين ثبات المجسم فوق الكتاب أو التدوير */}
           <button
             onClick={() => setIsARAutoRotateActive((prev) => !prev)}
-            className={`p-2 sm:p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
+            className={`p-2.5 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
               isARAutoRotateActive
                 ? 'bg-amber-500/40 hover:bg-amber-500/60 text-white border-amber-300/50'
                 : 'bg-white/10 hover:bg-white/25 text-slate-200 border-white/20'
@@ -1083,37 +1099,288 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             title={isARAutoRotateActive ? 'إيقاف الدوران وتثبيت المجسم فوق الكتاب' : 'تشغيل الدوران التلقائي'}
           >
             {isARAutoRotateActive ? (
-              <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-200" />
+              <Pause className="w-4 h-4 text-amber-200" />
             ) : (
-              <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
+              <RotateCw className="w-4 h-4 text-slate-300" />
             )}
           </button>
 
           <button
             onClick={applyAutoFocus}
-            className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
+            className="p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
             title="ضبط الفوكس"
           >
-            <Focus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+            <Focus className="w-4 h-4 text-amber-400" />
           </button>
 
           <button
             onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
-            className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
+            className="p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
             title="تبديل الكاميرا"
           >
-            <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
+            <RefreshCw className="w-4 h-4 text-cyan-400" />
           </button>
 
           {getCameraShowTargetCards() && isAdmin && onOpenTargetCards && (
             <button
               onClick={onOpenTargetCards}
-              className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
+              className="p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
               title="عرض بطاقات الدروس"
             >
-              <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
+              <Eye className="w-4 h-4 text-sky-400" />
             </button>
           )}
+        </div>
+
+        {/* Mobile Controls (شاشات الجوال: تجميع الأزرار في زر قائمة موحد وأنيق) */}
+        <div className="flex md:hidden items-center gap-1.5 flex-shrink-0">
+          {/* شارة المشترك أو الزائر المدمجة جداً على الجوال */}
+          {subscriber ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-[10px] text-emerald-300 font-bold shadow-md">
+              <Sparkles className="w-3 h-3 text-amber-300 flex-shrink-0" />
+              <span className="truncate max-w-[65px]">{subscriber.name}</span>
+            </div>
+          ) : visitorName ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-sky-950/90 border border-sky-500/50 text-[10px] text-sky-300 font-bold shadow-md">
+              <User className="w-3 h-3 text-sky-400 flex-shrink-0" />
+              <span className="truncate max-w-[65px]">{visitorName}</span>
+            </div>
+          ) : null}
+
+          {/* زر التحكم بالصوت السريع على الجوال */}
+          {hasModelSound && (
+            <div className="relative">
+              <button
+                onClick={() => soundService.toggleMute()}
+                className={`p-2 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center backdrop-blur-md ${
+                  soundState.isMuted || soundState.volume === 0
+                    ? 'bg-rose-500/30 text-rose-200 border-rose-300/40'
+                    : soundState.isPlaying
+                    ? 'bg-emerald-500/40 text-white border-emerald-300/60 ring-1 ring-emerald-400/40'
+                    : 'bg-white/10 text-slate-200 border-white/20'
+                }`}
+                title="كتم / تشغيل صوت المجسم"
+              >
+                {soundState.isMuted || soundState.volume === 0 ? (
+                  <VolumeX className="w-3.5 h-3.5 text-rose-300" />
+                ) : (
+                  <Volume2 className={`w-3.5 h-3.5 text-emerald-300 ${soundState.isPlaying ? 'animate-pulse' : ''}`} />
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* 🎛️ الزر الموحد للجوال: يجمع (تبديل الكاميرا / ضبط الفوكس / تشغيل الدوران / خروج المشترك كأيقونة / تبديل اللغات) */}
+          <div className="relative" ref={mobileToolsMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowMobileToolsMenu((prev) => !prev)}
+              className={`p-2 rounded-full border shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center backdrop-blur-md ${
+                showMobileToolsMenu
+                  ? 'bg-cyan-500 text-white border-cyan-300 ring-2 ring-cyan-400/50'
+                  : 'bg-slate-900/90 text-cyan-300 border-cyan-500/40 hover:bg-slate-800'
+              }`}
+              title="أدوات وإعدادات الكاميرا"
+              aria-label="قائمة أدوات الكاميرا"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
+
+            {/* القائمة المنسدلة المجمعة للأدوات على الجوال */}
+            {showMobileToolsMenu && (
+              <div
+                dir="rtl"
+                className="absolute top-full mt-2 left-0 z-50 bg-slate-950/95 backdrop-blur-xl border border-white/20 p-2.5 rounded-2xl shadow-2xl flex flex-col gap-2 min-w-[210px] animate-in fade-in zoom-in-95 duration-150"
+              >
+                {/* 1. تبديل اللغات (🇸🇦 ع | 🇬🇧 EN | 🇹🇭 TH) */}
+                {onLanguageChange && (
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-bold">
+                      <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>اللغة (Language)</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLanguageChange('ar');
+                          setShowMobileToolsMenu(false);
+                        }}
+                        className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          currentLanguage === 'ar'
+                            ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>🇸🇦</span>
+                        <span>ع</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLanguageChange('en');
+                          setShowMobileToolsMenu(false);
+                        }}
+                        className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          currentLanguage === 'en'
+                            ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>🇬🇧</span>
+                        <span>EN</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLanguageChange('th');
+                          setShowMobileToolsMenu(false);
+                        }}
+                        className={`py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          currentLanguage === 'th'
+                            ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>🇹🇭</span>
+                        <span>TH</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. تبديل الكاميرا (أمامية / خلفية) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+                    setShowMobileToolsMenu(false);
+                  }}
+                  className="w-full px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-white flex items-center justify-between transition-colors cursor-pointer active:scale-95"
+                >
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>تبديل الكاميرا</span>
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400">
+                    {facingMode === 'environment' ? 'خلفية' : 'أمامية'}
+                  </span>
+                </button>
+
+                {/* 3. ضبط الفوكس */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    applyAutoFocus();
+                    setShowMobileToolsMenu(false);
+                  }}
+                  className="w-full px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-white flex items-center gap-2 transition-colors cursor-pointer active:scale-95"
+                >
+                  <Focus className="w-3.5 h-3.5 text-amber-400" />
+                  <span>ضبط الفوكس</span>
+                </button>
+
+                {/* 4. تشغيل / إيقاف الدوران */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsARAutoRotateActive((prev) => !prev);
+                  }}
+                  className="w-full px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-white flex items-center justify-between transition-colors cursor-pointer active:scale-95"
+                >
+                  <span className="flex items-center gap-2">
+                    {isARAutoRotateActive ? (
+                      <Pause className="w-3.5 h-3.5 text-amber-300" />
+                    ) : (
+                      <RotateCw className="w-3.5 h-3.5 text-slate-300" />
+                    )}
+                    <span>تشغيل الدوران</span>
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                      isARAutoRotateActive
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {isARAutoRotateActive ? 'مفعّل' : 'متوقف'}
+                  </span>
+                </button>
+
+                {/* 5. خروج المشترك .. أيقونة فقط بدون نص مطوّل */}
+                {subscriber && onSubscriberLogout && (
+                  <div className="pt-1 border-t border-slate-800/80">
+                    <div className="w-full px-2.5 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 truncate max-w-[130px]">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
+                        <span className="text-xs text-emerald-200 font-bold truncate">{subscriber.name}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowMobileToolsMenu(false);
+                          onSubscriberLogout();
+                        }}
+                        className="p-1.5 rounded-lg bg-rose-500/30 hover:bg-rose-500/60 text-rose-200 hover:text-white border border-rose-400/40 transition-all cursor-pointer active:scale-90"
+                        title="تسجيل الخروج"
+                        aria-label="تسجيل الخروج"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* خروج الزائر إن وجد */}
+                {!subscriber && visitorName && onVisitorLogout && (
+                  <div className="pt-1 border-t border-slate-800/80">
+                    <div className="w-full px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 truncate max-w-[130px]">
+                        <User className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                        <span className="text-xs text-slate-200 font-medium truncate">{visitorName}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowMobileToolsMenu(false);
+                          onVisitorLogout();
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/40 text-slate-300 hover:text-rose-200 border border-slate-700 transition-all cursor-pointer active:scale-90"
+                        title="خروج الزائر"
+                        aria-label="خروج الزائر"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. بطاقات الدروس (إذا مفعلة ولمعلم/مشرف) */}
+                {getCameraShowTargetCards() && isAdmin && onOpenTargetCards && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMobileToolsMenu(false);
+                      onOpenTargetCards();
+                    }}
+                    className="w-full px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-sky-300 flex items-center gap-2 transition-colors cursor-pointer active:scale-95"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-sky-400" />
+                    <span>عرض بطاقات الدروس</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

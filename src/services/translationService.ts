@@ -106,6 +106,62 @@ export const DEFAULT_TRANSLATION_ITEMS: TranslationItem[] = [
     th: 'คุณสมบัติการเรียนรู้ด้วยเทคโนโลยี AR'
   },
   {
+    id: 'welcome_subscriber_badge',
+    group: 'group1_welcome',
+    labelAr: 'شارة المشترك المفعل',
+    ar: 'مشترك مفعل ✓',
+    en: 'Active Subscriber ✓',
+    th: 'สมาชิกที่ใช้งาน ✓'
+  },
+  {
+    id: 'welcome_subscriber_desc',
+    group: 'group1_welcome',
+    labelAr: 'وصف حالة المشترك المفعل',
+    ar: 'وصول كامل لكافة الدروس التفاعلية',
+    en: 'Full access to all interactive lessons',
+    th: 'เข้าถึงบทเรียนเชิงโต้ตอบทั้งหมด'
+  },
+  {
+    id: 'welcome_visitor_badge',
+    group: 'group1_welcome',
+    labelAr: 'شارة وضع الزائر',
+    ar: 'وضع الزائر',
+    en: 'Visitor Mode',
+    th: 'โหมดผู้เยี่ยมชม'
+  },
+  {
+    id: 'welcome_visitor_desc',
+    group: 'group1_welcome',
+    labelAr: 'وصف حالة الزائر',
+    ar: 'تجربة مجانية للدروس المفتوحة',
+    en: 'Free preview for open lessons',
+    th: 'ทดลองเรียนฟรีสำหรับบทเรียนเปิด'
+  },
+  {
+    id: 'welcome_visitor_alert',
+    group: 'group1_welcome',
+    labelAr: 'تنبيه وضع الزائر والمحتوى المقيد',
+    ar: 'أنت في وضع الزائر: الدروس المقيدة تتطلب اشتراكاً',
+    en: 'Visitor Mode: Restricted lessons require subscription',
+    th: 'โหมดผู้เยี่ยมชม: บทเรียนพิเศษต้องสมัครสมาชิก'
+  },
+  {
+    id: 'welcome_logout_subscriber',
+    group: 'group1_welcome',
+    labelAr: 'زر خروج المشترك',
+    ar: 'خروج المشترك',
+    en: 'Logout',
+    th: 'ออกจากระบบ'
+  },
+  {
+    id: 'welcome_logout_visitor',
+    group: 'group1_welcome',
+    labelAr: 'زر خروج الزائر',
+    ar: 'خروج الزائر',
+    en: 'Exit Visitor',
+    th: 'ออกจากโหมดผู้เยี่ยมชม'
+  },
+  {
     id: 'welcome_copyright',
     group: 'group1_welcome',
     labelAr: 'حقوق الملكية الفكرية',
