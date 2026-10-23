@@ -15,11 +15,11 @@ export const StudentQRModal: React.FC<StudentQRModalProps> = ({ lessons = [], on
   // Generate student direct camera URL
   const origin = window.location.origin;
   const pathname = window.location.pathname;
-  const studentCameraUrl = `${origin}${pathname}?mode=student`;
+  const studentCameraUrl = `${origin}${pathname}?mode=student&camera=1`;
 
   // Generate student direct camera URL with complete embedded lessons payload
   const payload = lessons && lessons.length > 0 ? encodeLessonsPayload(lessons) : '';
-  const primaryStudentUrl = payload ? `${origin}${pathname}?mode=student#d=${payload}` : studentCameraUrl;
+  const primaryStudentUrl = payload ? `${origin}${pathname}?mode=student&camera=1#d=${payload}` : studentCameraUrl;
 
   // QR Code URL using high-res QR API
   const qrCodeImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(

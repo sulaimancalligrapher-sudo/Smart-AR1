@@ -105,13 +105,31 @@ export default function App() {
     setVisitorName('');
   };
 
-  // كشف الدخول عبر الرابط الخاص بالإدارة
+  // كشف الدخول عبر الرابط الخاص بالإدارة أو الرابط المباشر لكاميرا الطالب
   useEffect(() => {
     if (checkIsAdminUrl()) {
       setViewMode('admin');
       if (!getIsAdminLoggedIn()) {
         setIsAdminLoginOpen(true);
       }
+    } else {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const isStudentCameraDirect =
+          searchParams.get('mode') === 'student' ||
+          searchParams.get('camera') === '1' ||
+          searchParams.has('camera') ||
+          searchParams.get('start') === 'camera' ||
+          searchParams.get('autostart') === 'true' ||
+          window.location.hash.includes('camera');
+
+        if (isStudentCameraDirect) {
+          setIsCameraActive(true);
+          setShowHologram3D(false);
+          setShowFloatingModel(true);
+          setActiveModal('none');
+        }
+      } catch (_) {}
     }
   }, []);
 

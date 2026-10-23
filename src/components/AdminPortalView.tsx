@@ -62,7 +62,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const origin = window.location.origin;
   const pathname = window.location.pathname;
   const adminUrl = `${origin}${pathname}?admin`;
-  const studentUrl = `${origin}${pathname}`;
+  const studentUrl = `${origin}${pathname}?mode=student&camera=1`;
 
   const handleCopyAdminUrl = () => {
     navigator.clipboard.writeText(adminUrl);
@@ -294,9 +294,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               />
             </div>
             <div className="text-xs text-slate-300 space-y-2 text-right">
-              <p className="font-bold text-white text-sm">هذا هو رابط الطالب النظيف الخالي من أي أزرار إدارة:</p>
+              <p className="font-bold text-white text-sm">هذا هو رابط وباركود الطالب المباشر (يفتح الكاميرا فوراً):</p>
               <p className="text-slate-400 text-xs">
-                شارك هذا الباركود أو الرابط مع الطلاب؛ عند فتحه يظهر لهم فقط زر تشغيل الكاميرا والنصوص الإرشادية.
+                شارك هذا الباركود أو الرابط مع الطلاب؛ عند مسح الباركود أو فتح الرابط تفتح الكاميرا مباشرة للبدء في توجيهها لصفحات الكتاب.
               </p>
               <div className="font-mono text-xs text-emerald-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 break-all">
                 {studentUrl}
