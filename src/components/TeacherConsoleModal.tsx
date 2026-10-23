@@ -5,7 +5,7 @@ import {
   HelpCircle, Brain, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
   Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown,
   Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User,
-  DownloadCloud, UploadCloud, Loader2, Smartphone, Tablet, Monitor, Search, Eye, Globe
+  DownloadCloud, UploadCloud, Loader2, Smartphone, Tablet, Monitor, Search, Eye, Globe, Settings
 } from 'lucide-react';
 import { analytics, DEFAULT_SHEETS_WEB_APP_URL } from '../services/analytics';
 import {
@@ -1760,83 +1760,47 @@ function createJsonResponse(obj) {
         {/* Tab Navigation */}
         <div className="flex items-center justify-between px-4 pt-3 bg-slate-800/40 border-b border-slate-700/40">
           <div className="flex items-center gap-2">
+            {/* 1. قسم الدروس */}
             <button
               onClick={() => setActiveTab('lessons')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-2 ${
+              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'lessons'
                   ? 'bg-slate-900 text-sky-400 border-slate-700 shadow-md'
                   : 'text-slate-400 hover:text-slate-200 border-transparent'
               }`}
+              title={`إدارة الدروس (${editableLessons.length})`}
             >
               <BookOpen className="w-4 h-4" />
-              <span>محرر الدروس وربط صور الكتب ({editableLessons.length})</span>
+              <span>الدروس</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('sheets')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-2 ${
-                activeTab === 'sheets'
-                  ? 'bg-slate-900 text-emerald-400 border-slate-700 shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 border-transparent'
-              }`}
-            >
-              <Database className="w-4 h-4" />
-              <span>ربط Google Sheets</span>
-            </button>
-
+            {/* 2. قسم الترجمة */}
             <button
               onClick={() => setActiveTab('translations')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-2 ${
+              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'translations'
                   ? 'bg-slate-900 text-sky-400 border-slate-700 shadow-md'
                   : 'text-slate-400 hover:text-slate-200 border-transparent'
               }`}
+              title="إدارة الترجمة واللغات (4 مجموعات)"
             >
               <Globe className="w-4 h-4 text-sky-400" />
-              <span>إدارة الترجمة واللغات (4 مجموعات)</span>
+              <span>ترجمة</span>
             </button>
-          </div>
 
-
-          <div className="flex items-center gap-3">
-            {onPurgeAllData && (
-              <button
-                type="button"
-                onClick={onPurgeAllData}
-                className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold inline-flex items-center gap-1 p-1 cursor-pointer"
-                title="تصفير الكاش ومسح كل الذاكرة المؤقتة من المتصفح"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>تصفير الكاش والذاكرة</span>
-              </button>
-            )}
-
-            {/* زر إظهار/إخفاء بطاقات الدروس في الكاميرا */}
+            {/* 3. قسم الإعدادات (أيقونة عجلة الإعدادات فقط بدون نص) */}
             <button
-              type="button"
-              onClick={handleToggleCameraTargetCards}
-              className={`text-[11px] font-semibold inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                cameraShowTargetCards
-                  ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
-                  : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-slate-200'
+              onClick={() => setActiveTab('sheets')}
+              className={`px-3 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center justify-center ${
+                activeTab === 'sheets'
+                  ? 'bg-slate-900 text-emerald-400 border-slate-700 shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 border-transparent'
               }`}
-              title="إظهار أو إخفاء زر بطاقات الدروس في الشريط العلوي لشاشة الكاميرا"
+              title="الإعدادات وربط Google Sheets وصيانة النظام"
+              aria-label="الإعدادات"
             >
-              <Eye className="w-3.5 h-3.5" />
-              <span>بطاقات الدروس بالكاميرا: {cameraShowTargetCards ? 'مفعّل ✓' : 'مخفي ✕'}</span>
+              <Settings className="w-4 h-4" />
             </button>
-
-            {activeTab === 'lessons' && editableLessons.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearAllLessons}
-                className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold inline-flex items-center gap-1 p-1 cursor-pointer"
-                title="مسح كافة الدروس الحالية"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>مسح جميع الدروس</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -3783,9 +3747,71 @@ function createJsonResponse(obj) {
           </div>
         )}
 
-        {/* Tab 2: Google Sheets Analytics */}
+        {/* Tab 2: Settings & Google Sheets */}
         {activeTab === 'sheets' && (
           <div className="p-4 sm:p-6 overflow-y-auto space-y-5 text-slate-100">
+            {/* 🛠️ مربع خاص بأدوات وصيانة النظام والذاكرة */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                    <Settings className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-white">
+                      أدوات النظام وصيانة الذاكرة
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      إدارة الكاش المؤقت، تفعيل بطاقات الكاميرا، وإعادة ضبط الدروس
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {/* 1. زر تصفير الكاش والذاكرة */}
+                {onPurgeAllData && (
+                  <button
+                    type="button"
+                    onClick={onPurgeAllData}
+                    className="px-3 py-2 rounded-xl bg-amber-950/60 hover:bg-amber-900 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                    title="تصفير الكاش ومسح كل الذاكرة المؤقتة من المتصفح"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-amber-400" />
+                    <span>تصفير الكاش والذاكرة</span>
+                  </button>
+                )}
+
+                {/* 2. زر إظهار/إخفاء بطاقات الدروس في الكاميرا */}
+                <button
+                  type="button"
+                  onClick={handleToggleCameraTargetCards}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border shadow-sm active:scale-95 ${
+                    cameraShowTargetCards
+                      ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
+                      : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="إظهار أو إخفاء زر بطاقات الدروس في الشريط العلوي لشاشة الكاميرا"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>بطاقات الدروس بالكاميرا: {cameraShowTargetCards ? 'مفعّل ✓' : 'مخفي ✕'}</span>
+                </button>
+
+                {/* 3. زر مسح جميع الدروس */}
+                {editableLessons.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllLessons}
+                    className="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                    title="مسح كافة الدروس الحالية"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    <span>مسح جميع الدروس ({editableLessons.length})</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Configuration Form */}
             <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">

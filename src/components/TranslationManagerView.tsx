@@ -43,7 +43,7 @@ export const TranslationManagerView: React.FC<TranslationManagerViewProps> = ({
   onRequestConfirm
 }) => {
   const [items, setItems] = useState<TranslationItem[]>(() => getStoredTranslations());
-  const [selectedGroup, setSelectedGroup] = useState<TranslationGroupId | 'all'>('all');
+  const [selectedGroup, setSelectedGroup] = useState<TranslationGroupId>('group1_welcome');
   const [searchQuery, setSearchQuery] = useState('');
   const [translatingItemId, setTranslatingItemId] = useState<string | null>(null);
   const [isTranslatingGroup, setIsTranslatingGroup] = useState<string | null>(null);
@@ -185,7 +185,7 @@ export const TranslationManagerView: React.FC<TranslationManagerViewProps> = ({
 
   // تصفية العناصر
   const filteredItems = items.filter((item) => {
-    const matchGroup = selectedGroup === 'all' || item.group === selectedGroup;
+    const matchGroup = item.group === selectedGroup;
     const q = searchQuery.trim().toLowerCase();
     const matchQuery =
       !q ||
@@ -337,22 +337,9 @@ export const TranslationManagerView: React.FC<TranslationManagerViewProps> = ({
 
       {/* 2. Group Filter Tabs & Search */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        {/* شريط اختيار المجموعات الأربعة */}
-        <div className="flex items-center gap-1 p-1 bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
-          <button
-            type="button"
-            onClick={() => setSelectedGroup('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              selectedGroup === 'all'
-                ? 'bg-sky-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
-            جميع المجموعات ({items.length})
-          </button>
-
+        {/* شريط اختيار المجموعات الأربعة (أيقونة ورقم فقط) */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto">
           {TRANSLATION_GROUPS.map((g, idx) => {
-            const count = items.filter((it) => it.group === g.id).length;
             const isSelected = selectedGroup === g.id;
             return (
               <button
@@ -361,15 +348,13 @@ export const TranslationManagerView: React.FC<TranslationManagerViewProps> = ({
                 onClick={() => setSelectedGroup(g.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                   isSelected
-                    ? 'bg-sky-600 text-white shadow-sm'
+                    ? 'bg-sky-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-white hover:bg-slate-900'
                 }`}
+                title={g.titleAr}
               >
                 {getGroupIcon(g.iconName)}
-                <span>مجموعة {idx + 1}</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/40 font-mono">
-                  {count}
-                </span>
+                <span className="font-bold font-mono text-xs">{idx + 1}</span>
               </button>
             );
           })}
@@ -390,7 +375,7 @@ export const TranslationManagerView: React.FC<TranslationManagerViewProps> = ({
 
       {/* 3. Render Groups and their Items */}
       <div className="space-y-6">
-        {TRANSLATION_GROUPS.filter((g) => selectedGroup === 'all' || selectedGroup === g.id).map((group) => {
+        {TRANSLATION_GROUPS.filter((g) => selectedGroup === g.id).map((group) => {
           const groupItems = filteredItems.filter((it) => it.group === group.id);
           if (groupItems.length === 0 && searchQuery) return null;
 

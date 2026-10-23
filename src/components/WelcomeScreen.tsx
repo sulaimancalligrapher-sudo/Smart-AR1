@@ -65,7 +65,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       <div className="fixed bottom-1/4 right-1/4 w-72 h-72 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header Bar */}
-      <header className="relative z-10 max-w-2xl mx-auto w-full flex items-center justify-between py-2.5 border-b border-white/10 gap-2">
+      <header className="relative z-50 max-w-2xl mx-auto w-full flex items-center justify-between py-2.5 border-b border-white/10 gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20 flex-shrink-0">
             <BookOpen className="w-5 h-5 text-white" />
