@@ -18,6 +18,8 @@ import {
   SubscriberInfo,
   verifySubscriberWithSheet
 } from '../services/subscriptionAuth';
+import { AppLanguage } from '../types/translation';
+import { t } from '../services/translationService';
 
 interface SubscriberLockModalProps {
   isOpen: boolean;
@@ -26,6 +28,7 @@ interface SubscriberLockModalProps {
   subscriptionExternalUrl: string;
   onSuccessLogin: (subscriber: SubscriberInfo) => void;
   onClose: () => void;
+  currentLanguage?: AppLanguage;
 }
 
 export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
@@ -34,7 +37,8 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
   webAppUrl,
   subscriptionExternalUrl,
   onSuccessLogin,
-  onClose
+  onClose,
+  currentLanguage = 'ar'
 }) => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -82,8 +86,13 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
     window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const isRTL = currentLanguage === 'ar';
+
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn"
+      dir={isRTL ? 'rtl' : 'ltr'}
+    >
       <div
         className="w-full max-w-lg bg-slate-900 border border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col text-slate-100 animate-scaleUp"
         onClick={(e) => e.stopPropagation()}
@@ -96,13 +105,17 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
             </span>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                <span>محتوى مقفل للمشتركين فقط</span>
+                <span>{t('alert_lesson_locked', currentLanguage)}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
-                  محتوى مدفوع
+                  {currentLanguage === 'ar' ? 'محتوى مخصص' : currentLanguage === 'en' ? 'Exclusive' : 'พรีเมียม'}
                 </span>
               </h3>
               <p className="text-xs text-amber-200/80">
-                يتطلب هذا الدرس حساب اشتراك مفعل للمتابعة
+                {currentLanguage === 'ar'
+                  ? 'يتطلب هذا الدرس حساب اشتراك مفعل للمتابعة'
+                  : currentLanguage === 'en'
+                  ? 'This lesson requires an active subscriber account to access'
+                  : 'บทเรียนนี้จำเป็นต้องมีบัญชีสมาชิกเพื่อเข้าถึง'}
               </p>
             </div>
           </div>
@@ -110,7 +123,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
           <button
             onClick={onClose}
             className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-            title="إغلاق والعودة للتصفح"
+            title={t('btn_close', currentLanguage)}
           >
             <X className="w-5 h-5" />
           </button>
@@ -225,12 +238,12 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>جارٍ التحقق من ورقة المشتركين (SubData)...</span>
+                    <span>{currentLanguage === 'ar' ? 'جارٍ التحقق...' : currentLanguage === 'en' ? 'Verifying...' : 'กำลังตรวจสอบ...'}</span>
                   </>
                 ) : (
                   <>
                     <Unlock className="w-4 h-4" />
-                    <span>تأكيد الاشتراك وفتح محتوى الدرس</span>
+                    <span>{t('welcome_subscriber_login_btn', currentLanguage)}</span>
                   </>
                 )}
               </button>
@@ -244,7 +257,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
             </div>
             <div className="relative flex justify-center text-[10px] uppercase">
               <span className="bg-slate-900 px-3 text-slate-500 font-semibold">
-                أو إذا كنت ترغب في الاشتراك
+                {currentLanguage === 'ar' ? 'أو إذا كنت ترغب في الاشتراك' : currentLanguage === 'en' ? 'Or if you want to subscribe' : 'หรือหากคุณต้องการสมัครสมาชิก'}
               </span>
             </div>
           </div>
@@ -254,12 +267,18 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>ليس لديك حساب بعد؟</span>
+                <span>{currentLanguage === 'ar' ? 'ليس لديك حساب بعد؟' : currentLanguage === 'en' ? "Don't have an account?" : 'ยังไม่มีบัญชี?'}</span>
               </span>
-              <span className="text-[10px] text-emerald-400 font-medium">تفعيل فوري</span>
+              <span className="text-[10px] text-emerald-400 font-medium">
+                {currentLanguage === 'ar' ? 'تفعيل فوري' : currentLanguage === 'en' ? 'Instant Activation' : 'เปิดใช้งานทันที'}
+              </span>
             </div>
             <p className="text-[11px] text-slate-400">
-              تواصل مع إدارة المنصة للاشتراك وتفعيل رقمك واسمك في ورقة المشتركين.
+              {currentLanguage === 'ar'
+                ? 'تواصل مع إدارة المنصة للاشتراك وتفعيل رقمك واسمك في ورقة المشتركين.'
+                : currentLanguage === 'en'
+                ? 'Contact the platform administrator to activate your subscription.'
+                : 'ติดต่อผู้ดูแลระบบเพื่อเปิดใช้งานการเป็นสมาชิกของคุณ'}
             </p>
             <button
               type="button"
@@ -267,19 +286,21 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
               className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 hover:text-sky-200 font-bold text-xs border border-sky-500/30 hover:border-sky-400/60 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
               <ExternalLink className="w-4 h-4" />
-              <span>💎 طلب اشتراك جديد وتفعيل الحساب ↗</span>
+              <span>💎 {t('welcome_request_sub_btn', currentLanguage)} ↗</span>
             </button>
           </div>
         </div>
 
         {/* Footer */}
         <div className="px-5 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span className="text-[11px]">الدروس المجانية تفتح تلقائياً بدون هذا القفل</span>
+          <span className="text-[11px]">
+            {t('welcome_visitor_hint', currentLanguage)}
+          </span>
           <button
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
           >
-            متابعة التصفح المجاني
+            {t('btn_close', currentLanguage)}
           </button>
         </div>
       </div>

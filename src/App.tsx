@@ -27,6 +27,12 @@ import { soundService } from './services/soundService';
 import { getIsAdminLoggedIn, setAdminLoggedIn } from './services/adminAuth';
 import { SubscriberLockModal } from './components/SubscriberLockModal';
 import { fetchQuestionsFromSheet } from './services/sheetsQuestionsSync';
+import { AppLanguage } from './types/translation';
+import {
+  getStoredLanguage,
+  saveStoredLanguage,
+  applyLanguageDirection
+} from './services/translationService';
 import {
   SubscriberInfo,
   getStoredSubscriber,
@@ -105,8 +111,31 @@ export default function App() {
     setVisitorName('');
   };
 
-  // كشف الدخول عبر الرابط الخاص بالإدارة أو الرابط المباشر لكاميرا الطالب
+  // 🌐 إدارة اللغة الحالية (العربية ar | الإنجليزية en | التايلاندية th)
+  const [currentLanguage, setCurrentLanguage] = useState<AppLanguage>(() => {
+    return getStoredLanguage();
+  });
+
+  const handleLanguageChange = (newLang: AppLanguage) => {
+    setCurrentLanguage(newLang);
+    saveStoredLanguage(newLang);
+    applyLanguageDirection(newLang);
+  };
+
+  // كشف الدخول عبر الرابط الخاص بالإدارة أو الرابط المباشر لكاميرا الطالب مع ضبط اللغة
   useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlLang = searchParams.get('lang');
+      if (urlLang === 'ar' || urlLang === 'en' || urlLang === 'th') {
+        setCurrentLanguage(urlLang);
+        saveStoredLanguage(urlLang);
+        applyLanguageDirection(urlLang);
+      } else {
+        applyLanguageDirection(getStoredLanguage());
+      }
+    } catch (_) {}
+
     if (checkIsAdminUrl()) {
       setViewMode('admin');
       if (!getIsAdminLoggedIn()) {
@@ -346,6 +375,8 @@ export default function App() {
             isAdmin={isAdmin}
             subscriber={currentSubscriber}
             visitorName={visitorName}
+            currentLanguage={currentLanguage}
+            onLanguageChange={handleLanguageChange}
             onSubscriberLogout={handleSubscriberLogout}
             onVisitorLogout={handleVisitorLogout}
             onOpenSubscriberLogin={() => {
@@ -365,6 +396,8 @@ export default function App() {
           isAdmin={isAdmin}
           subscriber={currentSubscriber}
           visitorName={visitorName}
+          currentLanguage={currentLanguage}
+          onLanguageChange={handleLanguageChange}
           onSubscriberLogout={handleSubscriberLogout}
           onVisitorLogout={handleVisitorLogout}
           onTargetDetected={handleTargetDetected}
@@ -394,6 +427,7 @@ export default function App() {
       {isCameraActive && activeLesson && activeModal === 'none' && (
         <TransparentOverlay
           lesson={activeLesson}
+          currentLanguage={currentLanguage}
           isModel3DActive={showHologram3D}
           isFloatingModelActive={showFloatingModel}
           onOpenVideo={() => {
@@ -523,6 +557,7 @@ export default function App() {
           subscriber={currentSubscriber}
           visitorName={visitorName}
           webAppUrl={analytics.getWebAppUrl()}
+          currentLanguage={currentLanguage}
           onSubscriberLogin={handleSubscriberLoginSuccess}
           onVisitorNameChange={handleVisitorNameChange}
           onVisitorLogout={handleVisitorLogout}
@@ -571,6 +606,7 @@ export default function App() {
         lesson={lockedLessonTarget || lessons.find((l) => isLessonRestricted(l)) || lessons[0] || null}
         webAppUrl={analytics.getWebAppUrl()}
         subscriptionExternalUrl={getSubscriptionExternalUrl()}
+        currentLanguage={currentLanguage}
         onSuccessLogin={handleSubscriberLoginSuccess}
         onClose={() => {
           setIsSubscriberLockModalOpen(false);

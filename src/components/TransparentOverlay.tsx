@@ -19,11 +19,14 @@ import {
   hasLessonQuestions,
   getLessonQuestions
 } from '../types/ar';
+import { AppLanguage } from '../types/translation';
+import { t } from '../services/translationService';
 
 interface TransparentOverlayProps {
   lesson: LessonData;
   isModel3DActive: boolean;
   isFloatingModelActive?: boolean;
+  currentLanguage?: AppLanguage;
   onOpenVideo: () => void;
   onOpenImages: () => void;
   onOpenAudio: () => void;
@@ -38,6 +41,7 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
   lesson,
   isModel3DActive,
   isFloatingModelActive = false,
+  currentLanguage = 'ar',
   onOpenVideo,
   onOpenImages,
   onOpenAudio,
@@ -111,8 +115,8 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                 <button
                   onClick={onOpenVideo}
                   className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white border border-rose-400/40 flex items-center justify-center shadow-lg shadow-rose-600/30 active:scale-90 transition-all cursor-pointer group"
-                  title={videosList.length > 1 ? `🎬 فيديوهات الدرس (${videosList.length})` : '🎬 فيديو تعليمي'}
-                  aria-label="فيديو تعليمي"
+                  title={videosList.length > 1 ? `🎬 ${t('btn_video', currentLanguage)} (${videosList.length})` : `🎬 ${t('btn_video', currentLanguage)}`}
+                  aria-label={t('btn_video', currentLanguage)}
                 >
                   <Video className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
                   {videosList.length > 1 && (
@@ -128,8 +132,8 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                 <button
                   onClick={onOpenImages}
                   className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white border border-sky-400/40 flex items-center justify-center shadow-lg shadow-sky-600/30 active:scale-90 transition-all cursor-pointer group"
-                  title="🖼️ معرض الصور واللوحات"
-                  aria-label="معرض الصور"
+                  title={`🖼️ ${t('btn_gallery', currentLanguage)}`}
+                  aria-label={t('btn_gallery', currentLanguage)}
                 >
                   <Image className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
                 </button>
@@ -140,8 +144,8 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                 <button
                   onClick={onOpenAudio}
                   className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white border border-emerald-400/40 flex items-center justify-center shadow-lg shadow-emerald-600/30 active:scale-90 transition-all cursor-pointer group"
-                  title={audiosList.length > 1 ? `🎵 التسجيلات الصوتية (${audiosList.length})` : '🎵 تسجيل صوتي للدرس'}
-                  aria-label="تسجيل صوتي"
+                  title={audiosList.length > 1 ? `🎵 ${t('btn_audio', currentLanguage)} (${audiosList.length})` : `🎵 ${t('btn_audio', currentLanguage)}`}
+                  aria-label={t('btn_audio', currentLanguage)}
                 >
                   <Music className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
                   {audiosList.length > 1 && (
@@ -157,8 +161,8 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                 <button
                   onClick={onOpenQuestions}
                   className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:from-amber-600 active:to-amber-700 text-slate-950 border border-amber-300/80 flex items-center justify-center shadow-lg shadow-amber-500/30 active:scale-90 transition-all cursor-pointer group"
-                  title={lessonQuestions.length > 0 ? `🧠 أسئلة وتفكير الدرس (${lessonQuestions.length})` : '🧠 أسئلة وتفكير الدرس'}
-                  aria-label="أسئلة الدرس والتفكير"
+                  title={lessonQuestions.length > 0 ? `🧠 ${t('btn_questions', currentLanguage)} (${lessonQuestions.length})` : `🧠 ${t('btn_questions', currentLanguage)}`}
+                  aria-label={t('btn_questions', currentLanguage)}
                 >
                   <Brain className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow text-slate-950 stroke-[2.4]" />
                   {lessonQuestions.length > 0 && (
@@ -178,12 +182,8 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                       ? 'bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-300 ring-2 ring-cyan-400/50 shadow-cyan-600/40'
                       : 'bg-cyan-950/70 hover:bg-cyan-900 text-cyan-300 border-cyan-500/40'
                   }`}
-                  title={
-                    isFloatingModelActive
-                      ? '🪐 النوع 1: مجسم AR مثبت فوق الكتاب (مفعّل - انقر للإخفاء)'
-                      : '🪐 النوع 1: مجسم AR مثبت فوق الكتاب (متوقف - انقر للتفعيل)'
-                  }
-                  aria-label="مجسم AR مثبت فوق الكتاب"
+                  title={`🪐 ${t('btn_model3d', currentLanguage)} AR`}
+                  aria-label={`${t('btn_model3d', currentLanguage)} AR`}
                 >
                   <Layers className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
                   {isFloatingModelActive && (
@@ -201,8 +201,8 @@ export const TransparentOverlay: React.FC<TransparentOverlayProps> = ({
                       ? 'bg-purple-600 hover:bg-purple-500 text-white border-purple-300 ring-2 ring-purple-400/50 shadow-purple-600/40'
                       : 'bg-purple-700 hover:bg-purple-600 text-white border-purple-400/40 shadow-purple-700/30'
                   }`}
-                  title="📦 النوع 2: فحص ثلاثي الأبعاد 360° (تحريك وتدوير باللمس)"
-                  aria-label="فحص ثلاثي الأبعاد 360°"
+                  title={`📦 ${t('btn_model3d', currentLanguage)} 360°`}
+                  aria-label={`${t('btn_model3d', currentLanguage)} 360°`}
                 >
                   <Box className="w-5 h-5 sm:w-6 sm:h-6 group-hover:scale-110 transition-transform drop-shadow" />
                 </button>

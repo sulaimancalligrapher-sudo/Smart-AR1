@@ -78,3 +78,22 @@ export function setAdminLoggedIn(isLoggedIn: boolean): void {
     console.warn('Failed to update admin session', err);
   }
 }
+
+const STORAGE_CAMERA_SHOW_TARGET_CARDS = 'smart_ar_camera_show_target_cards';
+
+export function getCameraShowTargetCards(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_CAMERA_SHOW_TARGET_CARDS) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setCameraShowTargetCards(enabled: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_CAMERA_SHOW_TARGET_CARDS, String(enabled));
+  } catch (err) {
+    console.warn('Failed to update camera target cards setting', err);
+  }
+}
+

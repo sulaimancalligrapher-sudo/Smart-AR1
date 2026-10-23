@@ -5,7 +5,7 @@ import {
   HelpCircle, Brain, Save, Download, Sparkles, Layers, Upload, Plus, AlertTriangle, Camera, Box,
   Volume2, VolumeX, Play, Pause, Disc, ChevronUp, ChevronDown, ArrowUp, ArrowDown,
   Lock, Unlock, CheckSquare, MessageSquare, UserCheck, RefreshCw, FileText, ListFilter, Award, User,
-  DownloadCloud, UploadCloud, Loader2, Smartphone, Tablet, Monitor, Search
+  DownloadCloud, UploadCloud, Loader2, Smartphone, Tablet, Monitor, Search, Eye, Globe
 } from 'lucide-react';
 import { analytics, DEFAULT_SHEETS_WEB_APP_URL } from '../services/analytics';
 import {
@@ -39,13 +39,19 @@ import { LessonQuestionsEditor } from './LessonQuestionsEditor';
 import { getSubscriptionExternalUrl, setSubscriptionExternalUrl } from '../services/subscriptionAuth';
 import { fetchQuestionsFromSheet, exportQuestionsToSheet, fetchAnswersFromSheet } from '../services/sheetsQuestionsSync';
 import { SystemAnswersModal } from './SystemAnswersModal';
+import { getCameraShowTargetCards, setCameraShowTargetCards } from '../services/adminAuth';
+import { TranslationManagerView } from './TranslationManagerView';
+import { AppLanguage, getStoredLanguage, saveStoredLanguage } from '../services/translationService';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
   onUpdateLessons?: (lessons: LessonData[]) => void;
   onPurgeAllData?: () => void;
   onClose: () => void;
+  currentLanguage?: AppLanguage;
+  onLanguageChange?: (lang: AppLanguage) => void;
 }
+
 
 interface LessonImageCardProps {
   img: LessonImage;
@@ -150,10 +156,23 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
   lessons = [],
   onUpdateLessons,
   onPurgeAllData,
-  onClose
+  onClose,
+  currentLanguage: initialLang,
+  onLanguageChange
 }) => {
-  const [activeTab, setActiveTab] = useState<'lessons' | 'sheets'>('lessons');
+  const [activeTab, setActiveTab] = useState<'lessons' | 'sheets' | 'translations'>('lessons');
+  const [currentLang, setCurrentLang] = useState<AppLanguage>(() => initialLang || getStoredLanguage());
+
+  const handleLangChange = (newLang: AppLanguage) => {
+    setCurrentLang(newLang);
+    saveStoredLanguage(newLang);
+    if (onLanguageChange) {
+      onLanguageChange(newLang);
+    }
+  };
+
   const [webAppUrl, setWebAppUrl] = useState(analytics.getWebAppUrl());
+
   const [logs, setLogs] = useState<AnalyticsLogItem[]>([]);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -251,10 +270,17 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
 
   const [copiedLessonsTs, setCopiedLessonsTs] = useState(false);
 
-  // 4 Horizontal Tabs within Lesson Editor
-  const [lessonSubTab, setLessonSubTab] = useState<'general' | 'media' | 'model3d' | 'questions'>('general');
-  // Question Bank sub-tab
-  const [questionSubTab, setQuestionSubTab] = useState<'builder' | 'submissions'>('builder');
+  // 5 Horizontal Tabs within Lesson Editor: بيانات -> وسائط -> مجسمات -> أسئلة -> إجابات الطلاب
+  const [lessonSubTab, setLessonSubTab] = useState<'general' | 'media' | 'model3d' | 'questions' | 'submissions'>('general');
+  // Target cards visibility toggle in Camera
+  const [cameraShowTargetCards, setCameraShowTargetCardsState] = useState<boolean>(() => getCameraShowTargetCards());
+
+  const handleToggleCameraTargetCards = () => {
+    const next = !cameraShowTargetCards;
+    setCameraShowTargetCardsState(next);
+    setCameraShowTargetCards(next);
+  };
+
 
   // Question Form State
   const [newQType, setNewQType] = useState<QuestionType>('multiple_choice');
@@ -1757,7 +1783,20 @@ function createJsonResponse(obj) {
               <Database className="w-4 h-4" />
               <span>ربط Google Sheets</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('translations')}
+              className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all cursor-pointer flex items-center gap-2 ${
+                activeTab === 'translations'
+                  ? 'bg-slate-900 text-sky-400 border-slate-700 shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 border-transparent'
+              }`}
+            >
+              <Globe className="w-4 h-4 text-sky-400" />
+              <span>إدارة الترجمة واللغات (4 مجموعات)</span>
+            </button>
           </div>
+
 
           <div className="flex items-center gap-3">
             {onPurgeAllData && (
@@ -1771,6 +1810,21 @@ function createJsonResponse(obj) {
                 <span>تصفير الكاش والذاكرة</span>
               </button>
             )}
+
+            {/* زر إظهار/إخفاء بطاقات الدروس في الكاميرا */}
+            <button
+              type="button"
+              onClick={handleToggleCameraTargetCards}
+              className={`text-[11px] font-semibold inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                cameraShowTargetCards
+                  ? 'bg-sky-950/80 border-sky-500/50 text-sky-300'
+                  : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-slate-200'
+              }`}
+              title="إظهار أو إخفاء زر بطاقات الدروس في الشريط العلوي لشاشة الكاميرا"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>بطاقات الدروس بالكاميرا: {cameraShowTargetCards ? 'مفعّل ✓' : 'مخفي ✕'}</span>
+            </button>
 
             {activeTab === 'lessons' && editableLessons.length > 0 && (
               <button
@@ -1789,18 +1843,6 @@ function createJsonResponse(obj) {
         {/* Tab 1: Lessons Manager & Targets Linker */}
         {activeTab === 'lessons' && (
           <div className="p-4 sm:p-6 overflow-y-auto space-y-5 text-slate-100">
-            {/* Guide Banner */}
-            <div className="p-3.5 rounded-xl bg-sky-950/40 border border-sky-500/30 flex items-start gap-3">
-              <Sparkles className="w-5 h-5 text-sky-400 flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-sky-200 leading-relaxed">
-                <span className="font-bold text-white block mb-0.5">💡 خطوات إعداد صور كتابك المدرسي الجديد:</span>
-                1. اضغط على <strong>[ + إضافة درس جديد ]</strong> لكل صفحة من كتابك.<br />
-                2. اضغط على <strong>[ رفع صورة من جهازك ]</strong> لاختيار صورة الصفحة.<br />
-                3. ضع روابط الفيديو والصوت والنصوص وسؤال الاختبار.<br />
-                4. اضغط <strong>[ ⚡ تجميع بصمات الصور ]</strong> لدمج جميع الصور وتوليد <code className="text-sky-300">targets.mind</code>.
-              </div>
-            </div>
-
             {/* 1. شاشة البداية وشريط الاختيار العلوي الأنيق (بدون ازدحام) */}
             <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 min-w-0">
@@ -1840,20 +1882,20 @@ function createJsonResponse(obj) {
                   )}
                 </div>
 
-                {/* أزرار إضافة درس جديد وقسم تسجيل إجابات الطلاب في نفس الصف */}
+                {/* أزرار إضافة درس وتسجيل إجابات في نفس الصف بنصوص مختصرة وأنيقة */}
                 <div className="self-end sm:self-auto sm:pt-4 flex items-center gap-2 flex-wrap sm:flex-nowrap">
                   <button
                     type="button"
                     onClick={() => {
+                      setLessonSubTab('submissions');
                       setSystemAnswers(getStoredSystemAnswers());
-                      setIsAnswersModalOpen(true);
                     }}
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-600/25 transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap active:scale-95 border border-emerald-400/30"
-                    title="فتح جدول وسجل إجابات كافة الطلاب للدروس المعتمد لورقة Answers-AR"
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-emerald-400/30"
+                    title="الانتقال إلى تبويب إجابات الطلاب المسجلة"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
-                    <span>📊 قسم تسجيل إجابات الطلاب (Answers-AR)</span>
-                    <span className="px-2 py-0.5 rounded-full bg-black/30 text-emerald-200 text-xs font-bold font-mono">
+                    <span>تسجيل إجابات</span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-black/30 text-emerald-200 text-xs font-bold font-mono">
                       {systemAnswers.length}
                     </span>
                   </button>
@@ -1861,15 +1903,16 @@ function createJsonResponse(obj) {
                   <button
                     type="button"
                     onClick={handleAddNewLesson}
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-sky-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95"
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95"
+                    title="إضافة درس جديد"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>+ إضافة درس جديد</span>
+                    <span>إضافة درس</span>
                   </button>
                 </div>
               </div>
 
-              {/* أدوات سريعة للدرس المحدد (تقديم/تأخير/حذف) */}
+              {/* أدوات سريعة للدرس المحدد (تقديم/تأخير/حذف بأيقونة فقط بدون نص) */}
               {currentLesson && (
                 <div className="flex items-center justify-between sm:justify-end gap-2 border-t md:border-t-0 pt-2.5 md:pt-0 border-slate-800">
                   <div className="flex items-center gap-1">
@@ -1897,11 +1940,11 @@ function createJsonResponse(obj) {
                   <button
                     type="button"
                     onClick={() => handleDeleteLesson(selectedLessonIndex)}
-                    className="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="p-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 hover:text-white transition-colors cursor-pointer flex items-center justify-center flex-shrink-0"
                     title="حذف هذا الدرس نهائياً"
+                    aria-label="حذف الدرس"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>حذف الدرس</span>
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               )}
@@ -1928,10 +1971,10 @@ function createJsonResponse(obj) {
               </div>
             )}
 
-            {/* التبويبات الأفقية الأربعة للدرس المحدد */}
+            {/* التبويبات الأفقية الخمسة للدرس المحدد: بيانات ثم وسائط ثم مجسمات ثم أسئلة ثم إجابات الطلاب */}
             {currentLesson && (
               <div className="space-y-4">
-                {/* شريط التبويبات الأفقية الأربعة الأنيق والمختصر */}
+                {/* شريط التبويبات الأفقية الخمسة الأنيق والمختصر */}
                 <div className="flex items-center gap-1.5 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl overflow-x-auto shadow-lg">
                   {/* 1. بيانات */}
                   <button
@@ -1961,21 +2004,18 @@ function createJsonResponse(obj) {
                     <span>وسائط</span>
                   </button>
 
-                  {/* 3. (3D & AR) مع أيقونتين */}
+                  {/* 3. مجسمات (أيقونة واحدة Box واسم مختصر) */}
                   <button
                     type="button"
                     onClick={() => setLessonSubTab('model3d')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                       lessonSubTab === 'model3d'
                         ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
                         : 'text-slate-400 hover:text-white hover:bg-slate-900'
                     }`}
                   >
-                    <div className="flex items-center gap-1">
-                      <Box className="w-4 h-4" />
-                      <Layers className="w-3.5 h-3.5 opacity-85" />
-                    </div>
-                    <span>(3D & AR)</span>
+                    <Box className="w-4 h-4" />
+                    <span>مجسمات</span>
                   </button>
 
                   {/* 4. أسئلة */}
@@ -1991,7 +2031,28 @@ function createJsonResponse(obj) {
                     <HelpCircle className="w-4 h-4" />
                     <span>أسئلة</span>
                   </button>
+
+                  {/* 5. إجابات الطلاب */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLessonSubTab('submissions');
+                      setSystemAnswers(getStoredSystemAnswers());
+                    }}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                      lessonSubTab === 'submissions'
+                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>إجابات الطلاب</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-bold font-mono">
+                      {systemAnswers.length}
+                    </span>
+                  </button>
                 </div>
+
 
                 {/* ========================================================================= */}
                 {/* 📝 التبويب 1: البيانات والصفحات ومستوى الوصول                             */}
@@ -3050,326 +3111,281 @@ function createJsonResponse(obj) {
                 )}
 
                 {/* ========================================================================= */}
-                {/* ❓ التبويب 4: بنك الأسئلة وتسجيل إجابات الطلاب                           */}
+                {/* ❓ التبويب 4: بنك أسئلة الدرس                                            */}
                 {/* ========================================================================= */}
                 {lessonSubTab === 'questions' && (
                   <div className="space-y-4 animate-fadeIn">
-                    {/* شريط التبديل بين بنك الأسئلة وسجل الإجابات */}
-                    <div className="flex items-center justify-between p-2 rounded-2xl bg-slate-950 border border-amber-500/30 gap-2 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setQuestionSubTab('builder')}
-                          className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                            questionSubTab === 'builder'
-                              ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
-                              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-                          }`}
-                        >
-                          <HelpCircle className="w-4 h-4" />
-                          <span>بنك أسئلة الدرس</span>
-                        </button>
+                    <LessonQuestionsEditor
+                      currentLesson={currentLesson}
+                      allLessons={editableLessons}
+                      webAppUrl={webAppUrl}
+                      onUpdateAllLessons={(nextLessons) => {
+                        setEditableLessons(nextLessons);
+                        if (onUpdateLessons) onUpdateLessons(nextLessons);
+                        saveStoredLessons(nextLessons);
+                      }}
+                      onUpdateQuestions={(newQuestions) => {
+                        const nextLessons = [...editableLessons];
+                        const cur = { ...currentLesson, questions: newQuestions };
+                        if (newQuestions[0]?.type === 'multiple_choice') {
+                          cur.description = {
+                            ...cur.description,
+                            quiz: {
+                              question: newQuestions[0].question,
+                              options: newQuestions[0].options || [],
+                              correctIndex: newQuestions[0].correctIndex ?? 0,
+                              explanation: newQuestions[0].explanation || ''
+                            }
+                          };
+                        }
+                        nextLessons[selectedLessonIndex] = cur;
+                        setEditableLessons(nextLessons);
+                        if (onUpdateLessons) onUpdateLessons(nextLessons);
+                        saveStoredLessons(nextLessons);
+                      }}
+                      onRequestConfirm={setConfirmModal}
+                    />
+                  </div>
+                )}
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setQuestionSubTab('submissions');
-                            setSystemAnswers(getStoredSystemAnswers());
-                          }}
-                          className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                            questionSubTab === 'submissions'
-                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                              : 'text-slate-400 hover:text-white hover:bg-slate-900'
-                          }`}
-                        >
-                          <FileSpreadsheet className="w-4 h-4" />
-                          <span>📊 إجابات الطلاب المسجلة في النظام (Answers-AR)</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-bold">
-                            {systemAnswers.length}
+                {/* ========================================================================= */}
+                {/* 📊 التبويب 5: إجابات الطلاب المسجلة في النظام (Answers-AR)               */}
+                {/* ========================================================================= */}
+                {lessonSubTab === 'submissions' && (
+                  <div className="space-y-4 animate-fadeIn">
+                    {/* عرض سجل إجابات الطلاب في النظام المعتمد لورقة Answers-AR */}
+                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-emerald-500/30 space-y-4 animate-fadeIn">
+                      {answersSyncNotice && (
+                        <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                          answersSyncNotice.includes('✓')
+                            ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300'
+                            : 'bg-amber-950/70 border border-amber-500/40 text-amber-300'
+                        }`}>
+                          <CheckCircle2 className="w-4 h-4 shrink-0" />
+                          <span>{answersSyncNotice}</span>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            <FileSpreadsheet className="w-5 h-5" />
                           </span>
-                        </button>
+                          <div>
+                            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                              <span>سجل إجابات الطلاب المعتمد (Answers-AR)</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+                                {systemAnswers.length} سجل مسجل
+                              </span>
+                            </h4>
+                            <p className="text-[11px] text-slate-400">
+                              يتم تسجيل إجابات الطلاب من الجوال والتابلت والكمبيوتر في هذا الجدول وتزامنها مع ورقة Answers-AR
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={handleFetchAnswersInConsole}
+                            disabled={isFetchingSubmissions}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 shadow-sm active:scale-95"
+                            title="جلب إجابات الطلاب التي تمت من الجوال أو التابلت وتحديثها فورياً من Google Sheets"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isFetchingSubmissions ? 'animate-spin' : ''}`} />
+                            <span>{isFetchingSubmissions ? 'جارٍ الجلب...' : '📥 جلب من Google Sheets'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSystemAnswers(getStoredSystemAnswers());
+                              setIsAnswersModalOpen(true);
+                            }}
+                            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                            <span>تصدير وعرض كامل</span>
+                          </button>
+                        </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSystemAnswers(getStoredSystemAnswers());
-                          setIsAnswersModalOpen(true);
-                        }}
-                        className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-                        title="فتح نافذة جدول إجابات الطلاب الشاملة لكافة الدروس"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>فتح الجدول الشامل المستقل ↗</span>
-                      </button>
-                    </div>
+                      {/* فلاتر البحث */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="relative flex-1 max-w-sm">
+                          <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={submissionsSearch}
+                            onChange={(e) => setSubmissionsSearch(e.target.value)}
+                            placeholder="بحث باسم الطالب، رقم الهاتف، أو اسم الدرس..."
+                            className="w-full pr-9 pl-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
 
-                    {questionSubTab === 'builder' ? (
-                      <LessonQuestionsEditor
-                        currentLesson={currentLesson}
-                        allLessons={editableLessons}
-                        webAppUrl={webAppUrl}
-                        onUpdateAllLessons={(nextLessons) => {
-                          setEditableLessons(nextLessons);
-                          if (onUpdateLessons) onUpdateLessons(nextLessons);
-                          saveStoredLessons(nextLessons);
-                        }}
-                        onUpdateQuestions={(newQuestions) => {
-                          const nextLessons = [...editableLessons];
-                          const cur = { ...currentLesson, questions: newQuestions };
-                          if (newQuestions[0]?.type === 'multiple_choice') {
-                            cur.description = {
-                              ...cur.description,
-                              quiz: {
-                                question: newQuestions[0].question,
-                                options: newQuestions[0].options || [],
-                                correctIndex: newQuestions[0].correctIndex ?? 0,
-                                explanation: newQuestions[0].explanation || ''
-                              }
-                            };
-                          }
-                          nextLessons[selectedLessonIndex] = cur;
-                          setEditableLessons(nextLessons);
-                          if (onUpdateLessons) onUpdateLessons(nextLessons);
-                          saveStoredLessons(nextLessons);
-                        }}
-                        onRequestConfirm={setConfirmModal}
-                      />
-                    ) : (
-                      /* عرض سجل إجابات الطلاب في النظام المعتمد لورقة Answers-AR */
-                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-emerald-500/30 space-y-4 animate-fadeIn">
-                        {answersSyncNotice && (
-                          <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
-                            answersSyncNotice.includes('✓')
-                              ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300'
-                              : 'bg-amber-950/70 border border-amber-500/40 text-amber-300'
-                          }`}>
-                            <CheckCircle2 className="w-4 h-4 shrink-0" />
-                            <span>{answersSyncNotice}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400">تصفية:</span>
+                          <select
+                            value={submissionFilterLesson}
+                            onChange={(e) => setSubmissionFilterLesson(e.target.value)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                          >
+                            <option value="all">جميع الدروس ({systemAnswers.length})</option>
+                            {editableLessons.map((l, idx) => (
+                              <option key={l.targetId || idx} value={l.title}>
+                                {l.title}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
 
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              <FileSpreadsheet className="w-5 h-5" />
-                            </span>
-                            <div>
-                              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                                <span>سجل إجابات الطلاب المعتمد (Answers-AR)</span>
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold">
-                                  {systemAnswers.length} سجل مسجل
-                                </span>
-                              </h4>
-                              <p className="text-[11px] text-slate-400">
-                                يتم تسجيل إجابات الطلاب من الجوال والتابلت والكمبيوتر في هذا الجدول وتزامنها مع ورقة Answers-AR
+                      {/* جدول الإجابات */}
+                      {(() => {
+                        const filtered = systemAnswers.filter((a) => {
+                          const matchSearch =
+                            !submissionsSearch.trim() ||
+                            a.studentName.toLowerCase().includes(submissionsSearch.toLowerCase()) ||
+                            a.studentPhone.includes(submissionsSearch) ||
+                            a.lessonTitle.toLowerCase().includes(submissionsSearch.toLowerCase());
+                          const matchLesson =
+                            submissionFilterLesson === 'all' ||
+                            a.lessonTitle.trim() === submissionFilterLesson.trim();
+                          return matchSearch && matchLesson;
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="p-8 text-center rounded-xl bg-slate-900/60 border border-dashed border-slate-800 space-y-2">
+                              <FileSpreadsheet className="w-8 h-8 text-slate-600 mx-auto" />
+                              <p className="text-xs font-bold text-slate-400">لا توجد إجابات مسجلة بعد وفق هذا الفلتر</p>
+                              <p className="text-[11px] text-slate-500">
+                                عندما يجيب الطالب أو المشترك أو الزائر على الأسئلة في شاشة الكاميرا، ستظهر إجاباته هنا مباشرة وتُرسل لورقة Answers-AR.
                               </p>
                             </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={handleFetchAnswersInConsole}
-                              disabled={isFetchingSubmissions}
-                              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 shadow-sm active:scale-95"
-                              title="جلب إجابات الطلاب التي تمت من الجوال أو التابلت وتحديثها فورياً من Google Sheets"
-                            >
-                              <RefreshCw className={`w-3.5 h-3.5 ${isFetchingSubmissions ? 'animate-spin' : ''}`} />
-                              <span>{isFetchingSubmissions ? 'جارٍ الجلب...' : '📥 جلب من Google Sheets'}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSystemAnswers(getStoredSystemAnswers());
-                                setIsAnswersModalOpen(true);
-                              }}
-                              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
-                              <span>تصدير وعرض كامل</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* فلاتر البحث */}
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                          <div className="relative flex-1 max-w-sm">
-                            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                            <input
-                              type="text"
-                              value={submissionsSearch}
-                              onChange={(e) => setSubmissionsSearch(e.target.value)}
-                              placeholder="بحث باسم الطالب، رقم الهاتف، أو اسم الدرس..."
-                              className="w-full pr-9 pl-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                            />
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-400">تصفية:</span>
-                            <select
-                              value={submissionFilterLesson}
-                              onChange={(e) => setSubmissionFilterLesson(e.target.value)}
-                              className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
-                            >
-                              <option value="all">جميع الدروس ({systemAnswers.length})</option>
-                              {editableLessons.map((l, idx) => (
-                                <option key={l.targetId || idx} value={l.title}>
-                                  {l.title}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* جدول الإجابات */}
-                        {(() => {
-                          const filtered = systemAnswers.filter((a) => {
-                            const matchSearch =
-                              !submissionsSearch.trim() ||
-                              a.studentName.toLowerCase().includes(submissionsSearch.toLowerCase()) ||
-                              a.studentPhone.includes(submissionsSearch) ||
-                              a.lessonTitle.toLowerCase().includes(submissionsSearch.toLowerCase());
-                            const matchLesson =
-                              submissionFilterLesson === 'all' ||
-                              a.lessonTitle.trim() === submissionFilterLesson.trim();
-                            return matchSearch && matchLesson;
-                          });
-
-                          if (filtered.length === 0) {
-                            return (
-                              <div className="p-8 text-center rounded-xl bg-slate-900/60 border border-dashed border-slate-800 space-y-2">
-                                <FileSpreadsheet className="w-8 h-8 text-slate-600 mx-auto" />
-                                <p className="text-xs font-bold text-slate-400">لا توجد إجابات مسجلة بعد وفق هذا الفلتر</p>
-                                <p className="text-[11px] text-slate-500">
-                                  عندما يجيب الطالب أو المشترك أو الزائر على الأسئلة في شاشة الكاميرا، ستظهر إجاباته هنا مباشرة وتُرسل لورقة Answers-AR.
-                                </p>
-                              </div>
-                            );
-                          }
-
-                          const maxCols = Math.max(
-                            3,
-                            ...filtered.map((a) => (Array.isArray(a.answerColumns) ? a.answerColumns.length : 0))
                           );
+                        }
 
-                          return (
-                            <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/80 shadow-inner">
-                              <div className="overflow-x-auto max-h-72">
-                                <table className="w-full text-right text-xs border-collapse">
-                                  <thead className="bg-slate-950 text-slate-300 font-bold sticky top-0 z-10 border-b border-slate-800">
-                                    <tr>
-                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">التاريخ والوقت</th>
-                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">رقم الطالب</th>
-                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">اسم المستخدم</th>
-                                      <th className="p-2.5 whitespace-nowrap bg-slate-950 text-center">الجهاز</th>
-                                      <th className="p-2.5 whitespace-nowrap bg-slate-950">موضوع الحصة</th>
-                                      {Array.from({ length: maxCols }).map((_, i) => (
-                                        <th key={i} className="p-2.5 whitespace-nowrap bg-slate-950 text-center min-w-[90px]">
-                                          إجابة س{i + 1}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-800/80 text-[11px]">
-                                    {filtered.map((row, rIdx) => {
-                                      const isVisitor = !row.studentPhone || row.studentName === 'زائر';
-                                      const ansCols = Array.isArray(row.answerColumns) ? row.answerColumns : [];
-                                      const d = String(row.device || '').toLowerCase();
-                                      const isMob = d.includes('جوال') || d.includes('mobile') || d.includes('phone');
-                                      const isTab = d.includes('تابلت') || d.includes('tablet') || d.includes('ipad');
+                        const maxCols = Math.max(
+                          3,
+                          ...filtered.map((a) => (Array.isArray(a.answerColumns) ? a.answerColumns.length : 0))
+                        );
 
-                                      return (
-                                        <tr key={row.id || rIdx} className="hover:bg-slate-800/50 transition-colors">
-                                          <td className="p-2.5 font-mono text-slate-400 whitespace-nowrap">
-                                            {row.timestamp}
-                                          </td>
-                                          <td className="p-2.5 font-mono whitespace-nowrap">
-                                            {row.studentPhone ? (
-                                              <span className="text-emerald-400 font-bold">{row.studentPhone}</span>
-                                            ) : (
-                                              <span className="text-slate-500 italic">زائر</span>
-                                            )}
-                                          </td>
-                                          <td className="p-2.5 font-bold whitespace-nowrap">
-                                            {isVisitor ? (
-                                              <span className="px-2 py-0.5 rounded-md bg-sky-950 text-sky-300 border border-sky-500/20">
-                                                {row.studentName || 'زائر'}
-                                              </span>
-                                            ) : (
-                                              <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 border border-emerald-500/20">
-                                                {row.studentName}
-                                              </span>
-                                            )}
-                                          </td>
-                                          <td className="p-2.5 whitespace-nowrap text-center">
-                                            {isMob ? (
-                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px]">
-                                                <Smartphone className="w-3 h-3" />
-                                                <span>جوال</span>
-                                              </span>
-                                            ) : isTab ? (
-                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px]">
-                                                <Tablet className="w-3 h-3" />
-                                                <span>تابلت</span>
-                                              </span>
-                                            ) : (
-                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[10px]">
-                                                <Monitor className="w-3 h-3" />
-                                                <span>كمبيوتر</span>
-                                              </span>
-                                            )}
-                                          </td>
-                                          <td className="p-2.5 font-medium text-amber-200 whitespace-nowrap">
-                                            {row.lessonTitle}
-                                          </td>
-                                          {Array.from({ length: maxCols }).map((_, cIdx) => {
-                                            const cell = ansCols[cIdx];
-                                            if (cell === undefined || cell === null || cell === '') {
-                                              return (
-                                                <td key={cIdx} className="p-2.5 text-center text-slate-600">
-                                                  -
-                                                </td>
-                                              );
-                                            }
-                                            if (cell === 'صح') {
-                                              return (
-                                                <td key={cIdx} className="p-2.5 text-center">
-                                                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                                                    صح ✓
-                                                  </span>
-                                                </td>
-                                              );
-                                            }
-                                            if (cell === 'خطأ') {
-                                              return (
-                                                <td key={cIdx} className="p-2.5 text-center">
-                                                  <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold">
-                                                    خطأ ✗
-                                                  </span>
-                                                </td>
-                                              );
-                                            }
+                        return (
+                          <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/80 shadow-inner">
+                            <div className="overflow-x-auto max-h-72">
+                              <table className="w-full text-right text-xs border-collapse">
+                                <thead className="bg-slate-950 text-slate-300 font-bold sticky top-0 z-10 border-b border-slate-800">
+                                  <tr>
+                                    <th className="p-2.5 whitespace-nowrap bg-slate-950">التاريخ والوقت</th>
+                                    <th className="p-2.5 whitespace-nowrap bg-slate-950">رقم الطالب</th>
+                                    <th className="p-2.5 whitespace-nowrap bg-slate-950">اسم المستخدم</th>
+                                    <th className="p-2.5 whitespace-nowrap bg-slate-950 text-center">الجهاز</th>
+                                    <th className="p-2.5 whitespace-nowrap bg-slate-950">موضوع الحصة</th>
+                                    {Array.from({ length: maxCols }).map((_, i) => (
+                                      <th key={i} className="p-2.5 whitespace-nowrap bg-slate-950 text-center min-w-[90px]">
+                                        إجابة س{i + 1}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/80 text-[11px]">
+                                  {filtered.map((row, rIdx) => {
+                                    const isVisitor = !row.studentPhone || row.studentName === 'زائر';
+                                    const ansCols = Array.isArray(row.answerColumns) ? row.answerColumns : [];
+                                    const d = String(row.device || '').toLowerCase();
+                                    const isMob = d.includes('جوال') || d.includes('mobile') || d.includes('phone');
+                                    const isTab = d.includes('تابلت') || d.includes('tablet') || d.includes('ipad');
+
+                                    return (
+                                      <tr key={row.id || rIdx} className="hover:bg-slate-800/50 transition-colors">
+                                        <td className="p-2.5 font-mono text-slate-400 whitespace-nowrap">
+                                          {row.timestamp}
+                                        </td>
+                                        <td className="p-2.5 font-mono whitespace-nowrap">
+                                          {row.studentPhone ? (
+                                            <span className="text-emerald-400 font-bold">{row.studentPhone}</span>
+                                          ) : (
+                                            <span className="text-slate-500 italic">زائر</span>
+                                          )}
+                                        </td>
+                                        <td className="p-2.5 font-bold whitespace-nowrap">
+                                          {isVisitor ? (
+                                            <span className="px-2 py-0.5 rounded-md bg-sky-950 text-sky-300 border border-sky-500/20">
+                                              {row.studentName || 'زائر'}
+                                            </span>
+                                          ) : (
+                                            <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 border border-emerald-500/20">
+                                              {row.studentName}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="p-2.5 whitespace-nowrap text-center">
+                                          {isMob ? (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px]">
+                                              <Smartphone className="w-3 h-3" />
+                                              <span>جوال</span>
+                                            </span>
+                                          ) : isTab ? (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px]">
+                                              <Tablet className="w-3 h-3" />
+                                              <span>تابلت</span>
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[10px]">
+                                              <Monitor className="w-3 h-3" />
+                                              <span>كمبيوتر</span>
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="p-2.5 font-medium text-amber-200 whitespace-nowrap">
+                                          {row.lessonTitle}
+                                        </td>
+                                        {Array.from({ length: maxCols }).map((_, cIdx) => {
+                                          const cell = ansCols[cIdx];
+                                          if (cell === undefined || cell === null || cell === '') {
+                                            return (
+                                              <td key={cIdx} className="p-2.5 text-center text-slate-600">
+                                                -
+                                              </td>
+                                            );
+                                          }
+                                          if (cell === 'صح') {
                                             return (
                                               <td key={cIdx} className="p-2.5 text-center">
-                                                <span className="px-2 py-0.5 rounded bg-slate-800 text-sky-200 border border-slate-700">
-                                                  {cell}
+                                                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                                                  صح ✓
                                                 </span>
                                               </td>
                                             );
-                                          })}
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
+                                          }
+                                          if (cell === 'خطأ') {
+                                            return (
+                                              <td key={cIdx} className="p-2.5 text-center">
+                                                <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold">
+                                                  خطأ ✗
+                                                </span>
+                                              </td>
+                                            );
+                                          }
+                                          return (
+                                            <td key={cIdx} className="p-2.5 text-center">
+                                              <span className="px-2 py-0.5 rounded bg-slate-800 text-sky-200 border border-slate-700">
+                                                {cell}
+                                              </span>
+                                            </td>
+                                          );
+                                        })}
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
-                          );
-                        })()}
-                      </div>
-                    )}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 )}
               </div>
@@ -3472,7 +3488,7 @@ function createJsonResponse(obj) {
                   )}
                 </div>
 
-            {/* زر دليل النشر وتحديث ملفات المشروع الموحد (زر واحد أنيق قابل للفتح والإغلاق) */}
+            {/* زر دليل وإدارة تجميع الأهداف ونشر ملفات المشروع (زر واحد أنيق قابل للفتح والإغلاق) */}
             <div className="pt-2">
               <button
                 type="button"
@@ -3485,7 +3501,7 @@ function createJsonResponse(obj) {
                   </span>
                   <div className="text-right">
                     <h4 className="text-xs sm:text-sm font-bold text-white group-hover:text-sky-200 transition-colors">
-                      🚀 زر دليل نشر وتحديث ملفات المشروع (Vercel & GitHub)
+                      🚀 دليل وإدارة تجميع الأهداف ونشر ملفات المشروع (MindAR & GitHub)
                     </h4>
                   </div>
                 </div>
@@ -3500,7 +3516,7 @@ function createJsonResponse(obj) {
               </button>
             </div>
 
-            {/* محتوى دليل النشر عند النقر على الزر أعلاه */}
+            {/* محتوى دليل النشر وإدارة تجميع الأهداف عند النقر على الزر أعلاه */}
             {showPublishingGuide && (
               <div className="p-4 sm:p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4 animate-fadeIn">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
@@ -3510,7 +3526,7 @@ function createJsonResponse(obj) {
                     </span>
                     <div>
                       <h4 className="text-sm sm:text-base font-bold text-white">
-                        دليل نشر وتحديث ملفات المشروع لـ Vercel
+                        دليل وإدارة تجميع الأهداف وتحديث ملفات المشروع
                       </h4>
                       <p className="text-xs text-slate-400">
                         خطوتان سهلتان لتفعيل تحديثات الدروس وقراءة الكاميرا لجميع الطلاب في التطبيق
@@ -3526,6 +3542,19 @@ function createJsonResponse(obj) {
                     <ChevronUp className="w-3.5 h-3.5" />
                   </button>
                 </div>
+
+                {/* 💡 خطوات إعداد صور كتابك المدرسي الجديد */}
+                <div className="p-3.5 rounded-xl bg-sky-950/60 border border-sky-500/30 flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-sky-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-sky-200 leading-relaxed">
+                    <span className="font-bold text-white block mb-0.5">💡 خطوات إعداد صور كتابك المدرسي الجديد:</span>
+                    1. اضغط على <strong>[ + إضافة درس ]</strong> لكل صفحة من كتابك.<br />
+                    2. اضغط على <strong>[ رفع صورة من جهازك ]</strong> لاختيار صورة الصفحة.<br />
+                    3. ضع روابط الفيديو والصوت والنصوص وسؤال الاختبار.<br />
+                    4. اضغط <strong>[ ⚡ تجميع بصمات الصور ]</strong> لدمج جميع الصور وتوليد <code className="text-sky-300">targets.mind</code>.
+                  </div>
+                </div>
+
 
                 {/* 🎯 Visual Sequence Mapping for MindAR - Dropdown List */}
                 {(() => {
@@ -4124,6 +4153,18 @@ function createJsonResponse(obj) {
             </div>
           </div>
         )}
+
+        {/* Tab 3: Translations Manager (4 Groups with Individual & Group AI Translation) */}
+        {activeTab === 'translations' && (
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 text-slate-100">
+            <TranslationManagerView
+              currentLanguage={currentLang}
+              onLanguageChange={handleLangChange}
+              onRequestConfirm={setConfirmModal}
+            />
+          </div>
+        )}
+
 
         {/* Footer */}
         <div className="p-3 bg-slate-800/80 border-t border-slate-700/60 flex items-center justify-between">

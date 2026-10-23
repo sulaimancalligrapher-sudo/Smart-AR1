@@ -32,6 +32,8 @@ import {
 } from '../services/subscriptionAuth';
 import { submitStudentAnswersToSheet } from '../services/sheetsQuestionsSync';
 import { recordStudentSubmission } from '../services/studentSubmissions';
+import { AppLanguage } from '../types/translation';
+import { t } from '../services/translationService';
 
 interface QuestionsModalProps {
   lesson: LessonData;
@@ -43,6 +45,7 @@ interface QuestionsModalProps {
   onVisitorNameChange?: (name: string) => void;
   onVisitorLogout?: () => void;
   onClose: () => void;
+  currentLanguage?: AppLanguage;
 }
 
 export const QuestionsModal: React.FC<QuestionsModalProps> = ({
@@ -54,7 +57,8 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
   onSubscriberLogin,
   onVisitorNameChange,
   onVisitorLogout,
-  onClose
+  onClose,
+  currentLanguage = 'ar'
 }) => {
   // فحص هل الدرس مقيد للمشتركين أم مفتوح للزوار
   const isRestricted = isLessonRestricted(lesson);
@@ -774,7 +778,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                 }`}
               >
                 <ChevronRight className="w-4 h-4" />
-                <span>السابق</span>
+                <span>{t('btn_prev', currentLanguage)}</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -783,7 +787,7 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                     onClick={handleNext}
                     className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
                   >
-                    <span>التالي</span>
+                    <span>{t('btn_next', currentLanguage)}</span>
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                 ) : null}
@@ -797,12 +801,12 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                      <span>جارٍ الحفظ والإرسال...</span>
+                      <span>{currentLanguage === 'ar' ? 'جارٍ الحفظ والإرسال...' : currentLanguage === 'en' ? 'Submitting...' : 'กำลังส่ง...'}</span>
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4 fill-slate-950" />
-                      <span>📤 إرسال الإجابات والتقييم</span>
+                      <span>📤 {currentLanguage === 'ar' ? 'إرسال الإجابات والتقييم' : currentLanguage === 'en' ? 'Submit Answers' : 'ส่งคำตอบ'}</span>
                     </>
                   )}
                 </button>
@@ -823,10 +827,10 @@ export const QuestionsModal: React.FC<QuestionsModalProps> = ({
 
               <div className="space-y-2">
                 <h4 className="text-xl font-black text-white">
-                  أحسنت يا {studentName || 'بطل'}! 🎉
+                  {t('alert_congrats', currentLanguage)} {studentName ? `(${studentName})` : ''} 🎉
                 </h4>
                 <p className="text-xs sm:text-sm text-emerald-300 font-medium">
-                  {submissionFeedback?.message || 'تم تسجيل جميع إجاباتك بنجاح في النظام وورقة Answers-AR.'}
+                  {submissionFeedback?.message || t('alert_save_success', currentLanguage)}
                 </p>
               </div>
 

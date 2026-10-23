@@ -24,7 +24,8 @@ import {
   Monitor
 } from 'lucide-react';
 import { LessonData, isLessonRestricted } from '../types/ar';
-import { getAdminCredentials, saveAdminCredentials } from '../services/adminAuth';
+import { getAdminCredentials, saveAdminCredentials, getCameraShowTargetCards, setCameraShowTargetCards } from '../services/adminAuth';
+
 
 interface AdminPortalViewProps {
   lessons: LessonData[];
@@ -55,14 +56,27 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newPin, setNewPin] = useState('');
   const [credMessage, setCredMessage] = useState<string | null>(null);
+  const [cameraShowTargetCards, setCameraShowTargetCardsState] = useState<boolean>(() => getCameraShowTargetCards());
+
+  const handleToggleCameraTargetCards = () => {
+    const next = !cameraShowTargetCards;
+    setCameraShowTargetCardsState(next);
+    setCameraShowTargetCards(next);
+  };
 
   const adminCredentials = getAdminCredentials();
 
-  // Create clean admin and student URLs
+
+  // Create clean admin and student URLs for each of the 3 languages
   const origin = window.location.origin;
   const pathname = window.location.pathname;
   const adminUrl = `${origin}${pathname}?admin`;
   const studentUrl = `${origin}${pathname}?mode=student&camera=1`;
+  const studentUrlAr = `${origin}${pathname}?mode=student&camera=1&lang=ar`;
+  const studentUrlEn = `${origin}${pathname}?mode=student&camera=1&lang=en`;
+  const studentUrlTh = `${origin}${pathname}?mode=student&camera=1&lang=th`;
+
+  const [copiedLangMap, setCopiedLangMap] = useState<Record<string, boolean>>({});
 
   const handleCopyAdminUrl = () => {
     navigator.clipboard.writeText(adminUrl);
@@ -70,11 +84,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setTimeout(() => setCopiedAdminLink(false), 2500);
   };
 
-  const handleCopyStudentUrl = () => {
-    navigator.clipboard.writeText(studentUrl);
-    setCopiedStudentLink(true);
-    setTimeout(() => setCopiedStudentLink(false), 2500);
+  const handleCopyLangUrl = (lang: string, url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedLangMap((prev) => ({ ...prev, [lang]: true }));
+    setTimeout(() => setCopiedLangMap((prev) => ({ ...prev, [lang]: false })), 2500);
   };
+
 
   const handleSaveCredentials = (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,75 +250,169 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </div>
             </button>
 
-            {/* 3. زر عرض بطاقات أهداف الدروس */}
-            <button
-              onClick={onOpenTargetCards}
-              className="p-5 rounded-3xl bg-slate-900/90 hover:bg-slate-800/90 border border-sky-500/40 hover:border-sky-400 transition-all cursor-pointer text-right group shadow-lg flex flex-col justify-between gap-4"
-            >
+            {/* 3. زر عرض بطاقات أهداف الدروس ومفتاح ظهورها في الكاميرا */}
+            <div className="p-5 rounded-3xl bg-slate-900/90 border border-sky-500/40 hover:border-sky-400 transition-all text-right shadow-lg flex flex-col justify-between gap-4">
               <div className="flex items-center justify-between w-full">
-                <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-300 flex items-center justify-center border border-sky-400/30 group-hover:scale-105 transition-transform">
+                <button
+                  type="button"
+                  onClick={onOpenTargetCards}
+                  className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-300 flex items-center justify-center border border-sky-400/30 hover:scale-105 transition-transform cursor-pointer"
+                  title="فتح نافذة عرض وطباعة بطاقات الدروس"
+                >
                   <Eye className="w-5 h-5" />
-                </div>
-                <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2.5 py-1 rounded-full font-bold">
-                  Targets
-                </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleCameraTargetCards}
+                  className={`text-[10px] px-2.5 py-1 rounded-full font-bold transition-all cursor-pointer border ${
+                    cameraShowTargetCards
+                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}
+                  title="التحكم في ظهور زر بطاقات الدروس في الشريط العلوي لشاشة الكاميرا"
+                >
+                  بالكاميرا: {cameraShowTargetCards ? 'ظاهر ✓' : 'مخفي ✕'}
+                </button>
               </div>
               <div className="space-y-1">
-                <h3 className="text-sm font-black text-white group-hover:text-sky-300 transition-colors">
-                  عرض بطاقات أهداف الدروس
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  معاينة وطباعة بطاقات صور الدروس المستهدفة للتعرف عليها بالكاميرا في الفصل.
-                </p>
+                <button
+                  type="button"
+                  onClick={onOpenTargetCards}
+                  className="text-right w-full cursor-pointer group"
+                >
+                  <h3 className="text-sm font-black text-white group-hover:text-sky-300 transition-colors">
+                    عرض بطاقات أهداف الدروس
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed mt-1">
+                    معاينة وطباعة بطاقات صور الدروس المستهدفة للتعرف عليها بالكاميرا في الفصل.
+                  </p>
+                </button>
               </div>
-            </button>
+              <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={onOpenTargetCards}
+                  className="text-xs text-sky-400 hover:text-sky-300 font-bold cursor-pointer"
+                >
+                  معاينة البطاقات ↗
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleCameraTargetCards}
+                  className={`text-[11px] font-bold px-2 py-0.5 rounded-lg cursor-pointer transition-colors ${
+                    cameraShowTargetCards ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {cameraShowTargetCards ? 'مفعّل في الكاميرا ✓' : 'إظهار في الكاميرا؟'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* 4. كيو آر كود ورابط الطلاب */}
+
+        {/* 4. كيو آر كود ورابط الطلاب بثلاث لغات */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <QrCode className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-sm sm:text-base font-black text-white">رابط وبباركود صفحة الطالب (للمشاركة في الصف)</h3>
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-white">روابط وبباركودات صفحة الطالب بثلاث لغات (تفتح الكاميرا مباشر)</h3>
+                <p className="text-[11px] text-slate-400">امسح أو شارك الرابط الخاص بكل لغة ليفتح الكاميرا فوراً باللغة المختارة</p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={onOpenQRModal}
-                className="px-3 py-1.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-indigo-600/30"
               >
                 <QrCode className="w-3.5 h-3.5" />
-                <span>نافذة الباركود للطباعة</span>
-              </button>
-              <button
-                onClick={handleCopyStudentUrl}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                {copiedStudentLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedStudentLink ? 'تم نسخ الرابط!' : 'نسخ رابط الطالب'}</span>
+                <span>نافذة الباركود الشاملة للطباعة ↗</span>
               </button>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-950 p-4 rounded-2xl border border-slate-800">
-            <div className="p-2 bg-white rounded-xl shadow-md flex-shrink-0">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(studentUrl)}`}
-                alt="باركود صفحة الطلاب"
-                className="w-28 h-28 object-contain"
-              />
-            </div>
-            <div className="text-xs text-slate-300 space-y-2 text-right">
-              <p className="font-bold text-white text-sm">هذا هو رابط وباركود الطالب المباشر (يفتح الكاميرا فوراً):</p>
-              <p className="text-slate-400 text-xs">
-                شارك هذا الباركود أو الرابط مع الطلاب؛ عند مسح الباركود أو فتح الرابط تفتح الكاميرا مباشرة للبدء في توجيهها لصفحات الكتاب.
-              </p>
-              <div className="font-mono text-xs text-emerald-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 break-all">
-                {studentUrl}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* 1. باركود اللغة العربية */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-emerald-500/30 flex flex-col items-center text-center space-y-3">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-300">
+                <span>🇸🇦</span>
+                <span>العربية (AR) - مباشر</span>
               </div>
+              <div className="p-2 bg-white rounded-xl shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(studentUrlAr)}`}
+                  alt="باركود كاميرا الطالب - العربية"
+                  className="w-28 h-28 object-contain"
+                />
+              </div>
+              <div className="w-full text-left font-mono text-[10px] text-slate-400 bg-slate-900 p-2 rounded-lg truncate dir-ltr select-all">
+                {studentUrlAr}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyLangUrl('ar', studentUrlAr)}
+                className="w-full py-1.5 px-3 rounded-xl bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+              >
+                {copiedLangMap['ar'] ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedLangMap['ar'] ? 'تم نسخ الرابط!' : 'نسخ رابط العربية'}</span>
+              </button>
+            </div>
+
+            {/* 2. باركود اللغة الإنجليزية */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-sky-500/30 flex flex-col items-center text-center space-y-3">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-sky-300">
+                <span>🇬🇧</span>
+                <span>English (EN) - Direct</span>
+              </div>
+              <div className="p-2 bg-white rounded-xl shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(studentUrlEn)}`}
+                  alt="باركود كاميرا الطالب - الإنجليزية"
+                  className="w-28 h-28 object-contain"
+                />
+              </div>
+              <div className="w-full text-left font-mono text-[10px] text-slate-400 bg-slate-900 p-2 rounded-lg truncate dir-ltr select-all">
+                {studentUrlEn}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyLangUrl('en', studentUrlEn)}
+                className="w-full py-1.5 px-3 rounded-xl bg-sky-600/90 hover:bg-sky-600 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+              >
+                {copiedLangMap['en'] ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedLangMap['en'] ? 'Copied!' : 'Copy English Link'}</span>
+              </button>
+            </div>
+
+            {/* 3. باركود اللغة التايلندية */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-amber-500/30 flex flex-col items-center text-center space-y-3">
+              <div className="flex items-center gap-1.5 font-bold text-xs text-amber-300">
+                <span>🇹🇭</span>
+                <span>ภาษาไทย (TH) - กล้องทันที</span>
+              </div>
+              <div className="p-2 bg-white rounded-xl shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(studentUrlTh)}`}
+                  alt="باركود كاميرا الطالب - التايلندية"
+                  className="w-28 h-28 object-contain"
+                />
+              </div>
+              <div className="w-full text-left font-mono text-[10px] text-slate-400 bg-slate-900 p-2 rounded-lg truncate dir-ltr select-all">
+                {studentUrlTh}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyLangUrl('th', studentUrlTh)}
+                className="w-full py-1.5 px-3 rounded-xl bg-amber-600/90 hover:bg-amber-600 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+              >
+                {copiedLangMap['th'] ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedLangMap['th'] ? 'คัดลอกแล้ว!' : 'คัดลอกลิงก์ภาษาไทย'}</span>
+              </button>
             </div>
           </div>
         </div>
+
 
         {/* 5. تجربة فورية فوق الكاميرا (محاكي المعلم) */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-3">

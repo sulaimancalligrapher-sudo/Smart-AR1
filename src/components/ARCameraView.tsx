@@ -9,6 +9,10 @@ import { normalizeAudioUrl } from '../services/urlHelpers';
 import { soundService } from '../services/soundService';
 
 import { SubscriberInfo, getStoredSubscriber } from '../services/subscriptionAuth';
+import { getCameraShowTargetCards } from '../services/adminAuth';
+import { AppLanguage } from '../types/translation';
+import { t } from '../services/translationService';
+import { LanguageDropdown } from './LanguageDropdown';
 
 interface ARCameraViewProps {
   lessons: LessonData[];
@@ -25,6 +29,8 @@ interface ARCameraViewProps {
   onSubscriberLogout?: () => void;
   onVisitorLogout?: () => void;
   hideScanReticle?: boolean;
+  currentLanguage?: AppLanguage;
+  onLanguageChange?: (lang: AppLanguage) => void;
 }
 
 function playMatchChime() {
@@ -208,7 +214,9 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
   visitorName,
   onSubscriberLogout,
   onVisitorLogout,
-  hideScanReticle = false
+  hideScanReticle = false,
+  currentLanguage = 'ar',
+  onLanguageChange
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoFallbackRef = useRef<HTMLVideoElement | null>(null);
@@ -923,25 +931,33 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
           <X className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
 
-        <div className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full ar-glass-panel border border-white/20 text-[10px] sm:text-xs font-bold flex items-center gap-1.5 text-white shadow-lg max-w-[42%] sm:max-w-[58%] truncate mx-1">
+        <div className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full ar-glass-panel border border-white/20 text-[10px] sm:text-xs font-bold flex items-center gap-1.5 text-white shadow-lg max-w-[36%] sm:max-w-[48%] truncate mx-1">
           {activeLesson ? (
             <>
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping flex-shrink-0"></span>
               <span className="truncate">
-                {isPhysicalTargetTracked ? '🎯 مثبت على الكتاب' : `✓ ${activeLesson.title}`}
+                {isPhysicalTargetTracked ? `🎯 ${t('camera_status_detected', currentLanguage)}` : `✓ ${activeLesson.title}`}
               </span>
             </>
           ) : (
             <>
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isMindArActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
               <span className="truncate">
-                {isMindArActive ? '🟢 وجّه الكاميرا للصورة...' : '📖 تشغيل الماسح...'}
+                {isMindArActive ? `🟢 ${t('camera_status_scanning', currentLanguage)}` : '📖 ...'}
               </span>
             </>
           )}
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+          {/* 🌐 زر اللغات المنسدل المدمج والمصمم بعناية */}
+          {onLanguageChange && (
+            <LanguageDropdown
+              currentLanguage={currentLanguage}
+              onLanguageChange={onLanguageChange}
+              compact={true}
+            />
+          )}
           {/* شارة المشترك المفعل مع اسمه وزر تسجيل الخروج السريع للاختبار */}
           {subscriber ? (
             <div className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-[10px] sm:text-xs text-emerald-300 font-bold shadow-md animate-fadeIn">
@@ -1089,27 +1105,18 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400" />
           </button>
 
-          {isAdmin && (
-            <>
-              <button
-                onClick={onOpenTargetCards}
-                className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
-                title="عرض بطاقات الدروس"
-              >
-                <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
-              </button>
-
-              <button
-                onClick={onOpenTeacherConsole}
-                className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
-                title="لوحة المعلم"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />
-              </button>
-            </>
+          {getCameraShowTargetCards() && isAdmin && onOpenTargetCards && (
+            <button
+              onClick={onOpenTargetCards}
+              className="p-2 sm:p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white border border-white/20 shadow-lg active:scale-95 transition-all cursor-pointer backdrop-blur-md"
+              title="عرض بطاقات الدروس"
+            >
+              <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
+            </button>
           )}
         </div>
       </div>
+
 
       {/* زر عائم لتشغيل الصوت عند حظره بواسطة قيود المتصفح - يظهر فقط إذا كان للمجسم صوت */}
       {hasModelSound && soundState.isBlockedByAutoplay && isPhysicalTargetTracked && !soundState.isMuted && (
@@ -1133,35 +1140,22 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-cyan-400 rounded-br-2xl" />
             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-cyan-400 rounded-bl-2xl" />
 
-            <div className="mt-1 px-3 py-1 rounded-full bg-black/70 backdrop-blur-sm text-[11px] text-cyan-200 border border-cyan-400/30">
-              وجّه الكاميرا إلى صورة الدرس في الكتاب
+            <div className="mt-1 px-3 py-1 rounded-full bg-black/70 backdrop-blur-sm text-[11px] text-cyan-200 border border-cyan-400/30 text-center">
+              {t('camera_guide_point', currentLanguage)}
             </div>
 
             <div className="text-center">
               <span className="text-[10px] text-white/90 bg-black/60 px-2.5 py-1 rounded-md border border-white/10 block">
-                تتبع الواقع المعزز (AR Tracking) نشط ومجهز
+                {t('camera_tracking_active', currentLanguage)}
               </span>
             </div>
           </div>
 
-          <div className="mt-4 pointer-events-none">
+          <div className="mt-4 pointer-events-none max-w-sm px-2 text-center">
             <span className="px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-[11px] text-cyan-200 border border-cyan-400/30 shadow-lg text-center block">
-              📖 قرّب الكاميرا ببطء من صفحة الدرس حتى يظهر المجسم مباشرة فوق الورقة
+              📖 {t('camera_slow_approach', currentLanguage)}
             </span>
           </div>
-
-          {isAdmin && lessons.length > 0 && (
-            <div className="mt-3 flex flex-col items-center gap-1.5 pointer-events-auto">
-              <button
-                onClick={handleSimulateFirstLesson}
-                className="py-1.5 px-4 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                title="تجربة تفاعلية مباشرة بدون كاميرا ورقية"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>⚡ تجربة التعرف الفوري ومجسم AR بنقرة واحدة</span>
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -1179,32 +1173,26 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
           <h3 className="text-base font-bold mb-1">
             {loadingSeconds < 3
-              ? 'جارٍ تشغيل الكاميرا وتجهيز مجسمات الواقع المعزز...'
-              : 'في انتظار تأكيد إذن الكاميرا...'}
+              ? t('camera_loading_title', currentLanguage)
+              : t('camera_waiting_permission', currentLanguage)}
           </h3>
 
           <p className="text-xs text-slate-300 max-w-xs leading-relaxed mb-4">
             {loadingSeconds < 3
-              ? 'يرجى الانتظار ثوانٍ معدودة لبدء المسح البصري الذكي.'
-              : 'إذا ظهر لك مربع في أعلى المتصفح يطلب إذن الكاميرا، اضغط على (سماح / Allow).'}
+              ? (currentLanguage === 'ar'
+                  ? 'يرجى الانتظار ثوانٍ معدودة لبدء المسح البصري الذكي.'
+                  : currentLanguage === 'en'
+                  ? 'Please wait a few seconds to start optical scanning.'
+                  : 'กรุณารอสักครู่เพื่อเริ่มการสแกน...')
+              : t('camera_permission_hint', currentLanguage)}
           </p>
 
           <div className="flex flex-col gap-2 w-full max-w-xs">
-            {lessons.length > 0 && loadingSeconds >= 3 && (
-              <button
-                onClick={handleSimulateFirstLesson}
-                className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all animate-fadeIn"
-              >
-                <Zap className="w-4 h-4 text-amber-300" />
-                <span>⚡ فتح الدرس فوراً (تخطي انتظار الكاميرا)</span>
-              </button>
-            )}
-
             <button
               onClick={onCloseCamera}
               className="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer border border-slate-700 transition-colors"
             >
-              ✕ إلغاء والعودة للشاشة الرئيسية
+              ✕ {t('camera_cancel_btn', currentLanguage)}
             </button>
           </div>
         </div>
