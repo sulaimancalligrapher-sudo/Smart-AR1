@@ -112,6 +112,10 @@ export interface LessonModel3D {
   soundEnabled?: boolean; // تفعيل أو كتم الصوت التلقائي (افتراضياً مفعّل إذا وُجد رابط)
 }
 
+import type { SubscriberInfo } from '../services/subscriptionAuth';
+
+export type LessonAccessTier = 'open' | 'restricted' | 'custom';
+
 export interface LessonData {
   targetIndex: number;
   additionalTargetIndices?: number[]; // فهارس صفحات وأهداف إضافية لنفس الدرس في targets.mind
@@ -131,25 +135,138 @@ export interface LessonData {
   model3d?: LessonModel3D;
   arModel3d?: LessonModel3D; // مجسم مخصص اختياري للواقع المعزز (AR) - إذا لم يُحدد يستخدم model3d تلقائياً
   isFreePreview?: boolean; // هل الدرس متاح للتجربة المجانية بدون تسجيل دخول؟ (true = مجاني، false = للمشتركين فقط)
+  accessTier?: LessonAccessTier; // 'open' (متاح للجميع) | 'restricted' (مقيد للمشتركين) | 'custom' (خاص بمشتركين محددين VIP)
   questions?: LessonQuestion[]; // بنك الأسئلة المتعددة للدرس الواحد
 }
 
 /**
- * دالة معيارية لفحص هل الدرس مقفل ومقيد للمشتركين فقط أم متاح مجاناً للجميع
+ * تحديد مستوى صلاحية الوصول للدرس:
+ * - 'open': متاح مجاناً للجميع (زائر، مشترك، مشترك خاص)
+ * - 'restricted': مقيد للمشتركين (يراه المشترك والمشترك الخاص، ومحجوب عن الزائر)
+ * - 'custom': خاص وحصري (محجوب عن الزائر والمشترك العادي، يراه فقط المشترك الخاص المخصص له هذا الدرس)
+ */
+export function getLessonAccessTier(lesson?: LessonData | null): LessonAccessTier {
+  if (!lesson) return 'open';
+  if (lesson.accessTier === 'custom') return 'custom';
+  if (lesson.accessTier === 'restricted') return 'restricted';
+  if (lesson.accessTier === 'open') return 'open';
+
+  // التوافق مع الخاصية السابقة isFreePreview
+  if (lesson.isFreePreview === true || (lesson.isFreePreview as any) === 'true') {
+    return 'open';
+  }
+  if (lesson.isFreePreview === false || (lesson.isFreePreview as any) === 'false') {
+    return 'restricted';
+  }
+
+  // في حال لم يتم تحديد القيمة: الدرس الأول (Target #0) متاح مجاناً، وجميع الدروس التالية مقفلة
+  const pIdx = typeof lesson.targetIndex === 'number' ? lesson.targetIndex : 0;
+  return pIdx > 0 ? 'restricted' : 'open';
+}
+
+/**
+ * دالة معيارية لفحص هل الدرس مقفل ومقيد (سواء مقيد عام أو خاص) أم متاح مجاناً للجميع
  */
 export function isLessonRestricted(lesson?: LessonData | null): boolean {
-  if (!lesson) return false;
-  // إذا حُدد صراحة كمعاينة مجانية (سواء boolean أو نص string)
-  if (lesson.isFreePreview === true || (lesson.isFreePreview as any) === 'true') {
-    return false;
+  return getLessonAccessTier(lesson) !== 'open';
+}
+
+/**
+ * هل الدرس مصنف كـ "خاص" بمشتركين محددين (VIP)؟
+ */
+export function isLessonCustom(lesson?: LessonData | null): boolean {
+  return getLessonAccessTier(lesson) === 'custom';
+}
+
+export interface LessonAccessResult {
+  allowed: boolean;
+  tier: LessonAccessTier;
+  reason?: 'open' | 'subscriber_granted' | 'custom_granted' | 'visitor_blocked' | 'subscriber_blocked_custom_only' | 'custom_not_assigned';
+  message?: string;
+}
+
+/**
+ * فحص صلاحية وصول المستخدم (زائر / مشترك عادي / مشترك خاص) لدرس معين:
+ * 1. الدرس المتاح: مفتوح للجميع (زائر، مشترك، مشترك خاص)
+ * 2. الدرس المقيد: مفتوح للمشترك العادي والمشترك الخاص، ومحجوب عن الزائر
+ * 3. الدرس الخاص: محجوب عن الزائر ومحجوب عن المشترك العادي! يفتح فقط للمشترك الخاص المخصص له هذا الدرس في SubData
+ */
+export function checkLessonAccess(
+  lesson?: LessonData | null,
+  subscriber?: SubscriberInfo | null
+): LessonAccessResult {
+  if (!lesson) {
+    return { allowed: true, tier: 'open', reason: 'open' };
   }
-  // إذا حُدد صراحة كمقفل للمشتركين
-  if (lesson.isFreePreview === false || (lesson.isFreePreview as any) === 'false') {
-    return true;
+
+  const tier = getLessonAccessTier(lesson);
+
+  // 1. متاح للجميع:
+  if (tier === 'open') {
+    return { allowed: true, tier: 'open', reason: 'open' };
   }
-  // في حال لم يتم تحديد القيمة: الدرس الأول (Target #0) متاح مجاناً، وجميع الدروس التالية مقفلة للمشتركين
-  const pIdx = typeof lesson.targetIndex === 'number' ? lesson.targetIndex : 0;
-  return pIdx > 0;
+
+  // 2. إذا لم يكن هناك اشتراك (وضع الزائر):
+  if (!subscriber) {
+    return {
+      allowed: false,
+      tier,
+      reason: 'visitor_blocked',
+      message: tier === 'custom'
+        ? 'هذا الدرس مخصص حصرياً للمشتركين الخاصين (VIP). يرجى تسجيل الدخول بحساب المشترك الخاص.'
+        : 'هذا الدرس مقيد للمشتركين. يرجى تسجيل الدخول أو الاشتراك للاطلاع عليه.'
+    };
+  }
+
+  // 3. إذا كان الدرس مقيداً للمشتركين (Restricted):
+  if (tier === 'restricted') {
+    // المشترك العادي والمشترك الخاص كلاهما مسموح لهما بالدخول للدروس المقيدة العامة
+    return {
+      allowed: true,
+      tier: 'restricted',
+      reason: subscriber.isCustomSubscriber ? 'custom_granted' : 'subscriber_granted'
+    };
+  }
+
+  // 4. إذا كان الدرس خاصاً (Custom):
+  // المشترك العادي محجوب عنه الدروس الخاصة!
+  if (!subscriber.isCustomSubscriber) {
+    return {
+      allowed: false,
+      tier: 'custom',
+      reason: 'subscriber_blocked_custom_only',
+      message: 'هذا المحتوى خاص وحصري لمشتركين معينين (مشترك خاص). حسابك مشترك عام ولا يشمل هذا الدرس.'
+    };
+  }
+
+  // إذا كان مشتركاً خاصاً (isCustomSubscriber === true):
+  // نتحقق هل عنوان الدرس أو رقمه مدرج ضمن دروسه المخصصة في العمود C (SubData)
+  const lessonTitle = (lesson.title || '').trim();
+  const targetIndexStr = String((typeof lesson.targetIndex === 'number' ? lesson.targetIndex : 0) + 1);
+  const targetId = (lesson.targetId || '').trim();
+  const allowedList = subscriber.allowedLessons || [];
+
+  const isMatched = allowedList.some((item) => {
+    const clean = item.trim();
+    if (!clean) return false;
+    if (clean === '*' || clean === 'الكل' || clean === 'all') return true;
+    return clean === lessonTitle || clean === targetIndexStr || clean === targetId;
+  });
+
+  if (isMatched) {
+    return {
+      allowed: true,
+      tier: 'custom',
+      reason: 'custom_granted'
+    };
+  }
+
+  return {
+    allowed: false,
+    tier: 'custom',
+    reason: 'custom_not_assigned',
+    message: 'هذا الدرس خاص ولم يُخصص لحسابك بعد. يرجى مراجعة المعلم لإضافته إلى دروسك المعتمدة.'
+  };
 }
 
 /**
@@ -431,6 +548,7 @@ export function getActiveLessonModel(lesson?: LessonData | null, preferAR: boole
 
 export type ARActionType =
   | 'target_detected'
+  | 'target_locked_blocked'
   | 'video_open'
   | 'video_close'
   | 'images_open'

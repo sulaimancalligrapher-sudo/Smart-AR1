@@ -27,7 +27,10 @@ import {
   normalizeVideoData,
   normalizeAudioData,
   resolveAssetUrl,
-  isLessonRestricted
+  isLessonRestricted,
+  getLessonAccessTier,
+  isLessonCustom,
+  LessonAccessTier
 } from '../types/ar';
 import { saveStoredLessons, fetchLessons, setHasLocalDrafts } from '../data/lessons';
 import { Model3DViewer } from './Model3DViewer';
@@ -565,6 +568,10 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
         cur.images = value;
       } else if (field === 'isFreePreview') {
         cur.isFreePreview = Boolean(value);
+        cur.accessTier = Boolean(value) ? 'open' : (cur.accessTier === 'custom' ? 'custom' : 'restricted');
+      } else if (field === 'accessTier') {
+        cur.accessTier = value as LessonAccessTier;
+        cur.isFreePreview = value === 'open';
       } else {
         (cur as any)[field] = value;
       }
@@ -2044,10 +2051,16 @@ function createJsonResponse(obj) {
                         className="w-full pl-8 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-sky-500 focus:border-sky-500 text-xs sm:text-sm font-bold text-white transition-all cursor-pointer focus:outline-none appearance-none shadow-sm"
                       >
                         {editableLessons.map((l, idx) => {
-                          const isFree = !isLessonRestricted(l);
+                          const tier = getLessonAccessTier(l);
+                          const tag =
+                            tier === 'open'
+                              ? ' (🔓 متاح للجميع)'
+                              : tier === 'custom'
+                              ? ' (✦ خاص VIP)'
+                              : ' (🔒 مقفل للمشتركين)';
                           return (
                             <option key={l.targetId || idx} value={idx} className="bg-slate-950 text-white py-1">
-                              Target #{l.targetIndex}: {l.title || `درس ${idx + 1}`} {isFree ? ' (🔓 متاح مجاناً)' : ' (🔒 مقفل للمشتركين)'}
+                              Target #{l.targetIndex}: {l.title || `درس ${idx + 1}`} {tag}
                             </option>
                           );
                         })}
@@ -2249,63 +2262,105 @@ function createJsonResponse(obj) {
                       </span>
                     </div>
 
-                    {/* مستوى الوصول للدرس (Free vs Locked) */}
+                    {/* مستوى الوصول للدرس (3 خيارات: متاح للجميع / مقفل للمشتركين / خاص بمشتركين محددين) */}
                     {(() => {
-                      const isRestricted = isLessonRestricted(currentLesson);
+                      const accessTier = getLessonAccessTier(currentLesson);
                       return (
-                        <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+                        <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
                           <div className="flex items-center justify-between">
                             <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                              {!isRestricted ? (
+                              {accessTier === 'open' ? (
                                 <Unlock className="w-4 h-4 text-emerald-400" />
+                              ) : accessTier === 'custom' ? (
+                                <Sparkles className="w-4 h-4 text-purple-400" />
                               ) : (
                                 <Lock className="w-4 h-4 text-amber-400" />
                               )}
                               <span>مستوى صلاحية الوصول لهذا الدرس:</span>
                             </label>
                             <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                              !isRestricted 
+                              accessTier === 'open' 
                                 ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : accessTier === 'custom'
+                                ? 'bg-purple-950/60 border-purple-500/40 text-purple-300'
                                 : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
                             }`}>
-                              {!isRestricted ? '🔓 متاح مجاناً للتجربة (Free Preview)' : '🔒 مقفل للأعضاء المشتركين فقط'}
+                              {accessTier === 'open' 
+                                ? '🔓 متاح مجاناً للجميع' 
+                                : accessTier === 'custom'
+                                ? '✦ خاص بمشتركين محددين (VIP)'
+                                : '🔒 مقفل للأعضاء المشتركين (عام)'}
                             </span>
                           </div>
 
                           <p className="text-[11px] text-slate-300 leading-relaxed">
-                            حدد ما إذا كان هذا الدرس مفتوحاً للجميع (كنموذج دعائي وتجريبي للكتاب المدرسي)، أو يتطلب اشتراكاً وتسجيل دخول.
+                            اختر نوع الصلاحية: متاح للجميع (بما فيهم الزوار)، أو مقيد لجميع المشتركين، أو درس خاص لا يراه إلا طلاب محددون مسجلون في ورقة SubData.
                           </p>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                            {/* 1. متاح للجميع */}
                             <button
                               type="button"
-                              onClick={() => handleFieldChange('isFreePreview', true)}
-                              className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
-                                !isRestricted
+                              onClick={() => {
+                                handleFieldChange('accessTier', 'open');
+                                handleFieldChange('isFreePreview', true);
+                              }}
+                              className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                                accessTier === 'open'
                                   ? 'bg-emerald-950/80 border-emerald-500 text-white font-bold ring-2 ring-emerald-500/30'
                                   : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                               }`}
                             >
-                              <Unlock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                              <div>
-                                <div className="font-bold text-white text-xs">متاح مجاناً للجميع (تجربة ومعاينة)</div>
-                                <div className="text-[10px] text-slate-400">يمكن لأي طالب فتحه واستكشاف المجسم والوسائط دون تسجيل</div>
+                              <div className="flex items-center gap-2">
+                                <Unlock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                                <span className="font-bold text-white text-xs">متاح مجاناً للجميع</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 leading-normal">
+                                متاح للزائر والمشترك والمشترك الخاص دون طلب تسجيل دخول
                               </div>
                             </button>
 
+                            {/* 2. مقفل للمشتركين */}
                             <button
                               type="button"
-                              onClick={() => handleFieldChange('isFreePreview', false)}
-                              className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex items-center gap-2.5 ${
-                                isRestricted
+                              onClick={() => {
+                                handleFieldChange('accessTier', 'restricted');
+                                handleFieldChange('isFreePreview', false);
+                              }}
+                              className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                                accessTier === 'restricted'
                                   ? 'bg-amber-950/80 border-amber-500 text-white font-bold ring-2 ring-amber-500/30'
                                   : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                               }`}
                             >
-                              <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                              <div>
-                                <div className="font-bold text-white text-xs">مقفل للمشتركين فقط (تسجيل الدخول)</div>
-                                <div className="text-[10px] text-slate-400">يتطلب الاسم ورقم الاشتراك المسجل في قاعدة البيانات</div>
+                              <div className="flex items-center gap-2">
+                                <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                                <span className="font-bold text-white text-xs">مقفل للمشتركين (عام)</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 leading-normal">
+                                متاح لجميع المشتركين والمشترك الخاص، ومحجوب عن الزوار
+                              </div>
+                            </button>
+
+                            {/* 3. خاص بمشتركين محددين */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleFieldChange('accessTier', 'custom');
+                                handleFieldChange('isFreePreview', false);
+                              }}
+                              className={`p-2.5 rounded-xl border text-xs text-right transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                                accessTier === 'custom'
+                                  ? 'bg-purple-950/80 border-purple-500 text-white font-bold ring-2 ring-purple-500/30 shadow-lg shadow-purple-950/50'
+                                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Sparkles className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                                <span className="font-bold text-white text-xs">خاص بمشترك محدد (VIP)</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 leading-normal">
+                                محجوب عن الزائر والمشترك العام، يفتح فقط لمن خُصص له هذا الدرس
                               </div>
                             </button>
                           </div>

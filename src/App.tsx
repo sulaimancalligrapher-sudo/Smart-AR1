@@ -20,7 +20,7 @@ import { AdminPortalView } from './components/AdminPortalView';
 import { Model3DModal } from './components/Model3DModal';
 import { Holographic3DOverlay } from './components/Holographic3DOverlay';
 import { QuestionsModal } from './components/QuestionsModal';
-import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios, getLessonQuestions, isLessonRestricted } from './types/ar';
+import { LessonData, getActiveLessonModel, getLessonVideos, getLessonAudios, getLessonQuestions, isLessonRestricted, checkLessonAccess } from './types/ar';
 import { DEFAULT_LESSONS, fetchLessons, getStoredLessons, saveStoredLessons, purgeAllLocalDataAndCache } from './data/lessons';
 import { analytics } from './services/analytics';
 import { soundService } from './services/soundService';
@@ -215,7 +215,25 @@ export default function App() {
       ) ||
       lesson;
 
-    // تفعيل الدرس لعرض أزرار التفاعل فوق الكاميرا في كلا الوضعين
+    // 2. فحص صلاحية الوصول للدرس: (متاح مجاناً / مقفل للمشتركين / خاص VIP)
+    const activeSub = currentSubscriberRef.current || currentSubscriber || getStoredSubscriber();
+    const access = checkLessonAccess(fresh, activeSub);
+
+    if (!access.allowed) {
+      console.warn(`🔒 درس مقيد/خاص تم مسحه (${access.tier}):`, fresh.title, access.reason);
+      setLockedLessonTarget(fresh);
+      setIsSubscriberLockModalOpen(true);
+      // إخفاء الدرس النشط لمنع ظهور أزرار التفاعل لغير المصرح لهم
+      setActiveLesson(null);
+      analytics.trackEvent({
+        targetId: fresh.targetId,
+        lessonTitle: fresh.title,
+        action: 'target_locked_blocked'
+      });
+      return;
+    }
+
+    // تفعيل الدرس لعرض أزرار التفاعل فوق الكاميرا
     setActiveLesson(fresh);
     setShowHologram3D(false);
     setShowFloatingModel(true);
@@ -236,11 +254,14 @@ export default function App() {
     currentSubscriberRef.current = subscriber;
     setIsSubscriberLockModalOpen(false);
     if (lockedLessonTarget) {
-      setActiveLesson(lockedLessonTarget);
-      setShowFloatingModel(true);
-      setShowHologram3D(false);
-      if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
-        setActiveModal('none');
+      const access = checkLessonAccess(lockedLessonTarget, subscriber);
+      if (access.allowed) {
+        setActiveLesson(lockedLessonTarget);
+        setShowFloatingModel(true);
+        setShowHologram3D(false);
+        if (activeModal !== 'teacher_console' && activeModal !== 'compiler') {
+          setActiveModal('none');
+        }
       }
       setLockedLessonTarget(null);
     }
@@ -604,6 +625,7 @@ export default function App() {
       <SubscriberLockModal
         isOpen={isSubscriberLockModalOpen}
         lesson={lockedLessonTarget || lessons.find((l) => isLessonRestricted(l)) || lessons[0] || null}
+        currentSubscriber={currentSubscriber}
         webAppUrl={analytics.getWebAppUrl()}
         subscriptionExternalUrl={getSubscriptionExternalUrl()}
         currentLanguage={currentLanguage}

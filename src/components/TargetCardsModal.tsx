@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Printer, Eye, Play, Sparkles, Download, CheckCircle2, Zap, RefreshCw } from 'lucide-react';
-import { LessonData, isLessonRestricted } from '../types/ar';
+import { LessonData, isLessonRestricted, getLessonAccessTier } from '../types/ar';
 import { targetCompiler, CompileProgress } from '../services/targetCompiler';
 
 interface TargetCardsModalProps {
@@ -113,9 +113,28 @@ export const TargetCardsModal: React.FC<TargetCardsModalProps> = ({
                     >
                       <span className="text-[10px] text-sky-400 font-mono flex items-center justify-between">
                         <span>Target #{lesson.targetIndex}</span>
-                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-sans ${isLessonRestricted(lesson) ? 'bg-amber-950/80 text-amber-300 border border-amber-500/30' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30'}`}>
-                          {isLessonRestricted(lesson) ? '🔒 مقفل' : '🔓 مجاني'}
-                        </span>
+                        {(() => {
+                          const tier = getLessonAccessTier(lesson);
+                          if (tier === 'open') {
+                            return (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded font-sans bg-emerald-950/80 text-emerald-300 border border-emerald-500/30">
+                                🔓 مجاني
+                              </span>
+                            );
+                          }
+                          if (tier === 'custom') {
+                            return (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded font-sans bg-purple-950/80 text-purple-300 border border-purple-500/30">
+                                ✦ خاص
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded font-sans bg-amber-950/80 text-amber-300 border border-amber-500/30">
+                              🔒 مقفل
+                            </span>
+                          );
+                        })()}
                       </span>
                       <span className="text-xs font-bold truncate block mt-1">
                         {lesson.title}

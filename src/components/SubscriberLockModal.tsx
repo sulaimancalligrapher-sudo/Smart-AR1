@@ -12,7 +12,7 @@ import {
   Sparkles,
   Loader2
 } from 'lucide-react';
-import { LessonData } from '../types/ar';
+import { LessonData, getLessonAccessTier, checkLessonAccess } from '../types/ar';
 import { normalizeImageUrl } from '../services/urlHelpers';
 import {
   SubscriberInfo,
@@ -24,6 +24,7 @@ import { t } from '../services/translationService';
 interface SubscriberLockModalProps {
   isOpen: boolean;
   lesson: LessonData | null;
+  currentSubscriber?: SubscriberInfo | null;
   webAppUrl?: string;
   subscriptionExternalUrl: string;
   onSuccessLogin: (subscriber: SubscriberInfo) => void;
@@ -34,6 +35,7 @@ interface SubscriberLockModalProps {
 export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
   isOpen,
   lesson,
+  currentSubscriber,
   webAppUrl,
   subscriptionExternalUrl,
   onSuccessLogin,
@@ -47,6 +49,9 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!isOpen || !lesson) return null;
+
+  const accessTier = getLessonAccessTier(lesson);
+  const isCustomTier = accessTier === 'custom';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,9 +67,17 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
     setIsLoading(true);
 
     try {
-      const res = await verifySubscriberWithSheet(name, phone, webAppUrl);
+      const res = await verifySubscriberWithSheet(cleanName, cleanPhone, webAppUrl);
 
       if (res.success && res.subscriber) {
+        // فحص هل هذا المشترك مصرح له بهذا الدرس تحديداً (خاصة للدروس الخاصة VIP)
+        const accessCheck = checkLessonAccess(lesson, res.subscriber);
+        if (!accessCheck.allowed) {
+          setErrorMessage(accessCheck.message || 'عذراً، هذا الحساب غير مصرح له بفتح هذا الدرس الخاص.');
+          setIsLoading(false);
+          return;
+        }
+
         setSuccessMessage(res.message);
         setTimeout(() => {
           onSuccessLogin(res.subscriber!);
@@ -94,28 +107,52 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
       dir={isRTL ? 'rtl' : 'ltr'}
     >
       <div
-        className="w-full max-w-lg bg-slate-900 border border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col text-slate-100 animate-scaleUp"
+        className={`w-full max-w-lg bg-slate-900 border rounded-3xl shadow-2xl overflow-hidden flex flex-col text-slate-100 animate-scaleUp ${
+          isCustomTier ? 'border-purple-500/50 shadow-purple-950/40' : 'border-amber-500/40 shadow-amber-950/40'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border-b border-amber-500/30">
+        <div className={`flex items-center justify-between px-5 py-4 border-b ${
+          isCustomTier
+            ? 'bg-gradient-to-r from-purple-950/90 via-slate-900 to-slate-900 border-purple-500/30'
+            : 'bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border-amber-500/30'
+        }`}>
           <div className="flex items-center gap-3">
-            <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-inner">
-              <Lock className="w-5 h-5 animate-pulse" />
+            <span className={`p-2 rounded-xl border shadow-inner ${
+              isCustomTier
+                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+            }`}>
+              {isCustomTier ? (
+                <Sparkles className="w-5 h-5 animate-pulse text-purple-300" />
+              ) : (
+                <Lock className="w-5 h-5 animate-pulse text-amber-400" />
+              )}
             </span>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                <span>{t('alert_lesson_locked', currentLanguage)}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
-                  {currentLanguage === 'ar' ? 'محتوى مخصص' : currentLanguage === 'en' ? 'Exclusive' : 'พรีเมียม'}
+                <span>{isCustomTier ? 'محتوى خاص ومقيد' : t('alert_lesson_locked', currentLanguage)}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                  isCustomTier
+                    ? 'bg-purple-500/25 text-purple-200 border-purple-400/50'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}>
+                  {isCustomTier
+                    ? (currentLanguage === 'ar' ? 'مشترك خاص VIP ✦' : 'Special VIP')
+                    : (currentLanguage === 'ar' ? 'محتوى للمشتركين' : 'Subscribers Only')}
                 </span>
               </h3>
-              <p className="text-xs text-amber-200/80">
-                {currentLanguage === 'ar'
-                  ? 'يتطلب هذا الدرس حساب اشتراك مفعل للمتابعة'
-                  : currentLanguage === 'en'
-                  ? 'This lesson requires an active subscriber account to access'
-                  : 'บทเรียนนี้จำเป็นต้องมีบัญชีสมาชิกเพื่อเข้าถึง'}
+              <p className={`text-xs ${isCustomTier ? 'text-purple-200/80' : 'text-amber-200/80'}`}>
+                {isCustomTier
+                  ? (currentLanguage === 'ar'
+                    ? 'هذا الدرس خاص وحصري لمشتركين معينين (مشترك خاص) مسجلين بالاسم والرقم'
+                    : 'This lesson is private and exclusively assigned to designated special subscribers')
+                  : (currentLanguage === 'ar'
+                    ? 'يتطلب هذا الدرس حساب اشتراك مفعل للمتابعة'
+                    : currentLanguage === 'en'
+                    ? 'This lesson requires an active subscriber account to access'
+                    : 'บทเรียนนี้จำเป็นต้องมีบัญชีสมาชิกเพื่อเข้าถึง')}
               </p>
             </div>
           </div>
@@ -167,15 +204,43 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
             </div>
           </div>
 
+          {/* إذا كان المستخدم مسجلاً بالفعل كـ مشترك عام ولكن الدرس خاص */}
+          {currentSubscriber && (
+            <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs text-slate-300 space-y-1.5 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">حسابك الحالي النشط:</span>
+                <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] border ${
+                  currentSubscriber.isCustomSubscriber
+                    ? 'bg-purple-950 text-purple-300 border-purple-500/30'
+                    : 'bg-amber-950 text-amber-300 border-amber-500/30'
+                }`}>
+                  {currentSubscriber.isCustomSubscriber ? 'مشترك خاص ✦' : 'مشترك عام'}
+                </span>
+              </div>
+              <div className="font-semibold text-white">{currentSubscriber.name} ({currentSubscriber.phone})</div>
+              <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                {isCustomTier
+                  ? '⚠️ هذا الدرس محتوى خاص (VIP) ولم يُخصص لحسابك. يمكنك تسجيل الدخول بحساب المشترك الخاص المخصص لهذا الدرس أدناه:'
+                  : '⚠️ لم يتم تفعيل صلاحية هذا الدرس لحسابك الحالي.'}
+              </p>
+            </div>
+          )}
+
           {/* Form: Subscriber Login */}
           <div className="space-y-3">
             <div className="border-b border-slate-800 pb-2">
               <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-amber-400" />
-                <span>لديك اشتراك؟ أدخل بياناتك للدخول الفوري:</span>
+                <KeyRound className={`w-4 h-4 ${isCustomTier ? 'text-purple-400' : 'text-amber-400'}`} />
+                <span>
+                  {isCustomTier
+                    ? 'تسجيل دخول المشترك الخاص المخصص لهذا الدرس:'
+                    : 'لديك اشتراك؟ أدخل بياناتك للدخول الفوري:'}
+                </span>
               </h4>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                تتم مطابقة البيانات تلقائياً مع جدول المشتركين (SubData). الدخول لمرة واحدة فقط!
+                {isCustomTier
+                  ? 'تتم مطابقة الاسم ورقم الهاتف وتخصيص الدرس في ورقة SubData تلقائياً.'
+                  : 'تتم مطابقة البيانات تلقائياً مع جدول المشتركين (SubData). الدخول لمرة واحدة فقط!'}
               </p>
             </div>
 
@@ -192,7 +257,9 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                     onChange={(e) => setName(e.target.value)}
                     placeholder="مثال: محمد أحمد"
                     disabled={isLoading}
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-amber-500 focus:outline-none text-xs sm:text-sm text-white placeholder-slate-500"
+                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border focus:outline-none text-xs sm:text-sm text-white placeholder-slate-500 ${
+                      isCustomTier ? 'border-slate-700 focus:border-purple-500' : 'border-slate-700 focus:border-amber-500'
+                    }`}
                   />
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
@@ -210,7 +277,9 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="مثال: 05xxxxxxxx"
                     disabled={isLoading}
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-amber-500 focus:outline-none text-xs sm:text-sm text-white font-mono placeholder-slate-500"
+                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border focus:outline-none text-xs sm:text-sm text-white font-mono placeholder-slate-500 ${
+                      isCustomTier ? 'border-slate-700 focus:border-purple-500' : 'border-slate-700 focus:border-amber-500'
+                    }`}
                   />
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
@@ -233,7 +302,11 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-amber-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isCustomTier
+                    ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
+                    : 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-amber-600/20'
+                }`}
               >
                 {isLoading ? (
                   <>
@@ -242,8 +315,8 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <Unlock className="w-4 h-4" />
-                    <span>{t('welcome_subscriber_login_btn', currentLanguage)}</span>
+                    {isCustomTier ? <Sparkles className="w-4 h-4 text-purple-200" /> : <Unlock className="w-4 h-4" />}
+                    <span>{isCustomTier ? 'دخول المشترك الخاص ✦' : t('welcome_subscriber_login_btn', currentLanguage)}</span>
                   </>
                 )}
               </button>

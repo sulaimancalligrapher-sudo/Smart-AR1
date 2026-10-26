@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { RefreshCw, X, Eye, FileSpreadsheet, Focus, Sparkles, AlertTriangle, Zap, BookOpen, RotateCw, Pause, Volume1, Volume2, VolumeX, Music, User, SlidersHorizontal, LogOut, Globe } from 'lucide-react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { LessonData, getActiveLessonModel, getLessonModelSound, isLessonRestricted } from '../types/ar';
+import { LessonData, getActiveLessonModel, getLessonModelSound, isLessonRestricted, checkLessonAccess } from '../types/ar';
 import { getStoredLessons, DEFAULT_LESSONS } from '../data/lessons';
 import { targetCompiler } from '../services/targetCompiler';
 import { normalizeAudioUrl } from '../services/urlHelpers';
@@ -687,28 +687,12 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
 
                 console.log(`🎯 تم التعرف على هدف مسح الدرس (Target #${targetIdx}): ${latestLesson.title}`);
 
-                // فحص هل المستخدم مشترك مفعل (من الـ Ref أو الـ LocalStorage مباشرة لتفادي أي إغلاق قديم Stale Closure)
+                // فحص صلاحية وصول المستخدم للدرس (متاح / مقفل للمشتركين / خاص بمشتركين محددين)
                 const activeSubscriber = subscriberRef.current || getStoredSubscriber();
-                let isRestricted = false;
+                const accessCheck = checkLessonAccess(latestLesson, activeSubscriber);
 
-                if (!activeSubscriber) {
-                  isRestricted = isLessonRestricted(latestLesson);
-                } else if (activeSubscriber.isCustomSubscriber && activeSubscriber.allowedLessons && activeSubscriber.allowedLessons.length > 0) {
-                  // إذا كان المشترك مخصصاً بدروس محددة، نتحقق هل هذا الدرس ضمن دروسه المصرح بها
-                  const lessonTitle = latestLesson.title.trim();
-                  const targetIndexStr = String((latestLesson.targetIndex ?? 0) + 1);
-                  const targetId = latestLesson.targetId || '';
-                  const isAllowed = activeSubscriber.allowedLessons.some((al) => {
-                    const clean = al.trim();
-                    return clean === lessonTitle || clean === targetIndexStr || clean === targetId;
-                  });
-                  if (!isAllowed) {
-                    isRestricted = true;
-                  }
-                }
-
-                if (isRestricted) {
-                  // إخفاء المجسم فوراً لهذا الهدف وكتم أي صوت
+                if (!accessCheck.allowed) {
+                  // إخفاء المجسم فوراً لهذا الهدف وكتم أي صوت إذا كان الطالب غير مصرح له
                   const group = anchorContentGroupsRef.current.get(targetIdx);
                   if (group) group.visible = false;
                   pauseModelSound();
