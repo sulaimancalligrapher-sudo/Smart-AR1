@@ -1,6 +1,6 @@
 {
   "version": "3.3.0",
-  "exportedAt": "2026-10-26T15:33:59.464Z",
+  "exportedAt": "2026-10-26T16:14:55.110Z",
   "lessonsCount": 3,
   "lessons": [
     {
@@ -263,7 +263,8 @@
           "explanation": "الإجابة الصحيحة هي: (สามเหลี่ยม)",
           "points": 1
         }
-      ]
+      ],
+      "accessTier": "custom"
     },
     {
       "targetIndex": 2,
@@ -362,7 +363,7 @@
           "points": 1
         }
       ],
-      "accessTier": "custom"
+      "accessTier": "restricted"
     }
   ]
 }
