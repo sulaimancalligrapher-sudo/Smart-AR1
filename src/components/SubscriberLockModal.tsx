@@ -6,14 +6,13 @@ import {
   ExternalLink,
   X,
   User,
-  Phone,
+  IdCard,
   AlertCircle,
   CheckCircle2,
   Sparkles,
   Loader2
 } from 'lucide-react';
 import { LessonData, getLessonAccessTier, checkLessonAccess } from '../types/ar';
-import { normalizeImageUrl } from '../services/urlHelpers';
 import {
   SubscriberInfo,
   verifySubscriberWithSheet
@@ -130,80 +129,35 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                 <Lock className="w-5 h-5 animate-pulse text-amber-400" />
               )}
             </span>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                <span>{isCustomTier ? 'محتوى خاص ومقيد' : t('alert_lesson_locked', currentLanguage)}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
-                  isCustomTier
-                    ? 'bg-purple-500/25 text-purple-200 border-purple-400/50'
-                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                }`}>
-                  {isCustomTier
-                    ? (currentLanguage === 'ar' ? 'مشترك خاص VIP ✦' : 'Special VIP')
-                    : (currentLanguage === 'ar' ? 'محتوى للمشتركين' : 'Subscribers Only')}
-                </span>
-              </h3>
-              <p className={`text-xs ${isCustomTier ? 'text-purple-200/80' : 'text-amber-200/80'}`}>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-bold text-white">
                 {isCustomTier
-                  ? (currentLanguage === 'ar'
-                    ? 'هذا الدرس خاص وحصري لمشتركين معينين (مشترك خاص) مسجلين بالاسم والرقم'
-                    : 'This lesson is private and exclusively assigned to designated special subscribers')
-                  : (currentLanguage === 'ar'
-                    ? 'يتطلب هذا الدرس حساب اشتراك مفعل للمتابعة'
-                    : currentLanguage === 'en'
-                    ? 'This lesson requires an active subscriber account to access'
-                    : 'บทเรียนนี้จำเป็นต้องมีบัญชีสมาชิกเพื่อเข้าถึง')}
-              </p>
+                  ? t('sub_modal_title_custom', currentLanguage)
+                  : t('sub_modal_title_subscribers', currentLanguage)}
+              </h3>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                isCustomTier
+                  ? 'bg-purple-500/25 text-purple-200 border-purple-400/50'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              }`}>
+                {isCustomTier
+                  ? t('sub_modal_badge_custom', currentLanguage)
+                  : t('sub_modal_badge_subscribers', currentLanguage)}
+              </span>
             </div>
           </div>
 
           <button
             onClick={onClose}
             className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-            title={t('btn_close', currentLanguage)}
+            title={t('sub_modal_close_btn', currentLanguage)}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Lesson Preview Snippet */}
+        {/* Modal Body */}
         <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[80vh]">
-          <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center gap-3.5">
-            <div className="w-16 h-16 rounded-xl bg-black border border-slate-700 overflow-hidden flex items-center justify-center flex-shrink-0 relative">
-              {lesson.targetImage ? (
-                <img
-                  src={normalizeImageUrl(lesson.targetImage)}
-                  alt={lesson.title}
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <Lock className="w-6 h-6 text-amber-400" />
-              )}
-              <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] flex items-center justify-center">
-                <Lock className="w-4 h-4 text-amber-300" />
-              </div>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-medium">
-                  {lesson.subject || 'المنهج المدرسي'}
-                </span>
-                {lesson.grade && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                    {lesson.grade}
-                  </span>
-                )}
-              </div>
-              <h4 className="text-sm font-bold text-white truncate mt-1">
-                {lesson.title}
-              </h4>
-              <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
-                {lesson.description?.summary || 'يحتوي هذا الدرس على وسائط وشروحات ومجسمات تفاعلية ثلاثية الأبعاد.'}
-              </p>
-            </div>
-          </div>
-
           {/* إذا كان المستخدم مسجلاً بالفعل كـ مشترك عام ولكن الدرس خاص */}
           {currentSubscriber && (
             <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs text-slate-300 space-y-1.5 animate-fadeIn">
@@ -228,26 +182,10 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
 
           {/* Form: Subscriber Login */}
           <div className="space-y-3">
-            <div className="border-b border-slate-800 pb-2">
-              <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-                <KeyRound className={`w-4 h-4 ${isCustomTier ? 'text-purple-400' : 'text-amber-400'}`} />
-                <span>
-                  {isCustomTier
-                    ? 'تسجيل دخول المشترك الخاص المخصص لهذا الدرس:'
-                    : 'لديك اشتراك؟ أدخل بياناتك للدخول الفوري:'}
-                </span>
-              </h4>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {isCustomTier
-                  ? 'تتم مطابقة الاسم ورقم الهاتف وتخصيص الدرس في ورقة SubData تلقائياً.'
-                  : 'تتم مطابقة البيانات تلقائياً مع جدول المشتركين (SubData). الدخول لمرة واحدة فقط!'}
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  اسم المشترك:
+                  {t('sub_modal_name_label', currentLanguage)}:
                 </label>
                 <div className="relative">
                   <input
@@ -255,7 +193,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="مثال: محمد أحمد"
+                    placeholder={t('sub_modal_name_placeholder', currentLanguage)}
                     disabled={isLoading}
                     className={`w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border focus:outline-none text-xs sm:text-sm text-white placeholder-slate-500 ${
                       isCustomTier ? 'border-slate-700 focus:border-purple-500' : 'border-slate-700 focus:border-amber-500'
@@ -267,21 +205,24 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  رقم الهاتف أو رقم الاشتراك (العمود A):
+                  {t('sub_modal_id_label', currentLanguage)}:
                 </label>
                 <div className="relative">
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="one-time-code"
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="مثال: 05xxxxxxxx"
+                    placeholder={t('sub_modal_id_placeholder', currentLanguage)}
                     disabled={isLoading}
                     className={`w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border focus:outline-none text-xs sm:text-sm text-white font-mono placeholder-slate-500 ${
                       isCustomTier ? 'border-slate-700 focus:border-purple-500' : 'border-slate-700 focus:border-amber-500'
                     }`}
                   />
-                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <IdCard className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
 
@@ -316,7 +257,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                 ) : (
                   <>
                     {isCustomTier ? <Sparkles className="w-4 h-4 text-purple-200" /> : <Unlock className="w-4 h-4" />}
-                    <span>{isCustomTier ? 'دخول المشترك الخاص ✦' : t('welcome_subscriber_login_btn', currentLanguage)}</span>
+                    <span>{isCustomTier ? t('sub_modal_custom_login_btn', currentLanguage) : t('sub_modal_login_btn', currentLanguage)}</span>
                   </>
                 )}
               </button>
@@ -340,26 +281,19 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>{currentLanguage === 'ar' ? 'ليس لديك حساب بعد؟' : currentLanguage === 'en' ? "Don't have an account?" : 'ยังไม่มีบัญชี?'}</span>
+                <span>{t('sub_modal_request_sub_title', currentLanguage)}</span>
               </span>
               <span className="text-[10px] text-emerald-400 font-medium">
-                {currentLanguage === 'ar' ? 'تفعيل فوري' : currentLanguage === 'en' ? 'Instant Activation' : 'เปิดใช้งานทันที'}
+                {currentLanguage === 'ar' ? 'تفعيل فوري' : currentLanguage === 'en' ? 'Instant' : 'ทันที'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              {currentLanguage === 'ar'
-                ? 'تواصل مع إدارة المنصة للاشتراك وتفعيل رقمك واسمك في ورقة المشتركين.'
-                : currentLanguage === 'en'
-                ? 'Contact the platform administrator to activate your subscription.'
-                : 'ติดต่อผู้ดูแลระบบเพื่อเปิดใช้งานการเป็นสมาชิกของคุณ'}
-            </p>
             <button
               type="button"
               onClick={handleOpenSubscriptionLink}
               className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 hover:text-sky-200 font-bold text-xs border border-sky-500/30 hover:border-sky-400/60 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
               <ExternalLink className="w-4 h-4" />
-              <span>💎 {t('welcome_request_sub_btn', currentLanguage)} ↗</span>
+              <span>💎 {t('sub_modal_request_sub_btn', currentLanguage)} ↗</span>
             </button>
           </div>
         </div>
@@ -373,7 +307,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
           >
-            {t('btn_close', currentLanguage)}
+            {t('sub_modal_close_btn', currentLanguage)}
           </button>
         </div>
       </div>

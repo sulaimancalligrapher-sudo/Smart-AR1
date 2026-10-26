@@ -1189,15 +1189,17 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
             {/* القائمة المنسدلة المجمعة للأدوات على الجوال */}
             {showMobileToolsMenu && (
               <div
-                dir="rtl"
-                className="absolute top-full mt-2 left-0 z-50 bg-slate-950/95 backdrop-blur-xl border border-white/20 p-2.5 rounded-2xl shadow-2xl flex flex-col gap-2 min-w-[210px] animate-in fade-in zoom-in-95 duration-150"
+                dir={currentLanguage === 'ar' ? 'rtl' : 'ltr'}
+                className={`absolute top-full mt-2 z-50 bg-slate-950/95 backdrop-blur-xl border border-white/20 p-2.5 rounded-2xl shadow-2xl flex flex-col gap-2 min-w-[220px] max-w-[calc(100vw-24px)] animate-in fade-in zoom-in-95 duration-150 ${
+                  currentLanguage === 'ar' ? 'left-0' : 'right-0'
+                }`}
               >
                 {/* 1. تبديل اللغات (🇸🇦 ع | 🇬🇧 EN | 🇹🇭 TH) */}
                 {onLanguageChange && (
                   <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/80 space-y-1.5">
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-bold">
                       <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>اللغة (Language)</span>
+                      <span>{currentLanguage === 'ar' ? 'اللغة (Language)' : currentLanguage === 'th' ? 'ภาษา (Language)' : 'Language'}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-1">
                       <button
@@ -1264,10 +1266,12 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                 >
                   <span className="flex items-center gap-2">
                     <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>تبديل الكاميرا</span>
+                    <span>{currentLanguage === 'ar' ? 'تبديل الكاميرا' : currentLanguage === 'th' ? 'สลับกล้อง' : 'Switch Camera'}</span>
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400">
-                    {facingMode === 'environment' ? 'خلفية' : 'أمامية'}
+                    {facingMode === 'environment'
+                      ? (currentLanguage === 'ar' ? 'خلفية' : currentLanguage === 'th' ? 'หลัง' : 'Rear')
+                      : (currentLanguage === 'ar' ? 'أمامية' : currentLanguage === 'th' ? 'หน้า' : 'Front')}
                   </span>
                 </button>
 
@@ -1282,7 +1286,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                   className="w-full px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-white flex items-center gap-2 transition-colors cursor-pointer active:scale-95"
                 >
                   <Focus className="w-3.5 h-3.5 text-amber-400" />
-                  <span>ضبط الفوكس</span>
+                  <span>{currentLanguage === 'ar' ? 'ضبط الفوكس' : currentLanguage === 'th' ? 'โฟกัสภาพ' : 'Focus'}</span>
                 </button>
 
                 {/* 4. تشغيل / إيقاف الدوران */}
@@ -1300,7 +1304,7 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                     ) : (
                       <RotateCw className="w-3.5 h-3.5 text-slate-300" />
                     )}
-                    <span>تشغيل الدوران</span>
+                    <span>{currentLanguage === 'ar' ? 'تشغيل الدوران' : currentLanguage === 'th' ? 'หมุน 3D' : 'Rotate Model'}</span>
                   </span>
                   <span
                     className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
@@ -1309,7 +1313,9 @@ export const ARCameraView: React.FC<ARCameraViewProps> = ({
                         : 'bg-slate-800 text-slate-400'
                     }`}
                   >
-                    {isARAutoRotateActive ? 'مفعّل' : 'متوقف'}
+                    {isARAutoRotateActive
+                      ? (currentLanguage === 'ar' ? 'مفعّل' : currentLanguage === 'th' ? 'เปิด' : 'ON')
+                      : (currentLanguage === 'ar' ? 'متوقف' : currentLanguage === 'th' ? 'ปิด' : 'OFF')}
                   </span>
                 </button>
 

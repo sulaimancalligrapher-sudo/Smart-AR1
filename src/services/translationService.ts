@@ -42,6 +42,14 @@ export const TRANSLATION_GROUPS: TranslationGroupInfo[] = [
     titleTh: 'กลุ่ม 4 (การประเมิน การแจ้งเตือน และสมาชิก)',
     descriptionAr: 'رسائل قفل الدروس المقيدة، تسجيل الدخول، تقييم الإجابات (أحسنت، صح، خطأ)، وشارات الطلاب',
     iconName: 'ShieldCheck'
+  },
+  {
+    id: 'group5_subscriber',
+    titleAr: 'المجموعة 5 (نافذة تسجيل الدخول والاشتراك)',
+    titleEn: 'Group 5 (Subscriber Login & Verification Modal)',
+    titleTh: 'กลุ่ม 5 (หน้าต่างเข้าสู่ระบบสมาชิกและการยืนยัน)',
+    descriptionAr: 'عناوين نافذة المشتركين والدروس الخاصة، حقل الاسم، حقل ID Number، زر الدخول، وزر طلب الاشتراك',
+    iconName: 'KeyRound'
   }
 ];
 
@@ -468,6 +476,114 @@ export const DEFAULT_TRANSLATION_ITEMS: TranslationItem[] = [
     ar: 'مشترك مفعل',
     en: 'Active Subscriber',
     th: 'สมาชิกที่ใช้งานอยู่'
+  },
+
+  // =========================================================================
+  // المجموعة 5: نافذة تسجيل الدخول والاشتراك (للمشتركين / خاص)
+  // =========================================================================
+  {
+    id: 'sub_modal_title_subscribers',
+    group: 'group5_subscriber',
+    labelAr: 'عنوان نافذة المشتركين (مختصر)',
+    ar: 'للمشتركين',
+    en: 'For Subscribers',
+    th: 'สำหรับสมาชิก'
+  },
+  {
+    id: 'sub_modal_title_custom',
+    group: 'group5_subscriber',
+    labelAr: 'عنوان نافذة الدرس الخاص (مختصر)',
+    ar: 'خاص',
+    en: 'Private',
+    th: 'เฉพาะบุคคล'
+  },
+  {
+    id: 'sub_modal_badge_subscribers',
+    group: 'group5_subscriber',
+    labelAr: 'شارة محتوى المشتركين',
+    ar: 'للمشتركين',
+    en: 'Subscribers',
+    th: 'สมาชิก'
+  },
+  {
+    id: 'sub_modal_badge_custom',
+    group: 'group5_subscriber',
+    labelAr: 'شارة المحتوى الخاص VIP',
+    ar: 'خاص ✦',
+    en: 'VIP ✦',
+    th: 'VIP ✦'
+  },
+  {
+    id: 'sub_modal_name_label',
+    group: 'group5_subscriber',
+    labelAr: 'تسمية حقل اسم المشترك',
+    ar: 'اسم المشترك',
+    en: 'Subscriber Name',
+    th: 'ชื่อสมาชิก'
+  },
+  {
+    id: 'sub_modal_name_placeholder',
+    group: 'group5_subscriber',
+    labelAr: 'نص إرشاد حقل الاسم',
+    ar: 'مثال: محمد أحمد',
+    en: 'e.g. John Doe',
+    th: 'เช่น สมชาย'
+  },
+  {
+    id: 'sub_modal_id_label',
+    group: 'group5_subscriber',
+    labelAr: 'تسمية حقل رقم المعرف (ID Number)',
+    ar: 'ID Number',
+    en: 'ID Number',
+    th: 'หมายเลข ID'
+  },
+  {
+    id: 'sub_modal_id_placeholder',
+    group: 'group5_subscriber',
+    labelAr: 'نص إرشاد حقل ID Number',
+    ar: 'أدخل رقم المعرف ID Number',
+    en: 'Enter ID Number',
+    th: 'กรอกหมายเลข ID'
+  },
+  {
+    id: 'sub_modal_login_btn',
+    group: 'group5_subscriber',
+    labelAr: 'زر دخول المشترك',
+    ar: 'دخول المشترك',
+    en: 'Subscriber Login',
+    th: 'เข้าสู่ระบบสมาชิก'
+  },
+  {
+    id: 'sub_modal_custom_login_btn',
+    group: 'group5_subscriber',
+    labelAr: 'زر دخول المشترك الخاص',
+    ar: 'دخول المشترك الخاص ✦',
+    en: 'Special VIP Login ✦',
+    th: 'เข้าสู่ระบบ VIP ✦'
+  },
+  {
+    id: 'sub_modal_request_sub_title',
+    group: 'group5_subscriber',
+    labelAr: 'عنوان قسم طلب الاشتراك',
+    ar: 'ليس لديك حساب بعد؟',
+    en: "Don't have an account?",
+    th: 'ยังไม่มีบัญชีใช่หรือไม่?'
+  },
+  {
+    id: 'sub_modal_request_sub_btn',
+    group: 'group5_subscriber',
+    labelAr: 'زر طلب تفعيل الاشتراك',
+    ar: 'طلب تفعيل الاشتراك',
+    en: 'Request Activation',
+    th: 'ขอเปิดใช้งานสมาชิก'
+  },
+  {
+    id: 'sub_modal_close_btn',
+    group: 'group5_subscriber',
+    labelAr: 'زر إغلاق النافذة',
+    ar: 'إغلاق',
+    en: 'Close',
+    th: 'ปิด'
   }
 ];
 

@@ -18,7 +18,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Languages
+  Languages,
+  KeyRound
 } from 'lucide-react';
 import { AppLanguage, TranslationGroupId, TranslationItem } from '../types/translation';
 import {
@@ -206,6 +207,8 @@ export const TranslationManagerView: React.FC<TranslationManagerViewProps> = ({
         return <Layers className="w-4 h-4 text-emerald-400" />;
       case 'ShieldCheck':
         return <ShieldCheck className="w-4 h-4 text-purple-400" />;
+      case 'KeyRound':
+        return <KeyRound className="w-4 h-4 text-amber-400" />;
       default:
         return <Globe className="w-4 h-4 text-sky-400" />;
     }

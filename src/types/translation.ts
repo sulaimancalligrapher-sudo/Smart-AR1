@@ -9,7 +9,8 @@ export type TranslationGroupId =
   | 'group1_welcome'
   | 'group2_camera'
   | 'group3_interactive'
-  | 'group4_alerts';
+  | 'group4_alerts'
+  | 'group5_subscriber';
 
 export interface TranslationItem {
   id: string;
