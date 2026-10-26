@@ -186,6 +186,29 @@ export interface LessonAccessResult {
 }
 
 /**
+ * دالة مساعدة لمعايرة وتوحيد النصوص العربية للتطابق الدقيق والمرن:
+ * - إزالة علامات التشكيل والتنوين
+ * - توحيد أشكال الألف (أ، إ، آ -> ا)
+ * - توحيد التاء المربوطة والهاء (ة -> ه)
+ * - توحيد الياء والألف المقصورة (ى -> ي)
+ * - تحويل الأرقام العربية والفارسية إلى أرقام لاتينية (١، ۲ -> 1, 2)
+ * - إزالة المسافات المتكررة
+ */
+export function normalizeArabicText(str?: string | null): string {
+  if (!str) return '';
+  return String(str)
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/[ة]/g, 'ه')
+    .replace(/[ى]/g, 'ي')
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/\s+/g, ' ');
+}
+
+/**
  * فحص صلاحية وصول المستخدم (زائر / مشترك عادي / مشترك خاص) لدرس معين:
  * 1. الدرس المتاح: مفتوح للجميع (زائر، مشترك، مشترك خاص)
  * 2. الدرس المقيد: مفتوح للمشترك العادي والمشترك الخاص، ومحجوب عن الزائر
@@ -229,8 +252,13 @@ export function checkLessonAccess(
   }
 
   // 4. إذا كان الدرس خاصاً (Custom):
-  // المشترك العادي محجوب عنه الدروس الخاصة!
-  if (!subscriber.isCustomSubscriber) {
+  // فحص هل المستخدم مصنف كمشترك خاص (إما بعلامة isCustomSubscriber أو بوجود دروس مخصصة في حسابه)
+  const allowedList = (subscriber.allowedLessons || [])
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  const isCustomUser = Boolean(subscriber.isCustomSubscriber || allowedList.length > 0);
+
+  if (!isCustomUser) {
     return {
       allowed: false,
       tier: 'custom',
@@ -239,18 +267,82 @@ export function checkLessonAccess(
     };
   }
 
-  // إذا كان مشتركاً خاصاً (isCustomSubscriber === true):
-  // نتحقق هل عنوان الدرس أو رقمه مدرج ضمن دروسه المخصصة في العمود C (SubData)
-  const lessonTitle = (lesson.title || '').trim();
-  const targetIndexStr = String((typeof lesson.targetIndex === 'number' ? lesson.targetIndex : 0) + 1);
-  const targetId = (lesson.targetId || '').trim();
-  const allowedList = subscriber.allowedLessons || [];
+  // إذا كان مشتركاً خاصاً ولديه تفويض لكافة الدروس (أو القائمة فارغة تعني الكل للمشترك الخاص):
+  if (allowedList.length === 0) {
+    return {
+      allowed: true,
+      tier: 'custom',
+      reason: 'custom_granted'
+    };
+  }
+
+  // نتحقق بمرونة فائقة هل الدرس الحالي مصرح له:
+  const rawLessonTitle = (lesson.title || '').trim();
+  const normTitle = normalizeArabicText(rawLessonTitle);
+  const rawTargetId = (lesson.targetId || '').trim();
+  const normTargetId = normalizeArabicText(rawTargetId);
+
+  const tIndex0 = typeof lesson.targetIndex === 'number' ? lesson.targetIndex : 0;
+  const tIndex1 = tIndex0 + 1; // الترقيم الإنساني (1-based)
+  const additionalIndices = Array.isArray(lesson.additionalTargetIndices)
+    ? lesson.additionalTargetIndices
+    : [];
 
   const isMatched = allowedList.some((item) => {
-    const clean = item.trim();
-    if (!clean) return false;
-    if (clean === '*' || clean === 'الكل' || clean === 'all') return true;
-    return clean === lessonTitle || clean === targetIndexStr || clean === targetId;
+    const rawItem = String(item || '').trim();
+    if (!rawItem) return false;
+    const normItem = normalizeArabicText(rawItem);
+
+    // 1. رمز الكل والشمولية
+    if (
+      normItem === '*' ||
+      normItem === 'الكل' ||
+      normItem === 'all' ||
+      normItem === 'جميع الدروس' ||
+      normItem === 'كل الدروس'
+    ) {
+      return true;
+    }
+
+    // 2. التطابق التام أو المعاير مع عنوان الدرس
+    if (rawItem === rawLessonTitle || normItem === normTitle) {
+      return true;
+    }
+
+    // 3. التطابق الجزئي (إذا كتب المعلم جزءاً من العنوان، مثلاً: "الديواني" أو "النسخ" أو "الرقعة")
+    if (normItem.length >= 2 && normTitle.length >= 2) {
+      if (normTitle.includes(normItem) || normItem.includes(normTitle)) {
+        return true;
+      }
+    }
+
+    // 4. التطابق مع معرف الهدف (targetId مثل lesson_001)
+    if (rawItem === rawTargetId || normItem === normTargetId) {
+      return true;
+    }
+
+    // 5. التطابق مع رقم الدرس أو فهرس الهدف (1-based أو 0-based)
+    if (normItem === String(tIndex1) || normItem === String(tIndex0)) {
+      return true;
+    }
+    if (additionalIndices.map(String).includes(normItem)) {
+      return true;
+    }
+
+    // 6. استخراج الأرقام من نصوص مثل "درس 1" أو "الدرس 2" أو "Target #3"
+    const digitMatch = normItem.match(/\d+/);
+    if (digitMatch) {
+      const parsedNum = parseInt(digitMatch[0], 10);
+      if (
+        parsedNum === tIndex1 ||
+        parsedNum === tIndex0 ||
+        additionalIndices.includes(parsedNum)
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   });
 
   if (isMatched) {

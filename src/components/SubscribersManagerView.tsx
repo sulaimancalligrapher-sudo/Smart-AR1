@@ -120,7 +120,7 @@ export const SubscribersManagerView: React.FC<SubscribersManagerViewProps> = ({
     if (sub.allowedLessons && sub.allowedLessons.trim() !== '') {
       setFormIsCustomLessons(true);
       const parsed = sub.allowedLessons
-        .split(',')
+        .split(/[,\u060C;|\n\r/]+/)
         .map((s) => s.trim())
         .filter(Boolean);
       setSelectedLessonTitles(parsed);

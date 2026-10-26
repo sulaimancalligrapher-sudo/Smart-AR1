@@ -154,7 +154,8 @@ export function setSubscriptionExternalUrl(url: string): void {
 export async function verifySubscriberWithSheet(
   name: unknown,
   phone: unknown,
-  webAppUrl?: string
+  webAppUrl?: string,
+  options?: { skipAutoSave?: boolean }
 ): Promise<{ success: boolean; message: string; subscriber?: SubscriberInfo }> {
   const cleanName = String(name || '').trim();
   const cleanPhone = normalizeArabicDigits(String(phone || '').replace(/[\s\-\(\)]/g, ''));
@@ -179,7 +180,9 @@ export async function verifySubscriberWithSheet(
       maxDevices: 1,
       deviceCount: 1
     };
-    saveStoredSubscriber(demoSub);
+    if (!options?.skipAutoSave) {
+      saveStoredSubscriber(demoSub);
+    }
     return {
       success: true,
       message: '✓ تم تفعيل الاشتراك بنجاح (وضع التجربة السريع: مشترك عام)!',
@@ -187,22 +190,24 @@ export async function verifySubscriberWithSheet(
     };
   }
 
-  // 2. حساب تجريبي سريع (999: مشترك خاص بدروس محددة)
+  // 2. حساب تجريبي سريع (999: مشترك خاص يشمل كافة الدروس الخاصة)
   if (cleanPhone === '999') {
     const demoCustomSub: SubscriberInfo = {
       name: cleanName || 'طالب مخصص',
       phone: cleanPhone,
       loginAt: new Date().toISOString(),
       isCustomSubscriber: true,
-      allowedLessons: ['الخلية النباتية والحيوانية', 'المجموعة الشمسية', 'درس رقم 1'],
+      allowedLessons: ['*'],
       isAllowed: true,
       maxDevices: 1,
       deviceCount: 1
     };
-    saveStoredSubscriber(demoCustomSub);
+    if (!options?.skipAutoSave) {
+      saveStoredSubscriber(demoCustomSub);
+    }
     return {
       success: true,
-      message: '✓ تم تفعيل الاشتراك بنجاح (وضع التجربة السريع: مشترك خاص)!',
+      message: '✓ تم تفعيل الاشتراك بنجاح (وضع التجربة السريع: مشترك خاص لكافة الدروس)!',
       subscriber: demoCustomSub
     };
   }
@@ -212,7 +217,10 @@ export async function verifySubscriberWithSheet(
   // 3. التحقق محلياً في الكاش إذا لم يتم ربط رابط Google Apps Script بعد
   if (!targetUrl) {
     const cachedSubs = getCachedSubscribers();
-    const foundSub = cachedSubs.find((s) => s.phone === cleanPhone);
+    const foundSub = cachedSubs.find((s) => {
+      const p = normalizeArabicDigits(String(s.phone || '').replace(/[\s\-\(\)]/g, ''));
+      return p === cleanPhone;
+    });
 
     if (foundSub) {
       // فحص الحظر (العمود AB)
@@ -239,9 +247,12 @@ export async function verifySubscriberWithSheet(
       }
 
       const allowedList = foundSub.allowedLessons
-        ? foundSub.allowedLessons.split(',').map((s) => s.trim()).filter(Boolean)
+        ? String(foundSub.allowedLessons)
+            .split(/[,\u060C;|\n\r/]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [];
-      const isCustom = allowedList.length > 0;
+      const isCustom = Boolean(foundSub.allowedLessons && foundSub.allowedLessons.trim() !== '') || allowedList.length > 0;
 
       const confirmedSub: SubscriberInfo = {
         name: foundSub.name || cleanName,
@@ -254,11 +265,13 @@ export async function verifySubscriberWithSheet(
         deviceCount: registered.length
       };
 
-      saveStoredSubscriber(confirmedSub);
+      if (!options?.skipAutoSave) {
+        saveStoredSubscriber(confirmedSub);
+      }
       return {
         success: true,
         message: isCustom
-          ? `✓ أهلاً بك يا ${confirmedSub.name}! تم تفعيل اشتراكك الخاص (${allowedList.length} دروس مخصصة).`
+          ? `✓ أهلاً بك يا ${confirmedSub.name}! تم تفعيل اشتراكك الخاص (${allowedList.length > 0 ? allowedList.length + ' دروس مخصصة' : 'كافة الدروس'}).`
           : `✓ أهلاً بك يا ${confirmedSub.name}! تم التحقق من الاشتراك بنجاح.`,
         subscriber: confirmedSub
       };
@@ -302,10 +315,40 @@ export async function verifySubscriberWithSheet(
     }
 
     if (data && data.success) {
-      const allowedLessonsList: string[] = Array.isArray(data.allowedLessons)
-        ? data.allowedLessons
-        : (data.allowedLessons ? String(data.allowedLessons).split(',').map((s: string) => s.trim()).filter(Boolean) : []);
-      const isCustom = Boolean(data.isCustomSubscriber || (allowedLessonsList.length > 0));
+      let allowedLessonsList: string[] = [];
+      if (Array.isArray(data.allowedLessons)) {
+        allowedLessonsList = data.allowedLessons.map((s: any) => String(s).trim()).filter(Boolean);
+      } else if (data.allowedLessons) {
+        allowedLessonsList = String(data.allowedLessons)
+          .split(/[,\u060C;|\n\r/]+/)
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      } else if (data.allowedLessonsRaw) {
+        allowedLessonsList = String(data.allowedLessonsRaw)
+          .split(/[,\u060C;|\n\r/]+/)
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      }
+
+      // إذا لم يرجع السكريبت قائمة الدروس المخصصة، نفحص الذاكرة المحلية للكاش كإجراء احترازي
+      const cachedSub = getCachedSubscribers().find((s) => {
+        const p = normalizeArabicDigits(String(s.phone || '').replace(/[\s\-\(\)]/g, ''));
+        return p === cleanPhone;
+      });
+
+      if (allowedLessonsList.length === 0 && cachedSub?.allowedLessons) {
+        allowedLessonsList = String(cachedSub.allowedLessons)
+          .split(/[,\u060C;|\n\r/]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      const isCustom = Boolean(
+        data.isCustomSubscriber === true ||
+        String(data.isCustomSubscriber).toLowerCase() === 'true' ||
+        allowedLessonsList.length > 0 ||
+        (cachedSub?.allowedLessons && cachedSub.allowedLessons.trim() !== '')
+      );
 
       const confirmedSub: SubscriberInfo = {
         name: String(data.name || cleanName).trim(),
@@ -318,11 +361,13 @@ export async function verifySubscriberWithSheet(
         deviceCount: parseInt(data.deviceCount, 10) || 1
       };
 
-      saveStoredSubscriber(confirmedSub);
+      if (!options?.skipAutoSave) {
+        saveStoredSubscriber(confirmedSub);
+      }
       return {
         success: true,
         message: isCustom
-          ? `✓ أهلاً بك يا ${confirmedSub.name}! تم تفعيل اشتراكك الخاص (${allowedLessonsList.length} دروس مخصصة).`
+          ? `✓ أهلاً بك يا ${confirmedSub.name}! تم تفعيل اشتراكك الخاص (${allowedLessonsList.length > 0 ? allowedLessonsList.length + ' دروس مخصصة' : 'كافة الدروس'}).`
           : `✓ أهلاً بك يا ${confirmedSub.name}! تم التحقق من الاشتراك بنجاح.`,
         subscriber: confirmedSub
       };

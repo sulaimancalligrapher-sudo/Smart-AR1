@@ -1445,10 +1445,15 @@ function doGet(e) {
       var subData = subSheet.getDataRange().getValues();
       for (var i = 1; i < subData.length; i++) {
         var row = subData[i];
-        var rowPhone = (row[0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var rowPhone = (row[0] || "").toString().trim().replace(/[\s\-\(\)]/g, "")
+          .replace(/[٠-٩]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1632 + 48); })
+          .replace(/[۰-۹]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1776 + 48); });
+        var cleanQueryPhone = phone
+          .replace(/[٠-٩]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1632 + 48); })
+          .replace(/[۰-۹]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1776 + 48); });
         var rowName = (row[1] || "").toString().trim().toLowerCase();
 
-        if (rowPhone && phone && rowPhone === phone) {
+        if (rowPhone && cleanQueryPhone && rowPhone === cleanQueryPhone) {
           if (!name || rowName.indexOf(name) !== -1 || name.indexOf(rowName) !== -1) {
             // 1. فحص حالة السماح بالدخول في العمود AB (index 27)
             var allowVal = (row[27] || "").toString().trim().toLowerCase();
@@ -1493,9 +1498,15 @@ function doGet(e) {
             var customLessonsRaw = (row[2] || "").toString().trim();
             var isCustom = false;
             var allowedList = [];
-            if (customLessonsRaw && customLessonsRaw !== "الكل" && customLessonsRaw !== "*") {
-              isCustom = true;
-              allowedList = customLessonsRaw.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+            if (customLessonsRaw) {
+              if (customLessonsRaw === "الكل" || customLessonsRaw === "*" || customLessonsRaw.toLowerCase() === "all") {
+                isCustom = true;
+                allowedList = ["*"];
+              } else {
+                isCustom = true;
+                // تقسيم الدروس بالفاصلة العادية والعربية والمنقوطة والأسطر
+                allowedList = customLessonsRaw.split(/[,\u060C;|\n\r/]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+              }
             }
 
             return createJsonResponse({
@@ -1504,6 +1515,7 @@ function doGet(e) {
               phone: row[0] || e.parameter.phone,
               isCustomSubscriber: isCustom,
               allowedLessons: allowedList,
+              allowedLessonsRaw: customLessonsRaw,
               maxDevices: maxDevices,
               deviceCount: registeredTokens.length
             });

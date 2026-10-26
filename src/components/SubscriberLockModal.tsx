@@ -59,24 +59,30 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
     const cleanPhone = String(phone || '').trim();
 
     if (!cleanName || !cleanPhone) {
-      setErrorMessage('يرجى ملء حقلي الاسم ورقم الهاتف.');
+      setErrorMessage(t('sub_modal_err_required_fields', currentLanguage));
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const res = await verifySubscriberWithSheet(cleanName, cleanPhone, webAppUrl);
+      // نتحقق من الحساب بدون حفظ تلقائي فوري، لنتأكد أولاً من صلاحية الدرس الحالي
+      const res = await verifySubscriberWithSheet(cleanName, cleanPhone, webAppUrl, { skipAutoSave: true });
 
       if (res.success && res.subscriber) {
         // فحص هل هذا المشترك مصرح له بهذا الدرس تحديداً (خاصة للدروس الخاصة VIP)
         const accessCheck = checkLessonAccess(lesson, res.subscriber);
         if (!accessCheck.allowed) {
-          setErrorMessage(accessCheck.message || 'عذراً، هذا الحساب غير مصرح له بفتح هذا الدرس الخاص.');
+          if (accessCheck.reason === 'subscriber_blocked_custom_only') {
+            setErrorMessage(t('sub_modal_custom_access_denied', currentLanguage));
+          } else {
+            setErrorMessage(t('sub_modal_custom_not_assigned_error', currentLanguage));
+          }
           setIsLoading(false);
           return;
         }
 
+        // تم التحقق بنجاح من الهوية وصلاحية الدرس: الآن نحفظ الجلسة
         setSuccessMessage(res.message);
         setTimeout(() => {
           onSuccessLogin(res.subscriber!);
@@ -87,7 +93,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
         setIsLoading(false);
       }
     } catch (err: any) {
-      setErrorMessage(`حدث خطأ أثناء الاتصال: ${err?.message || 'تأكد من الاتصال بالإنترنت'}`);
+      setErrorMessage(`${currentLanguage === 'ar' ? 'حدث خطأ أثناء الاتصال:' : currentLanguage === 'en' ? 'Connection error:' : 'เกิดข้อผิดพลาดในการเชื่อมต่อ:'} ${err?.message || ''}`);
       setIsLoading(false);
     }
   };
@@ -162,20 +168,22 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
           {currentSubscriber && (
             <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs text-slate-300 space-y-1.5 animate-fadeIn">
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">حسابك الحالي النشط:</span>
+                <span className="text-slate-400">{t('sub_modal_active_account_label', currentLanguage)}</span>
                 <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] border ${
                   currentSubscriber.isCustomSubscriber
                     ? 'bg-purple-950 text-purple-300 border-purple-500/30'
                     : 'bg-amber-950 text-amber-300 border-amber-500/30'
                 }`}>
-                  {currentSubscriber.isCustomSubscriber ? 'مشترك خاص ✦' : 'مشترك عام'}
+                  {currentSubscriber.isCustomSubscriber
+                    ? t('sub_modal_tier_custom_badge', currentLanguage)
+                    : t('sub_modal_tier_general_badge', currentLanguage)}
                 </span>
               </div>
               <div className="font-semibold text-white">{currentSubscriber.name} ({currentSubscriber.phone})</div>
               <p className="text-[11px] text-amber-300/90 leading-relaxed">
                 {isCustomTier
-                  ? '⚠️ هذا الدرس محتوى خاص (VIP) ولم يُخصص لحسابك. يمكنك تسجيل الدخول بحساب المشترك الخاص المخصص لهذا الدرس أدناه:'
-                  : '⚠️ لم يتم تفعيل صلاحية هذا الدرس لحسابك الحالي.'}
+                  ? t('sub_modal_custom_not_assigned_notice', currentLanguage)
+                  : t('sub_modal_not_activated_notice', currentLanguage)}
               </p>
             </div>
           )}
@@ -252,7 +260,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{currentLanguage === 'ar' ? 'جارٍ التحقق...' : currentLanguage === 'en' ? 'Verifying...' : 'กำลังตรวจสอบ...'}</span>
+                    <span>{t('sub_modal_verifying', currentLanguage)}</span>
                   </>
                 ) : (
                   <>
@@ -271,7 +279,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
             </div>
             <div className="relative flex justify-center text-[10px] uppercase">
               <span className="bg-slate-900 px-3 text-slate-500 font-semibold">
-                {currentLanguage === 'ar' ? 'أو إذا كنت ترغب في الاشتراك' : currentLanguage === 'en' ? 'Or if you want to subscribe' : 'หรือหากคุณต้องการสมัครสมาชิก'}
+                {t('sub_modal_or_subscribe', currentLanguage)}
               </span>
             </div>
           </div>
@@ -284,7 +292,7 @@ export const SubscriberLockModal: React.FC<SubscriberLockModalProps> = ({
                 <span>{t('sub_modal_request_sub_title', currentLanguage)}</span>
               </span>
               <span className="text-[10px] text-emerald-400 font-medium">
-                {currentLanguage === 'ar' ? 'تفعيل فوري' : currentLanguage === 'en' ? 'Instant' : 'ทันที'}
+                {t('sub_modal_instant_activation', currentLanguage)}
               </span>
             </div>
             <button

@@ -584,6 +584,94 @@ export const DEFAULT_TRANSLATION_ITEMS: TranslationItem[] = [
     ar: 'إغلاق',
     en: 'Close',
     th: 'ปิด'
+  },
+  {
+    id: 'sub_modal_custom_not_assigned_notice',
+    group: 'group5_subscriber',
+    labelAr: 'تنبيه الدرس الخاص غير المخصص لحساب المشترك الحالي',
+    ar: '⚠️ هذا الدرس محتوى خاص (VIP) ولم يُخصص لحسابك. يمكنك تسجيل الدخول بحساب المشترك الخاص المخصص لهذا الدرس أدناه:',
+    en: '⚠️ This lesson is exclusive VIP content and is not assigned to your account. You can log in with an authorized account below:',
+    th: '⚠️ บทเรียนนี้เป็นเนื้อหาพิเศษ (VIP) และไม่ได้กำหนดให้กับบัญชีของคุณ คุณสามารถเข้าสู่ระบบด้วยบัญชีที่ได้รับอนุญาตด้านล่าง:'
+  },
+  {
+    id: 'sub_modal_active_account_label',
+    group: 'group5_subscriber',
+    labelAr: 'تسمية الحساب الحالي النشط',
+    ar: 'حسابك الحالي النشط:',
+    en: 'Your active account:',
+    th: 'บัญชีปัจจุบันที่ใช้งานอยู่:'
+  },
+  {
+    id: 'sub_modal_tier_custom_badge',
+    group: 'group5_subscriber',
+    labelAr: 'شارة نوع الحساب: مشترك خاص',
+    ar: 'مشترك خاص ✦',
+    en: 'VIP Subscriber ✦',
+    th: 'สมาชิก VIP ✦'
+  },
+  {
+    id: 'sub_modal_tier_general_badge',
+    group: 'group5_subscriber',
+    labelAr: 'شارة نوع الحساب: مشترك عام',
+    ar: 'مشترك عام',
+    en: 'General Subscriber',
+    th: 'สมาชิกทั่วไป'
+  },
+  {
+    id: 'sub_modal_not_activated_notice',
+    group: 'group5_subscriber',
+    labelAr: 'رسالة عدم تفعيل الدرس للحساب',
+    ar: '⚠️ لم يتم تفعيل صلاحية هذا الدرس لحسابك الحالي.',
+    en: '⚠️ This lesson is not activated for your current account.',
+    th: '⚠️ บทเรียนนี้ยังไม่ได้เปิดใช้งานสำหรับบัญชีปัจจุบันของคุณ'
+  },
+  {
+    id: 'sub_modal_err_required_fields',
+    group: 'group5_subscriber',
+    labelAr: 'رسالة الخطأ عند ترك حقول الدخول فارغة',
+    ar: 'يرجى إدخال كلٍ من اسم المشترك ورقم المعرف (ID Number).',
+    en: 'Please enter both the subscriber name and ID Number.',
+    th: 'กรุณากรอกทั้งชื่อสมาชิกและหมายเลข ID'
+  },
+  {
+    id: 'sub_modal_custom_access_denied',
+    group: 'group5_subscriber',
+    labelAr: 'رسالة منع المشترك العام من الدرس الخاص',
+    ar: 'هذا المحتوى خاص وحصري لمشتركين معينين (مشترك خاص). حسابك مشترك عام ولا يشمل هذا الدرس.',
+    en: 'This content is exclusive to special subscribers (VIP). Your account is general and does not include this lesson.',
+    th: 'เนื้อหานี้สงวนไว้สำหรับสมาชิกพิเศษ (VIP) บัญชีของคุณเป็นสมาชิกทั่วไปและไม่รวมบทเรียนนี้'
+  },
+  {
+    id: 'sub_modal_custom_not_assigned_error',
+    group: 'group5_subscriber',
+    labelAr: 'رسالة الدرس الخاص غير المخصص للطالب',
+    ar: 'هذا الدرس خاص ولم يُخصص لحسابك بعد. يرجى مراجعة المعلم لإضافته إلى دروسك المعتمدة.',
+    en: 'This lesson is private and has not been assigned to your account yet. Please contact the teacher.',
+    th: 'บทเรียนนี้เป็นแบบส่วนตัวและยังไม่ได้กำหนดให้กับบัญชีของคุณ โปรดติดต่อครูผู้สอน'
+  },
+  {
+    id: 'sub_modal_verifying',
+    group: 'group5_subscriber',
+    labelAr: 'نص حالة جاري التحقق',
+    ar: 'جارٍ التحقق...',
+    en: 'Verifying...',
+    th: 'กำลังตรวจสอบ...'
+  },
+  {
+    id: 'sub_modal_or_subscribe',
+    group: 'group5_subscriber',
+    labelAr: 'نص فاصل خيار الاشتراك',
+    ar: 'أو إذا كنت ترغب في الاشتراك',
+    en: 'Or if you want to subscribe',
+    th: 'หรือหากคุณต้องการสมัครสมาชิก'
+  },
+  {
+    id: 'sub_modal_instant_activation',
+    group: 'group5_subscriber',
+    labelAr: 'شارة تفعيل فوري للاشتراك',
+    ar: 'تفعيل فوري',
+    en: 'Instant',
+    th: 'ทันที'
   }
 ];
 
