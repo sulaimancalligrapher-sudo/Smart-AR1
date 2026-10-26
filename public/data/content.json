@@ -1,6 +1,6 @@
 {
   "version": "3.3.0",
-  "exportedAt": "2026-10-17T02:34:20.959Z",
+  "exportedAt": "2026-10-26T14:21:50.018Z",
   "lessonsCount": 3,
   "lessons": [
     {
@@ -74,7 +74,56 @@
           "title": "تسجيل صوتي"
         }
       ],
-      "isFreePreview": true
+      "isFreePreview": true,
+      "questions": [
+        {
+          "id": "q_sheet_1_1",
+          "type": "multiple_choice",
+          "question": "คุณต้องการอะไรเพื่อเริ่มต้นอย่างถูกต้อง?",
+          "imageUrl": "https://drive.google.com/thumbnail?id=1ICD4VSiKphFIF5pegmXribUzXcmQC8tc&sz=w1200",
+          "options": [
+            "ทั้งหมดที่กล่าวมา",
+            "ครู",
+            "หลักสูตรที่ดี",
+            "อุปกรณ์ที่ดี"
+          ],
+          "correctIndex": 1,
+          "explanation": "الإجابة الصحيحة هي: ครู",
+          "points": 1
+        },
+        {
+          "id": "q_sheet_1_2",
+          "type": "text_answer",
+          "question": "หนึ่งในห้าข้อกำหนดในการเรียนรู้คือ ....",
+          "imageUrl": "https://drive.google.com/thumbnail?id=1ICD4VSiKphFIF5pegmXribUzXcmQC8tc&sz=w1200",
+          "correctAnswerText": "سلام",
+          "isFreeText": false,
+          "explanation": "الإجابة النموذجية: سلام",
+          "points": 1
+        },
+        {
+          "id": "q_sheet_1_3",
+          "type": "text_answer",
+          "question": "กฎที่สำคัญที่สุดที่คุณต้องเรียนรู้คืออะไร?",
+          "isFreeText": true,
+          "explanation": "إجابة نصية حرة",
+          "points": 1
+        },
+        {
+          "id": "q_sheet_1_4",
+          "type": "multiple_choice",
+          "question": "รูปร่างของ (จุด) คืออะไร?",
+          "options": [
+            "(สี่เหลี่ยมผืนผ้า)",
+            "(วงกลม)",
+            "(สี่เหลี่ยมจัตุรัส)",
+            "(สามเหลี่ยม)"
+          ],
+          "correctIndex": 3,
+          "explanation": "الإجابة الصحيحة هي: (สามเหลี่ยม)",
+          "points": 1
+        }
+      ]
     },
     {
       "targetIndex": 1,
@@ -153,6 +202,67 @@
           "embedUrl": "https://www.youtube.com/embed/gHk-iz8RbjU?autoplay=1&rel=0&playsinline=1",
           "title": "2"
         }
+      ],
+      "isFreePreview": false,
+      "questions": [
+        {
+          "id": "q_sheet_2_1",
+          "type": "multiple_choice",
+          "question": "คุณต้องการอะไรเพื่อเริ่มต้นอย่างถูกต้อง?",
+          "imageUrl": "https://drive.google.com/thumbnail?id=1ICD4VSiKphFIF5pegmXribUzXcmQC8tc&sz=w1200",
+          "options": [
+            "ทั้งหมดที่กล่าวมา",
+            "ครู",
+            "หลักสูตรที่ดี",
+            "อุปกรณ์ที่ดี"
+          ],
+          "correctIndex": 1,
+          "explanation": "الإجابة الصحيحة هي: ครู",
+          "points": 1
+        },
+        {
+          "id": "q_sheet_2_2",
+          "type": "multiple_choice",
+          "question": "หนึ่งในห้าข้อกำหนดในการเรียนรู้คือ ....",
+          "imageUrl": "https://drive.google.com/thumbnail?id=1ICD4VSiKphFIF5pegmXribUzXcmQC8tc&sz=w1200",
+          "options": [
+            "ความกลัว",
+            "ความอดทน",
+            "การเล่น",
+            "การนอน"
+          ],
+          "correctIndex": 2,
+          "explanation": "الإجابة الصحيحة هي: การเล่น",
+          "points": 1
+        },
+        {
+          "id": "q_sheet_2_3",
+          "type": "multiple_choice",
+          "question": "กฎที่สำคัญที่สุดที่คุณต้องเรียนรู้คืออะไร?",
+          "options": [
+            "ไม่มีกฎ",
+            "(การวาดจุด)",
+            "(การเขียนวลี)",
+            "(การเขียนตัวอักษร)"
+          ],
+          "correctIndex": 1,
+          "explanation": "الإجابة الصحيحة هي: (การวาดจุด)",
+          "points": 1
+        },
+        {
+          "id": "q_sheet_2_4",
+          "type": "multiple_choice",
+          "question": "รูปร่างของ (จุด) คืออะไร?",
+          "options": [
+            "(สี่เหลี่ยมผืนผ้า)",
+            "(วงกลม)",
+            "(สี่เหลี่ยมจัตุรัส)",
+            "(สามเหลี่ยม)"
+          ],
+          "correctIndex": 3,
+          "explanation": "الإجابة الصحيحة هي: (สามเหลี่ยม)",
+          "points": 1
+        }
       ]
     },
     {
@@ -219,7 +329,40 @@
       "additionalTargetIndices": [],
       "additionalTargetImages": [],
       "videos": [],
-      "audios": []
+      "audios": [],
+      "isFreePreview": false,
+      "questions": [
+        {
+          "id": "q_sheet_3_1",
+          "type": "multiple_choice",
+          "question": "لون التفاح",
+          "imageUrl": "https://drive.google.com/thumbnail?id=1HwJZk8xl_kIIPv5zaOTfhTsa6yeoHFGh&sz=w1200",
+          "options": [
+            "أحمر",
+            "اصفر",
+            "برتقالي",
+            "اخضر"
+          ],
+          "correctIndex": 1,
+          "explanation": "الإجابة الصحيحة هي: اصفر",
+          "points": 1
+        },
+        {
+          "id": "q_sheet_3_2",
+          "type": "multiple_choice",
+          "question": "لون الجزر",
+          "options": [
+            "أحمر",
+            "اصفر",
+            "برتقالي",
+            "اخضر"
+          ],
+          "correctIndex": 0,
+          "explanation": "الإجابة الصحيحة هي: أحمر",
+          "points": 1
+        }
+      ],
+      "accessTier": "custom"
     }
   ]
 }
