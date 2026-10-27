@@ -1546,6 +1546,129 @@ function getOrCreateLessonsSheet(ss) {
   return sheet;
 }
 
+// دالة مشتركة لتنفيذ حفظ الدروس في ورقة (دروس) عبر deleteRows و appendRow و flush المباشر
+function handleSaveLessons(ss, payload) {
+  var lSheet = getOrCreateLessonsSheet(ss);
+  var list = [];
+  if (Array.isArray(payload)) {
+    list = payload;
+  } else if (typeof payload === "string" && payload.trim()) {
+    try {
+      list = JSON.parse(payload);
+    } catch (_) {
+      try {
+        list = JSON.parse(decodeURIComponent(payload));
+      } catch (__) {
+        list = [];
+      }
+    }
+  }
+
+  // حذف أسطر البيانات القديمة بأمان (إبقاء سطر العناوين 1)
+  var lastRow = lSheet.getLastRow();
+  if (lastRow > 1) {
+    lSheet.deleteRows(2, lastRow - 1);
+  }
+
+  var count = 0;
+  for (var k = 0; k < list.length; k++) {
+    var item = list[k] || {};
+    var tierAr = item.accessTier === "custom" ? "خاص" : (item.accessTier === "restricted" ? "مقفل" : "متاح");
+    var adds = joinListItems(item.additionalTargetImages);
+    var vids = joinListItems(item.videos || item.videoUrls);
+    var auds = joinListItems(item.audios || item.audioUrls);
+    var imgs = joinListItems(item.images || item.imageUrls);
+    var m3dUrl = item.model3d ? (item.model3d.url || "") : (item.modelUrl || "");
+    var m3dTitle = item.model3d ? (item.model3d.title || "") : (item.modelTitle || "");
+    var m3dSound = item.model3d ? (item.model3d.soundUrl || "") : (item.modelSoundUrl || "");
+
+    lSheet.appendRow([
+      item.title || ("درس رقم " + (k + 1)),
+      tierAr,
+      item.targetImage || "",
+      adds,
+      vids,
+      auds,
+      imgs,
+      m3dUrl,
+      m3dTitle,
+      m3dSound
+    ]);
+    count++;
+  }
+
+  // كتابة وحفظ البيانات فوراً في Google Sheets
+  SpreadsheetApp.flush();
+
+  return {
+    success: true,
+    savedCount: count,
+    message: "✓ تم حفظ وتحديث " + count + " درس في ورقة (دروس) بنجاح!"
+  };
+}
+
+// دالة مشتركة لقراءة الدروس من ورقة (دروس)
+function handleGetLessons(ss) {
+  var lSheet = getOrCreateLessonsSheet(ss);
+  var rows = lSheet.getDataRange().getValues();
+  var lessonsList = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    var title = (r[0] || "").toString().trim();
+    if (!title && !r[2] && !r[7]) continue;
+
+    var accessTierRaw = (r[1] || "").toString().trim().toLowerCase();
+    var accessTier = "open";
+    if (accessTierRaw === "خاص" || accessTierRaw === "custom" || accessTierRaw === "vip") {
+      accessTier = "custom";
+    } else if (
+      accessTierRaw === "مقفل" ||
+      accessTierRaw === "مقيد" ||
+      accessTierRaw === "restricted" ||
+      accessTierRaw === "مغلق" ||
+      accessTierRaw === "مشتركين"
+    ) {
+      accessTier = "restricted";
+    }
+
+    var targetImage = (r[2] || "").toString().trim();
+    var addTargetsRaw = (r[3] || "").toString().trim();
+    var additionalTargetImages = splitListItems(addTargetsRaw);
+
+    var videosRaw = (r[4] || "").toString().trim();
+    var videoUrls = splitListItems(videosRaw);
+
+    var audiosRaw = (r[5] || "").toString().trim();
+    var audioUrls = splitListItems(audiosRaw);
+
+    var imagesRaw = (r[6] || "").toString().trim();
+    var imageUrls = splitListItems(imagesRaw);
+
+    var modelUrl = (r[7] || "").toString().trim();
+    var modelTitle = (r[8] || "").toString().trim() || title;
+    var modelSound = (r[9] || "").toString().trim();
+
+    lessonsList.push({
+      targetIndex: i - 1,
+      targetId: "lesson_" + ("00" + i).slice(-3),
+      title: title || ("درس رقم " + i),
+      accessTier: accessTier,
+      targetImage: targetImage,
+      additionalTargetImages: additionalTargetImages,
+      videoUrls: videoUrls,
+      audioUrls: audioUrls,
+      imageUrls: imageUrls,
+      model3d: modelUrl ? {
+        url: modelUrl,
+        title: modelTitle,
+        soundUrl: modelSound,
+        autoRotate: false
+      } : undefined
+    });
+  }
+  return { success: true, lessons: lessonsList };
+}
+
 // 1. معالجة طلبات GET (فحص المشتركين + جلب الدروس + جلب الأسئلة)
 function doGet(e) {
   try {
@@ -1759,119 +1882,13 @@ function doGet(e) {
 
     // ب) جلب قائمة الدروس من ورقة (دروس) مباشرة
     if (action === "getLessons") {
-      var lSheet = getOrCreateLessonsSheet(ss);
-      var rows = lSheet.getDataRange().getValues();
-      var lessonsList = [];
-      for (var i = 1; i < rows.length; i++) {
-        var r = rows[i];
-        var title = (r[0] || "").toString().trim();
-        if (!title && !r[2] && !r[7]) continue;
-
-        var accessTierRaw = (r[1] || "").toString().trim().toLowerCase();
-        var accessTier = "open";
-        if (accessTierRaw === "خاص" || accessTierRaw === "custom" || accessTierRaw === "vip") {
-          accessTier = "custom";
-        } else if (
-          accessTierRaw === "مقفل" ||
-          accessTierRaw === "مقيد" ||
-          accessTierRaw === "restricted" ||
-          accessTierRaw === "مغلق" ||
-          accessTierRaw === "مشتركين"
-        ) {
-          accessTier = "restricted";
-        }
-
-        var targetImage = (r[2] || "").toString().trim();
-        var addTargetsRaw = (r[3] || "").toString().trim();
-        var additionalTargetImages = splitListItems(addTargetsRaw);
-
-        var videosRaw = (r[4] || "").toString().trim();
-        var videoUrls = splitListItems(videosRaw);
-
-        var audiosRaw = (r[5] || "").toString().trim();
-        var audioUrls = splitListItems(audiosRaw);
-
-        var imagesRaw = (r[6] || "").toString().trim();
-        var imageUrls = splitListItems(imagesRaw);
-
-        var modelUrl = (r[7] || "").toString().trim();
-        var modelTitle = (r[8] || "").toString().trim() || title;
-        var modelSound = (r[9] || "").toString().trim();
-
-        lessonsList.push({
-          targetIndex: i - 1,
-          targetId: "lesson_" + ("00" + i).slice(-3),
-          title: title || ("درس رقم " + i),
-          accessTier: accessTier,
-          targetImage: targetImage,
-          additionalTargetImages: additionalTargetImages,
-          videoUrls: videoUrls,
-          audioUrls: audioUrls,
-          imageUrls: imageUrls,
-          model3d: modelUrl ? {
-            url: modelUrl,
-            title: modelTitle,
-            soundUrl: modelSound,
-            autoRotate: false
-          } : undefined
-        });
-      }
-      return createJsonResponse({ success: true, lessons: lessonsList });
+      return createJsonResponse(handleGetLessons(ss));
     }
 
     // ج) حفظ وتحديث الدروس في ورقة (دروس) عبر GET أيضاً
     if (action === "saveLessons") {
-      var lSheet = getOrCreateLessonsSheet(ss);
-      var lessonsRaw = e.parameter.lessons || "";
-      var list = [];
-      if (Array.isArray(lessonsRaw)) {
-        list = lessonsRaw;
-      } else if (typeof lessonsRaw === "string" && lessonsRaw.trim()) {
-        try { list = JSON.parse(lessonsRaw); } catch(_) { list = []; }
-      }
-
-      var lastRow = lSheet.getLastRow();
-      if (lastRow > 1) {
-        lSheet.getRange(2, 1, lastRow - 1, LESSONS_HEADERS.length).clearContent();
-      }
-
-      var newRows = [];
-      for (var k = 0; k < list.length; k++) {
-        var item = list[k] || {};
-        var tierAr = item.accessTier === "custom" ? "خاص" : (item.accessTier === "restricted" ? "مقفل" : "متاح");
-        var adds = joinListItems(item.additionalTargetImages);
-        var vids = joinListItems(item.videos || item.videoUrls);
-        var auds = joinListItems(item.audios || item.audioUrls);
-        var imgs = joinListItems(item.images || item.imageUrls);
-        var m3dUrl = item.model3d ? (item.model3d.url || "") : (item.modelUrl || "");
-        var m3dTitle = item.model3d ? (item.model3d.title || "") : (item.modelTitle || "");
-        var m3dSound = item.model3d ? (item.model3d.soundUrl || "") : (item.modelSoundUrl || "");
-
-        newRows.push([
-          item.title || "",
-          tierAr,
-          item.targetImage || "",
-          adds,
-          vids,
-          auds,
-          imgs,
-          m3dUrl,
-          m3dTitle,
-          m3dSound
-        ]);
-      }
-
-      if (newRows.length > 0) {
-        if (lSheet.getMaxRows() < newRows.length + 1) {
-          lSheet.insertRowsAfter(lSheet.getMaxRows(), (newRows.length + 1) - lSheet.getMaxRows());
-        }
-        lSheet.getRange(2, 1, newRows.length, LESSONS_HEADERS.length).setValues(newRows);
-      }
-
-      return createJsonResponse({
-        success: true,
-        message: "✓ تم حفظ وتحديث " + newRows.length + " درس في ورقة (دروس) بنجاح!"
-      });
+      var pGet = e.parameter.lessons || e.parameter.data || "";
+      return createJsonResponse(handleSaveLessons(ss, pGet));
     }
 
     // د) جلب بنك الأسئلة من ورقة Questions-AR
@@ -2017,58 +2034,9 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
     // 0) حفظ وتحديث كافة الدروس في ورقة (دروس) عبر POST
-    if (data.action === "saveLessons") {
-      var lSheet = getOrCreateLessonsSheet(ss);
-      var lessonsPayload = data.lessons || "";
-      var list = [];
-      if (Array.isArray(lessonsPayload)) {
-        list = lessonsPayload;
-      } else if (typeof lessonsPayload === "string" && lessonsPayload.trim()) {
-        try { list = JSON.parse(lessonsPayload); } catch(_) { list = []; }
-      }
-
-      var lastRow = lSheet.getLastRow();
-      if (lastRow > 1) {
-        lSheet.getRange(2, 1, lastRow - 1, LESSONS_HEADERS.length).clearContent();
-      }
-
-      var newRows = [];
-      for (var k = 0; k < list.length; k++) {
-        var item = list[k] || {};
-        var tierAr = item.accessTier === "custom" ? "خاص" : (item.accessTier === "restricted" ? "مقفل" : "متاح");
-        var adds = joinListItems(item.additionalTargetImages);
-        var vids = joinListItems(item.videos || item.videoUrls);
-        var auds = joinListItems(item.audios || item.audioUrls);
-        var imgs = joinListItems(item.images || item.imageUrls);
-        var m3dUrl = item.model3d ? (item.model3d.url || "") : (item.modelUrl || "");
-        var m3dTitle = item.model3d ? (item.model3d.title || "") : (item.modelTitle || "");
-        var m3dSound = item.model3d ? (item.model3d.soundUrl || "") : (item.modelSoundUrl || "");
-
-        newRows.push([
-          item.title || "",
-          tierAr,
-          item.targetImage || "",
-          adds,
-          vids,
-          auds,
-          imgs,
-          m3dUrl,
-          m3dTitle,
-          m3dSound
-        ]);
-      }
-
-      if (newRows.length > 0) {
-        if (lSheet.getMaxRows() < newRows.length + 1) {
-          lSheet.insertRowsAfter(lSheet.getMaxRows(), (newRows.length + 1) - lSheet.getMaxRows());
-        }
-        lSheet.getRange(2, 1, newRows.length, LESSONS_HEADERS.length).setValues(newRows);
-      }
-
-      return createJsonResponse({
-        success: true,
-        message: "✓ تم حفظ وتحديث " + newRows.length + " درس في ورقة (دروس) بنجاح!"
-      });
+    if (data.action === "saveLessons" || (e && e.parameter && e.parameter.action === "saveLessons")) {
+      var pPost = data.lessons || data.data || data.rows || (e && e.parameter ? (e.parameter.lessons || e.parameter.data) : "");
+      return createJsonResponse(handleSaveLessons(ss, pPost));
     }
 
     // أ) تحديث وحفظ كافة الأسئلة في ورقة Questions-AR أفقياً
