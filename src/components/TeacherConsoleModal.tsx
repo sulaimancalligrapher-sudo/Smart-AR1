@@ -47,6 +47,7 @@ import { getCameraShowTargetCards, setCameraShowTargetCards } from '../services/
 import { TranslationManagerView } from './TranslationManagerView';
 import { AppLanguage, getStoredLanguage, saveStoredLanguage } from '../services/translationService';
 import { getAppBranding, saveAppBranding, resetAppBranding, AppBrandingConfig } from '../services/brandingService';
+import { fetchLessonsFromSheet, saveLessonsToSheet } from '../services/lessonsSheetService';
 
 interface TeacherConsoleModalProps {
   lessons?: LessonData[];
@@ -323,6 +324,51 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     setBranding(def);
     setBrandingSavedNotice('✓ تمت استعادة الهوية والعناوين الافتراضية');
     setTimeout(() => setBrandingSavedNotice(null), 4000);
+  };
+
+  // مزامنة الدروس مع ورقة (دروس) في Google Sheets
+  const [isSyncingLessonsFromSheet, setIsSyncingLessonsFromSheet] = useState<boolean>(false);
+  const [isSavingLessonsToSheet, setIsSavingLessonsToSheet] = useState<boolean>(false);
+  const [sheetLessonsNotice, setSheetLessonsNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  const handleSyncLessonsFromSheet = async () => {
+    setIsSyncingLessonsFromSheet(true);
+    setSheetLessonsNotice(null);
+    try {
+      const res = await fetchLessonsFromSheet(webAppUrl, editableLessons);
+      if (res.success && res.lessons && res.lessons.length > 0) {
+        setEditableLessons(res.lessons);
+        if (onUpdateLessons) {
+          onUpdateLessons(res.lessons);
+        }
+        setSheetLessonsNotice({ type: 'success', text: res.message });
+      } else {
+        setSheetLessonsNotice({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setSheetLessonsNotice({ type: 'error', text: `تعذر الاتصال بـ Google Sheets: ${err?.message || err}` });
+    } finally {
+      setIsSyncingLessonsFromSheet(false);
+      setTimeout(() => setSheetLessonsNotice(null), 5000);
+    }
+  };
+
+  const handleSaveLessonsToSheet = async () => {
+    setIsSavingLessonsToSheet(true);
+    setSheetLessonsNotice(null);
+    try {
+      const res = await saveLessonsToSheet(editableLessons, webAppUrl);
+      if (res.success) {
+        setSheetLessonsNotice({ type: 'success', text: res.message });
+      } else {
+        setSheetLessonsNotice({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setSheetLessonsNotice({ type: 'error', text: `تعذر الحفظ في الشيت: ${err?.message || err}` });
+    } finally {
+      setIsSavingLessonsToSheet(false);
+      setTimeout(() => setSheetLessonsNotice(null), 5000);
+    }
   };
 
   // Question Form State
@@ -1405,17 +1451,102 @@ export const TeacherConsoleModal: React.FC<TeacherConsoleModalProps> = ({
     const code = `// Google Apps Script - Code.gs
 // يدعم:
 // 1. ورقة SubData: التحقق من المشتركين والدروس المقيدة
-// 2. ورقة Questions-AR: قراءة وتحديث بنك الأسئلة أفقياً لكل درس
-// 3. ورقة Answers-AR: حفظ إجابات وتقييمات الطلاب لكل حصة
-// 4. ورقة Events: سجل أحداث الكاميرا المباشرة
+// 2. ورقة دروس: إدارة الدروس والوسائط وصلاحيات الوصول مباشرة
+// 3. ورقة Questions-AR: قراءة وتحديث بنك الأسئلة أفقياً لكل درس
+// 4. ورقة Answers-AR: حفظ إجابات وتقييمات الطلاب لكل حصة
+// 5. ورقة Events: سجل أحداث الكاميرا المباشرة
 
 var SUBSCRIBERS_SHEET = "SubData";
+var LESSONS_SHEET = "دروس";
 var QUESTIONS_SHEET = "Questions-AR";
 var ANSWERS_SHEET = "Answers-AR";
 var EVENTS_SHEET = "Events";
 var SUBMISSIONS_SHEET = "Submissions";
 
-// 1. معالجة طلبات GET (فحص المشتركين + جلب الأسئلة)
+var LESSONS_HEADERS = [
+  "عنوان الدرس (A)",
+  "صلاحية الوصول (B)",
+  "صورة الهدف الأساسي (C)",
+  "أهداف إضافية (D)",
+  "روابط الفيديو (E)",
+  "روابط الصوت (F)",
+  "روابط الصور والشروحات (G)",
+  "رابط المجسم ثلاثي الأبعاد (H)",
+  "عنوان المجسم (I)",
+  "صوت المجسم التلقائي (J)"
+];
+
+// دالة مساعدة لتنظيف ومطابقة رقم المشترك أو ID Naber بصورة آمنة تماماً ضد أخطاء الرموز
+function cleanIdOrPhone(val) {
+  if (val === null || val === undefined) return "";
+  var s = String(val).trim();
+  // إزالة المسافات والأقواس والشرطات بدون أي احتمالية لخطأ تعبير نمطي
+  s = s.split(" ").join("").split("-").join("").split("(").join("").split(")").join("");
+  // تحويل الأرقام العربية والفارسية إلى أرقام لاتينية
+  return s.replace(/[٠-٩]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1632 + 48); })
+          .replace(/[۰-۹]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1776 + 48); });
+}
+
+// دالة مساعدة لتقسيم القوائم والروابط بالفاصلة أو السطر الجديد أو الشرطة بأمان تام وبدون أي تعبيرات نمطية معقدة
+function splitListItems(rawText) {
+  if (!rawText) return [];
+  var str = String(rawText).trim();
+  if (!str) return [];
+  var nl = String.fromCharCode(10);
+  var cr = String.fromCharCode(13);
+  var s = str.split(cr).join(",")
+             .split(nl).join(",")
+             .split("،").join(",")
+             .split(";").join(",")
+             .split("|").join(",")
+             .split("/").join(",");
+  return s.split(",").map(function(item) { return item.trim(); }).filter(Boolean);
+}
+
+// دالة مساعدة لدمج وتنسيق عناصر القوائم بأمان تام بدون أخطاء نوعية
+function joinListItems(val) {
+  if (!val) return "";
+  if (Array.isArray(val)) {
+    return val.map(function(x) {
+      if (!x) return "";
+      if (typeof x === "object") return x.url || x.embedUrl || "";
+      return String(x);
+    }).filter(Boolean).join(", ");
+  }
+  return String(val).trim();
+}
+
+// دالة مساعدة لإنشاء أو جلب ورقة دروس والتأكد من وجود وتنسيق الأعمدة العشرة المطلوبة
+function getOrCreateLessonsSheet(ss) {
+  var sheet = ss.getSheetByName(LESSONS_SHEET);
+  if (!sheet) {
+    var sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) {
+      var sName = sheets[i].getName().trim();
+      if (sName === LESSONS_SHEET || sName === "الدروس" || sName.toLowerCase() === "lessons") {
+        sheet = sheets[i];
+        break;
+      }
+    }
+  }
+  if (!sheet) {
+    sheet = ss.insertSheet(LESSONS_SHEET);
+  }
+  // التأكد من أن الورقة تحتوي على 10 أعمدة على الأقل
+  if (sheet.getMaxColumns() < LESSONS_HEADERS.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), LESSONS_HEADERS.length - sheet.getMaxColumns());
+  }
+  // كتابة العناوين وتجميد الصف الأول وتلوينه إذا كانت الورقة فارغة
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(LESSONS_HEADERS);
+    sheet.setFrozenRows(1);
+    var headRange = sheet.getRange(1, 1, 1, LESSONS_HEADERS.length);
+    headRange.setBackground("#0f172a").setFontColor("#38bdf8").setFontWeight("bold").setHorizontalAlignment("center");
+  }
+  return sheet;
+}
+
+// 1. معالجة طلبات GET (فحص المشتركين + جلب الدروس + جلب الأسئلة)
 function doGet(e) {
   try {
     var action = (e.parameter && e.parameter.action) ? e.parameter.action : "";
@@ -1423,7 +1554,7 @@ function doGet(e) {
 
     // أ) التحقق من المشترك في ورقة SubData (الأعمدة A, B, C, AB, AC, AD+)
     if (action === "verifySubscriber") {
-      var phone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+      var phone = cleanIdOrPhone(e.parameter.phone || "");
       var name = (e.parameter.name || "").toString().trim().toLowerCase();
       var deviceId = (e.parameter.deviceId || "").toString().trim();
 
@@ -1445,15 +1576,10 @@ function doGet(e) {
       var subData = subSheet.getDataRange().getValues();
       for (var i = 1; i < subData.length; i++) {
         var row = subData[i];
-        var rowPhone = (row[0] || "").toString().trim().replace(/[\s\-\(\)]/g, "")
-          .replace(/[٠-٩]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1632 + 48); })
-          .replace(/[۰-۹]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1776 + 48); });
-        var cleanQueryPhone = phone
-          .replace(/[٠-٩]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1632 + 48); })
-          .replace(/[۰-۹]/g, function(d) { return String.fromCharCode(d.charCodeAt(0) - 1776 + 48); });
+        var rowPhone = cleanIdOrPhone(row[0] || "");
         var rowName = (row[1] || "").toString().trim().toLowerCase();
 
-        if (rowPhone && cleanQueryPhone && rowPhone === cleanQueryPhone) {
+        if (rowPhone && phone && rowPhone === phone) {
           if (!name || rowName.indexOf(name) !== -1 || name.indexOf(rowName) !== -1) {
             // 1. فحص حالة السماح بالدخول في العمود AB (index 27)
             var allowVal = (row[27] || "").toString().trim().toLowerCase();
@@ -1504,8 +1630,8 @@ function doGet(e) {
                 allowedList = ["*"];
               } else {
                 isCustom = true;
-                // تقسيم الدروس بالفاصلة العادية والعربية والمنقوطة والأسطر
-                allowedList = customLessonsRaw.split(/[,\u060C;|\n\r/]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+                // تقسيم الدروس بالفاصلة العادية والعربية والمنقوطة والأسطر والشرطة بأمان
+                allowedList = splitListItems(customLessonsRaw);
               }
             }
 
@@ -1563,7 +1689,7 @@ function doGet(e) {
     // حفظ أو تحديث مشترك من لوحة المعلم
     if (action === "saveSubscriber") {
       var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET) || ss.insertSheet(SUBSCRIBERS_SHEET);
-      var subPhone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+      var subPhone = cleanIdOrPhone(e.parameter.phone || "");
       var subName = (e.parameter.name || "").toString().trim();
       var subAllowedLessons = (e.parameter.allowedLessons || "").toString().trim();
       var subIsAllowed = (e.parameter.isAllowed || "نعم").toString().trim();
@@ -1572,7 +1698,7 @@ function doGet(e) {
       var subData = subSheet.getDataRange().getValues();
       var foundRow = -1;
       for (var i = 1; i < subData.length; i++) {
-        var exPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var exPhone = cleanIdOrPhone(subData[i][0] || "");
         if (exPhone === subPhone) {
           foundRow = i + 1;
           break;
@@ -1598,10 +1724,10 @@ function doGet(e) {
     if (action === "deleteSubscriber") {
       var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
       if (subSheet) {
-        var subPhone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var subPhone = cleanIdOrPhone(e.parameter.phone || "");
         var subData = subSheet.getDataRange().getValues();
         for (var i = 1; i < subData.length; i++) {
-          var exPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+          var exPhone = cleanIdOrPhone(subData[i][0] || "");
           if (exPhone === subPhone) {
             subSheet.deleteRow(i + 1);
             break;
@@ -1615,10 +1741,10 @@ function doGet(e) {
     if (action === "resetSubscriberDevices") {
       var subSheet = ss.getSheetByName(SUBSCRIBERS_SHEET);
       if (subSheet) {
-        var subPhone = (e.parameter.phone || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+        var subPhone = cleanIdOrPhone(e.parameter.phone || "");
         var subData = subSheet.getDataRange().getValues();
         for (var i = 1; i < subData.length; i++) {
-          var exPhone = (subData[i][0] || "").toString().trim().replace(/[\\s\\-\\(\\)]/g, "");
+          var exPhone = cleanIdOrPhone(subData[i][0] || "");
           if (exPhone === subPhone) {
             var lastCol = subSheet.getLastColumn();
             if (lastCol >= 30) {
@@ -1631,7 +1757,124 @@ function doGet(e) {
       return createJsonResponse({ success: true, message: "✓ تم تصفير الأجهزة المسجلة بنجاح." });
     }
 
-    // ب) جلب بنك الأسئلة من ورقة Questions-AR
+    // ب) جلب قائمة الدروس من ورقة (دروس) مباشرة
+    if (action === "getLessons") {
+      var lSheet = getOrCreateLessonsSheet(ss);
+      var rows = lSheet.getDataRange().getValues();
+      var lessonsList = [];
+      for (var i = 1; i < rows.length; i++) {
+        var r = rows[i];
+        var title = (r[0] || "").toString().trim();
+        if (!title && !r[2] && !r[7]) continue;
+
+        var accessTierRaw = (r[1] || "").toString().trim().toLowerCase();
+        var accessTier = "open";
+        if (accessTierRaw === "خاص" || accessTierRaw === "custom" || accessTierRaw === "vip") {
+          accessTier = "custom";
+        } else if (
+          accessTierRaw === "مقفل" ||
+          accessTierRaw === "مقيد" ||
+          accessTierRaw === "restricted" ||
+          accessTierRaw === "مغلق" ||
+          accessTierRaw === "مشتركين"
+        ) {
+          accessTier = "restricted";
+        }
+
+        var targetImage = (r[2] || "").toString().trim();
+        var addTargetsRaw = (r[3] || "").toString().trim();
+        var additionalTargetImages = splitListItems(addTargetsRaw);
+
+        var videosRaw = (r[4] || "").toString().trim();
+        var videoUrls = splitListItems(videosRaw);
+
+        var audiosRaw = (r[5] || "").toString().trim();
+        var audioUrls = splitListItems(audiosRaw);
+
+        var imagesRaw = (r[6] || "").toString().trim();
+        var imageUrls = splitListItems(imagesRaw);
+
+        var modelUrl = (r[7] || "").toString().trim();
+        var modelTitle = (r[8] || "").toString().trim() || title;
+        var modelSound = (r[9] || "").toString().trim();
+
+        lessonsList.push({
+          targetIndex: i - 1,
+          targetId: "lesson_" + ("00" + i).slice(-3),
+          title: title || ("درس رقم " + i),
+          accessTier: accessTier,
+          targetImage: targetImage,
+          additionalTargetImages: additionalTargetImages,
+          videoUrls: videoUrls,
+          audioUrls: audioUrls,
+          imageUrls: imageUrls,
+          model3d: modelUrl ? {
+            url: modelUrl,
+            title: modelTitle,
+            soundUrl: modelSound,
+            autoRotate: false
+          } : undefined
+        });
+      }
+      return createJsonResponse({ success: true, lessons: lessonsList });
+    }
+
+    // ج) حفظ وتحديث الدروس في ورقة (دروس) عبر GET أيضاً
+    if (action === "saveLessons") {
+      var lSheet = getOrCreateLessonsSheet(ss);
+      var lessonsRaw = e.parameter.lessons || "";
+      var list = [];
+      if (Array.isArray(lessonsRaw)) {
+        list = lessonsRaw;
+      } else if (typeof lessonsRaw === "string" && lessonsRaw.trim()) {
+        try { list = JSON.parse(lessonsRaw); } catch(_) { list = []; }
+      }
+
+      var lastRow = lSheet.getLastRow();
+      if (lastRow > 1) {
+        lSheet.getRange(2, 1, lastRow - 1, LESSONS_HEADERS.length).clearContent();
+      }
+
+      var newRows = [];
+      for (var k = 0; k < list.length; k++) {
+        var item = list[k] || {};
+        var tierAr = item.accessTier === "custom" ? "خاص" : (item.accessTier === "restricted" ? "مقفل" : "متاح");
+        var adds = joinListItems(item.additionalTargetImages);
+        var vids = joinListItems(item.videos || item.videoUrls);
+        var auds = joinListItems(item.audios || item.audioUrls);
+        var imgs = joinListItems(item.images || item.imageUrls);
+        var m3dUrl = item.model3d ? (item.model3d.url || "") : (item.modelUrl || "");
+        var m3dTitle = item.model3d ? (item.model3d.title || "") : (item.modelTitle || "");
+        var m3dSound = item.model3d ? (item.model3d.soundUrl || "") : (item.modelSoundUrl || "");
+
+        newRows.push([
+          item.title || "",
+          tierAr,
+          item.targetImage || "",
+          adds,
+          vids,
+          auds,
+          imgs,
+          m3dUrl,
+          m3dTitle,
+          m3dSound
+        ]);
+      }
+
+      if (newRows.length > 0) {
+        if (lSheet.getMaxRows() < newRows.length + 1) {
+          lSheet.insertRowsAfter(lSheet.getMaxRows(), (newRows.length + 1) - lSheet.getMaxRows());
+        }
+        lSheet.getRange(2, 1, newRows.length, LESSONS_HEADERS.length).setValues(newRows);
+      }
+
+      return createJsonResponse({
+        success: true,
+        message: "✓ تم حفظ وتحديث " + newRows.length + " درس في ورقة (دروس) بنجاح!"
+      });
+    }
+
+    // د) جلب بنك الأسئلة من ورقة Questions-AR
     if (action === "getQuestions") {
       var qSheet = ss.getSheetByName(QUESTIONS_SHEET);
       if (!qSheet) {
@@ -1750,14 +1993,14 @@ function doGet(e) {
     return createJsonResponse({
       status: "ready",
       app: "Smart AR Book Web App",
-      sheets: [SUBSCRIBERS_SHEET, QUESTIONS_SHEET, ANSWERS_SHEET]
+      sheets: [SUBSCRIBERS_SHEET, LESSONS_SHEET, QUESTIONS_SHEET, ANSWERS_SHEET]
     });
   } catch (err) {
     return createJsonResponse({ success: false, error: err.toString() });
   }
 }
 
-// 2. معالجة طلبات POST (تحديث ورقة Questions-AR + تسجيل إجابات الطلاب في Answers-AR + الأحداث)
+// 2. معالجة طلبات POST (تحديث ورقة دروس + ورقة Questions-AR + تسجيل إجابات الطلاب في Answers-AR + الأحداث)
 function doPost(e) {
   try {
     var data = {};
@@ -1772,6 +2015,61 @@ function doPost(e) {
       data = e.parameter;
     }
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 0) حفظ وتحديث كافة الدروس في ورقة (دروس) عبر POST
+    if (data.action === "saveLessons") {
+      var lSheet = getOrCreateLessonsSheet(ss);
+      var lessonsPayload = data.lessons || "";
+      var list = [];
+      if (Array.isArray(lessonsPayload)) {
+        list = lessonsPayload;
+      } else if (typeof lessonsPayload === "string" && lessonsPayload.trim()) {
+        try { list = JSON.parse(lessonsPayload); } catch(_) { list = []; }
+      }
+
+      var lastRow = lSheet.getLastRow();
+      if (lastRow > 1) {
+        lSheet.getRange(2, 1, lastRow - 1, LESSONS_HEADERS.length).clearContent();
+      }
+
+      var newRows = [];
+      for (var k = 0; k < list.length; k++) {
+        var item = list[k] || {};
+        var tierAr = item.accessTier === "custom" ? "خاص" : (item.accessTier === "restricted" ? "مقفل" : "متاح");
+        var adds = joinListItems(item.additionalTargetImages);
+        var vids = joinListItems(item.videos || item.videoUrls);
+        var auds = joinListItems(item.audios || item.audioUrls);
+        var imgs = joinListItems(item.images || item.imageUrls);
+        var m3dUrl = item.model3d ? (item.model3d.url || "") : (item.modelUrl || "");
+        var m3dTitle = item.model3d ? (item.model3d.title || "") : (item.modelTitle || "");
+        var m3dSound = item.model3d ? (item.model3d.soundUrl || "") : (item.modelSoundUrl || "");
+
+        newRows.push([
+          item.title || "",
+          tierAr,
+          item.targetImage || "",
+          adds,
+          vids,
+          auds,
+          imgs,
+          m3dUrl,
+          m3dTitle,
+          m3dSound
+        ]);
+      }
+
+      if (newRows.length > 0) {
+        if (lSheet.getMaxRows() < newRows.length + 1) {
+          lSheet.insertRowsAfter(lSheet.getMaxRows(), (newRows.length + 1) - lSheet.getMaxRows());
+        }
+        lSheet.getRange(2, 1, newRows.length, LESSONS_HEADERS.length).setValues(newRows);
+      }
+
+      return createJsonResponse({
+        success: true,
+        message: "✓ تم حفظ وتحديث " + newRows.length + " درس في ورقة (دروس) بنجاح!"
+      });
+    }
 
     // أ) تحديث وحفظ كافة الأسئلة في ورقة Questions-AR أفقياً
     if (data.action === "syncQuestions") {
@@ -2086,20 +2384,48 @@ function createJsonResponse(obj) {
                   )}
                 </div>
 
-                {/* أزرار إضافة درس وتسجيل إجابات في نفس الصف بنصوص مختصرة وأنيقة */}
+                {/* أزرار مزامنة الشيت وإضافة درس وتسجيل إجابات في نفس الصف */}
                 <div className="self-end sm:self-auto sm:pt-4 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  {/* زر مزامنة من الشيت (ورقة دروس) */}
+                  <button
+                    type="button"
+                    disabled={isSyncingLessonsFromSheet}
+                    onClick={handleSyncLessonsFromSheet}
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-teal-400/30 disabled:opacity-50"
+                    title="جلب وتحديث كافة الدروس مباشرة من ورقة (دروس) في Google Sheets"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-teal-200 ${isSyncingLessonsFromSheet ? 'animate-spin' : ''}`} />
+                    <span>مزامنة من الشيت</span>
+                  </button>
+
+                  {/* زر حفظ ورفع للشيت (ورقة دروس) */}
+                  <button
+                    type="button"
+                    disabled={isSavingLessonsToSheet}
+                    onClick={handleSaveLessonsToSheet}
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-600/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-sky-400/30 disabled:opacity-50"
+                    title="حفظ وإرسال كافة الدروس وتعديلاتها مباشرة إلى ورقة (دروس) في Google Sheets"
+                  >
+                    {isSavingLessonsToSheet ? (
+                      <Loader2 className="w-4 h-4 text-sky-200 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 text-sky-200" />
+                    )}
+                    <span>حفظ في الشيت</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
                       setLessonSubTab('submissions');
                       setSystemAnswers(getStoredSystemAnswers());
                     }}
-                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-600/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-emerald-400/30"
+                    className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95 border border-slate-700"
                     title="الانتقال إلى تبويب إجابات الطلاب المسجلة"
                   >
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
-                    <span>تسجيل إجابات</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-black/30 text-emerald-200 text-xs font-bold font-mono">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                    <span>إجابات</span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-black/40 text-emerald-300 text-xs font-bold font-mono">
                       {systemAnswers.length}
                     </span>
                   </button>
@@ -2153,6 +2479,33 @@ function createJsonResponse(obj) {
                 </div>
               )}
             </div>
+
+            {/* تنبيه نتيجة مزامنة أو حفظ الدروس في الشيت */}
+            {sheetLessonsNotice && (
+              <div
+                className={`p-3.5 rounded-2xl border text-xs sm:text-sm flex items-center justify-between gap-3 animate-fadeIn ${
+                  sheetLessonsNotice.type === 'error'
+                    ? 'bg-rose-950/90 border-rose-500/50 text-rose-200'
+                    : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  {sheetLessonsNotice.type === 'error' ? (
+                    <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                  )}
+                  <span className="font-bold leading-relaxed">{sheetLessonsNotice.text}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSheetLessonsNotice(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* Empty State when 0 lessons */}
             {editableLessons.length === 0 && (
@@ -2380,54 +2733,19 @@ function createJsonResponse(obj) {
                       );
                     })()}
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Lesson Title */}
-                      <div className="space-y-1 md:col-span-1">
-                        <label className="text-xs font-bold text-slate-300">عنوان الدرس:</label>
-                        <input
-                          type="text"
-                          value={currentLesson.title}
-                          onChange={(e) => handleFieldChange('title', e.target.value)}
-                          placeholder="مثال: الخلية النباتية والبناء الضوئي"
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                        />
-                      </div>
-
-                      {/* Subject */}
-                      <div className="space-y-1 md:col-span-1">
-                        <label className="text-xs font-bold text-slate-300">المادة الدراسية:</label>
-                        <input
-                          type="text"
-                          value={currentLesson.subject}
-                          onChange={(e) => handleFieldChange('subject', e.target.value)}
-                          placeholder="العلوم / الفيزياء / الأحياء"
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                        />
-                      </div>
-
-                      {/* Grade */}
-                      <div className="space-y-1 md:col-span-1">
-                        <label className="text-xs font-bold text-slate-300">الصف الدراسي:</label>
-                        <input
-                          type="text"
-                          value={currentLesson.grade}
-                          onChange={(e) => handleFieldChange('grade', e.target.value)}
-                          placeholder="الصف الرابع الابتدائي"
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                        />
-                      </div>
-
-                      {/* Summary */}
-                      <div className="space-y-1 md:col-span-3">
-                        <label className="text-xs font-bold text-slate-300">ملخص وشرح الدرس السريع:</label>
-                        <textarea
-                          rows={2}
-                          value={currentLesson.description.summary}
-                          onChange={(e) => handleFieldChange('summary', e.target.value)}
-                          placeholder="اكتب شرحاً ومعلومات مفيدة للطالب عند قراءة صفحة الدرس..."
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-                        />
-                      </div>
+                    {/* Lesson Title */}
+                    <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                      <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-sky-400" />
+                        <span>عنوان الدرس (العامود A في الشيت):</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={currentLesson.title}
+                        onChange={(e) => handleFieldChange('title', e.target.value)}
+                        placeholder="مثال: كتاب الرقعة / الخلية النباتية"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs sm:text-sm font-bold text-slate-100 focus:outline-none focus:border-sky-500 shadow-inner"
+                      />
                     </div>
 
                     {/* 📷 بطاقة صورة صفحة الكتاب المطبوعة (هدف المسح بالكاميرا) */}
