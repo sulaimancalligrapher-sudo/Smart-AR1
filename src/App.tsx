@@ -27,6 +27,7 @@ import { soundService } from './services/soundService';
 import { getIsAdminLoggedIn, setAdminLoggedIn } from './services/adminAuth';
 import { SubscriberLockModal } from './components/SubscriberLockModal';
 import { fetchQuestionsFromSheet } from './services/sheetsQuestionsSync';
+import { getCachedSheetLessons, fetchLessonsFromSheet } from './services/lessonsSheetService';
 import { AppLanguage } from './types/translation';
 import {
   getStoredLanguage,
@@ -73,6 +74,8 @@ function checkIsAdminUrl(): boolean {
 
 export default function App() {
   const [lessons, setLessons] = useState<LessonData[]>(() => {
+    const sheetLessons = getCachedSheetLessons();
+    if (sheetLessons && sheetLessons.length > 0) return sheetLessons;
     const stored = getStoredLessons();
     return stored && stored.length > 0 ? stored : DEFAULT_LESSONS;
   });
@@ -167,26 +170,40 @@ export default function App() {
 
   useEffect(() => {
     fetchLessons().then(async (loadedLessons) => {
-      if (loadedLessons && loadedLessons.length > 0) {
-        setLessons(loadedLessons);
-        setActiveLesson((prev) => {
-          if (!prev) return null;
-          return loadedLessons.find(
-            (l, idx) => l.targetId === prev.targetId || (l.targetIndex ?? idx) === (prev.targetIndex ?? -1)
-          ) || prev;
-        });
+      let currentLessons = loadedLessons && loadedLessons.length > 0 ? loadedLessons : DEFAULT_LESSONS;
 
-        // مزامنة ذكية وهادئة في الخلفية لجلب أحدث الأسئلة من ورقة Questions-AR
-        const webAppUrl = analytics.getWebAppUrl();
-        if (webAppUrl) {
-          try {
-            const sheetRes = await fetchQuestionsFromSheet(loadedLessons, webAppUrl);
-            if (sheetRes.success && sheetRes.lessonsWithQuestions && sheetRes.lessonsWithQuestions.length > 0) {
-              setLessons(sheetRes.lessonsWithQuestions);
-              saveStoredLessons(sheetRes.lessonsWithQuestions);
-            }
-          } catch (_) {}
-        }
+      const sheetCached = getCachedSheetLessons();
+      if (sheetCached && sheetCached.length > 0) {
+        currentLessons = sheetCached;
+      }
+
+      setLessons(currentLessons);
+      setActiveLesson((prev) => {
+        if (!prev) return null;
+        return currentLessons.find(
+          (l, idx) => l.targetId === prev.targetId || (l.targetIndex ?? idx) === (prev.targetIndex ?? -1)
+        ) || prev;
+      });
+
+      // مزامنة ذكية وهادئة في الخلفية من جدول Google Sheets
+      const webAppUrl = analytics.getWebAppUrl();
+      if (webAppUrl) {
+        try {
+          // 1. مزامنة الدروس من ورقة (دروس) مباشرة
+          const sheetLessonsRes = await fetchLessonsFromSheet(webAppUrl, currentLessons);
+          if (sheetLessonsRes.success && sheetLessonsRes.lessons && sheetLessonsRes.lessons.length > 0) {
+            currentLessons = sheetLessonsRes.lessons;
+            setLessons(currentLessons);
+            saveStoredLessons(currentLessons);
+          }
+
+          // 2. مزامنة أحدث الأسئلة من ورقة Questions-AR
+          const sheetRes = await fetchQuestionsFromSheet(currentLessons, webAppUrl);
+          if (sheetRes.success && sheetRes.lessonsWithQuestions && sheetRes.lessonsWithQuestions.length > 0) {
+            setLessons(sheetRes.lessonsWithQuestions);
+            saveStoredLessons(sheetRes.lessonsWithQuestions);
+          }
+        } catch (_) {}
       }
     });
   }, []);

@@ -294,18 +294,26 @@ export async function saveLessonsToSheet(
   }
 
   try {
-    const serializedList = lessons.map((l) => ({
-      title: l.title || '',
+    const serializedList = lessons.map((l, idx) => ({
+      title: (l.title || `درس رقم ${idx + 1}`).trim(),
       accessTier: l.accessTier || 'open',
-      targetImage: l.targetImage || '',
-      additionalTargetImages: l.additionalTargetImages || [],
-      videos: l.videos || (l.video ? [l.video] : []),
-      audios: l.audios || (l.audio ? [l.audio] : []),
-      images: l.images || [],
+      targetImage: (l.targetImage || '').trim(),
+      additionalTargetImages: Array.isArray(l.additionalTargetImages)
+        ? l.additionalTargetImages.filter(Boolean)
+        : (l.additionalTargetImages ? [String(l.additionalTargetImages)] : []),
+      videos: Array.isArray(l.videos) && l.videos.length > 0
+        ? l.videos.filter((v) => v && (v.url || v.embedUrl))
+        : (l.video ? [l.video] : []),
+      audios: Array.isArray(l.audios) && l.audios.length > 0
+        ? l.audios.filter((a) => a && a.url)
+        : (l.audio ? [l.audio] : []),
+      images: Array.isArray(l.images)
+        ? l.images.filter((img) => img && img.url)
+        : [],
       model3d: l.model3d
         ? {
             url: l.model3d.url || '',
-            title: l.model3d.title || '',
+            title: l.model3d.title || l.title || '',
             soundUrl: l.model3d.soundUrl || ''
           }
         : undefined
@@ -337,7 +345,6 @@ export async function saveLessonsToSheet(
       try {
         data = JSON.parse(text);
       } catch (_) {
-        // إذا نجح الاتصال وكانت الاستجابة 200 ولكن تم إرجاع صفحة توجيه قوقل
         if (res.ok || res.status === 200) {
           data = { success: true };
         }
@@ -346,10 +353,11 @@ export async function saveLessonsToSheet(
       if (data && data.success) {
         success = true;
         if (data.message) serverMessage = data.message;
-      } else if (data && data.error) {
-        throw new Error(data.error);
+      } else if (data && (data.error || data.status === 'error')) {
+        throw new Error(data.error || 'فشل السكربت في حفظ الدروس');
+      } else if (data && data.status === 'ready') {
+        throw new Error('السكربت الحالي لم يتعرف على أمر حفظ الدروس. يرجى نسخ كود السكربت المحدث وإعادة نشره.');
       } else {
-        // في حال استجابة ناجحة من خوادم قوقل
         success = true;
       }
     } catch (postErr: any) {
