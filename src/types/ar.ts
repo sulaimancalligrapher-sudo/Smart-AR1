@@ -375,31 +375,14 @@ export function resolveAssetUrl(rawUrl?: string | null): string {
     return url;
   }
 
-  // 1. تحويل روابط Google Drive إلى روابط عرض مباشرة عبر CDN (lh3.googleusercontent.com)
-  const gDriveMatch = url.match(/(?:drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)|docs\.google\.com\/file\/d\/)([a-zA-Z0-9_-]+)/i);
-  if (gDriveMatch && gDriveMatch[1]) {
-    const fileId = gDriveMatch[1];
-    return `https://lh3.googleusercontent.com/d/${fileId}`;
-  }
-
-  // 2. تحويل روابط Dropbox إلى روابط وسائط خام مباشرة
-  if (url.includes('dropbox.com')) {
-    if (url.includes('?dl=0') || url.includes('&dl=0')) {
-      url = url.replace(/([?&])dl=0/g, '$1raw=1');
-    } else if (!url.includes('raw=1')) {
-      url += (url.includes('?') ? '&' : '?') + 'raw=1';
-    }
-    return url.replace('www.dropbox.com', 'dl.dropboxusercontent.com');
-  }
-
-  // 3. تحويل روابط GitHub من صفحات العرض (blob) إلى المحتوى الخام المباشر للتشغيل
+  // 1. تحويل روابط GitHub من صفحات العرض (blob) إلى المحتوى الخام المباشر للتشغيل
   const ghBlobMatch = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:blob|raw)\/([^/]+)\/(.+)$/i);
   if (ghBlobMatch) {
     const [, owner, repo, branch, path] = ghBlobMatch;
     url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
   }
 
-  // 4. معالجة المسارات النسبية المحلية مع BASE_URL
+  // 2. معالجة المسارات النسبية المحلية مع BASE_URL
   if (url.startsWith('/') && !url.startsWith('//')) {
     const baseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) || '/';
     const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
